@@ -266,9 +266,54 @@ create_nand_image_artifacts() {
         exit 1
     fi
 
+    local nand_bundle_dir="$OUTPUT_DIR/seedsigner-luckfox-pico-${board_profile}-nand-files-${ts}"
+    mkdir -p "$nand_bundle_dir"
+
+    local required_bundle_files=(
+        update.img
+        download.bin
+        env.img
+        idblock.img
+        uboot.img
+        boot.img
+        oem.img
+        userdata.img
+        rootfs.img
+        sd_update.txt
+        tftp_update.txt
+    )
+
+    local missing_bundle_files=()
+    for file in "${required_bundle_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            cp -v "$file" "$nand_bundle_dir/"
+        else
+            missing_bundle_files+=("$file")
+        fi
+    done
+
+    if [[ ${#missing_bundle_files[@]} -ne 0 ]]; then
+        print_error "Missing required NAND bundle files: ${missing_bundle_files[*]}"
+        exit 1
+    fi
+
+    cat > "$nand_bundle_dir/README.txt" << 'EOF'
+SeedSigner Luckfox NAND Flash Bundle
+
+Contains SDK-generated NAND flashing files:
+- update.img / download.bin
+- partition images (*.img)
+- U-Boot scripts: sd_update.txt and tftp_update.txt
+
+Flash guidance:
+- Use update.img with official Luckfox/Rockchip upgrade tooling, or
+- Use sd_update.txt / tftp_update.txt with U-Boot workflows.
+EOF
+
     local nand_bundle="seedsigner-luckfox-pico-${board_profile}-nand-bundle-${ts}.tar.gz"
-    tar -czf "$OUTPUT_DIR/$nand_bundle" update.img download.bin idblock.img uboot.img boot.img env.img rootfs.img oem.img userdata.img sd_update.txt tftp_update.txt 2>/dev/null || true
-    print_success "NAND bundle created: $OUTPUT_DIR/$nand_bundle"
+    tar -czf "$OUTPUT_DIR/$nand_bundle" -C "$OUTPUT_DIR" "$(basename "$nand_bundle_dir")"
+    print_success "NAND bundle folder created: $nand_bundle_dir"
+    print_success "NAND bundle archive created: $OUTPUT_DIR/$nand_bundle"
 
     if [[ -f "$nand_builder" ]]; then
         local required_parts=(env.img idblock.img uboot.img boot.img oem.img userdata.img rootfs.img)
