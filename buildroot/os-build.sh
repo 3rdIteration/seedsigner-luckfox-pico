@@ -244,6 +244,7 @@ resolve_rootfs_dir() {
 create_nand_image_artifacts() {
     local board_profile="$1"
     local ts="$2"
+    local profile_medium="${3:-unknown}"
 
     print_step "Creating NAND-Flashable Image Artifacts (${board_profile})"
 
@@ -295,6 +296,10 @@ create_nand_image_artifacts() {
     if [[ ${#missing_bundle_files[@]} -ne 0 ]]; then
         print_error "Missing required NAND bundle files: ${missing_bundle_files[*]}"
         exit 1
+    fi
+
+    if ! grep -q "mtd " "$nand_bundle_dir/sd_update.txt" 2>/dev/null; then
+        print_info "Bundle for ${board_profile} (${profile_medium}) does not contain SPI-NAND mtd script commands."
     fi
 
     cat > "$nand_bundle_dir/README.txt" << 'EOF'
@@ -437,6 +442,11 @@ CONFIGMENU
     local ts
     ts=$(date +%Y%m%d_%H%M%S)
     export LAST_PROFILE_BUILD_TS="$ts"
+    if [[ "$board_profile" == "mini" ]]; then
+        export LAST_MINI_BUILD_TS="$ts"
+    elif [[ "$board_profile" == "max" ]]; then
+        export LAST_MAX_BUILD_TS="$ts"
+    fi
     local sd_image="seedsigner-luckfox-pico-${board_profile}-sd-${ts}.img"
 
     if [[ -f "/build/blkenvflash" ]]; then
@@ -450,7 +460,7 @@ CONFIGMENU
     print_success "SD image created for ${board_profile}: $OUTPUT_DIR/$sd_image"
 
     if [[ "$include_nand" == "true" ]]; then
-        create_nand_image_artifacts "$board_profile" "$ts"
+        create_nand_image_artifacts "$board_profile" "$ts" "$boot_medium"
     fi
 
     cd "$LUCKFOX_SDK_DIR"
@@ -477,12 +487,23 @@ run_automated_build() {
     # Build SD images for both board profiles.
     cd "$LUCKFOX_SDK_DIR"
     build_profile_artifacts "mini" "sd" "false"
+
+    if [[ "$build_nand_image" == "true" && -n "${LAST_MINI_BUILD_TS:-}" ]]; then
+        cd "$LUCKFOX_SDK_DIR/output/image"
+        create_nand_image_artifacts "mini" "$LAST_MINI_BUILD_TS" "sd"
+        cd "$LUCKFOX_SDK_DIR"
+    fi
+
     build_profile_artifacts "max" "sd" "false"
 
-    # Build NAND artifacts for max when requested, reusing max SD build outputs.
+    # Build NAND/flash bundles when requested.
     if [[ "$build_nand_image" == "true" ]]; then
+        # Re-select max with SPI_NAND so update scripts/offsets are NAND-aligned.
+        select_board_profile "max" "nand"
+        ./build.sh firmware
+
         cd "$LUCKFOX_SDK_DIR/output/image"
-        create_nand_image_artifacts "max" "$LAST_PROFILE_BUILD_TS"
+        create_nand_image_artifacts "max" "${LAST_MAX_BUILD_TS:-$(date +%Y%m%d_%H%M%S)}" "nand"
         cd "$LUCKFOX_SDK_DIR"
     fi
 
