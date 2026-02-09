@@ -340,6 +340,7 @@ build_profile_artifacts() {
     local boot_medium="$2"
     local include_nand="$3"
 
+    cd "$LUCKFOX_SDK_DIR"
     select_board_profile "$board_profile" "$boot_medium"
 
     print_step "Cleaning Previous Build (${board_profile}/${boot_medium})"
@@ -440,6 +441,8 @@ CONFIGMENU
     if [[ "$include_nand" == "true" ]]; then
         create_nand_image_artifacts "$board_profile" "$ts"
     fi
+
+    cd "$LUCKFOX_SDK_DIR"
 }
 
 run_automated_build() {
