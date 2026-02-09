@@ -34,6 +34,7 @@ Options:
   --force        - Force rebuild of Docker image
   --jobs, -j N   - Set number of parallel build jobs
   --output DIR   - Set output directory (default: ./build-output)
+  --nand         - Also build NAND-flashable system image artifact
 
 Examples:
   ./build.sh build             # Standard build (artifacts in ./build-output)
@@ -105,6 +106,7 @@ run_build() {
     local mode="$1"
     local build_jobs="$2"
     local output_dir="${3:-./build-output}"
+    local build_nand="${4:-false}"
     
     print_header "Running Build ($mode)"
     
@@ -146,7 +148,12 @@ run_build() {
             fi
             print_success "Repository volume: $volume_name (persists between builds)"
             print_success "Output directory: $abs_output_dir (artifacts automatically available)"
-            docker run $docker_args "$IMAGE_NAME" auto
+            local container_mode="auto"
+            if [[ "$build_nand" == "true" ]]; then
+                container_mode="auto-nand"
+                print_success "NAND artifact generation enabled"
+            fi
+            docker run $docker_args "$IMAGE_NAME" "$container_mode"
             print_success "Build completed! Artifacts are available in: $abs_output_dir"
             ;;
         "interactive")
@@ -255,6 +262,7 @@ main() {
     local force_rebuild=false
     local build_jobs=""
     local output_dir=""
+    local build_nand=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -285,6 +293,10 @@ main() {
                     exit 1
                 fi
                 ;;
+            --nand)
+                build_nand=true
+                shift
+                ;;
             *)
                 if [[ -z "${command_set:-}" ]]; then
                     command="$1"
@@ -309,7 +321,7 @@ main() {
             ;;
         "build")
             build_docker_image "$force_rebuild"
-            run_build "build" "$build_jobs" "$output_dir"
+            run_build "build" "$build_jobs" "$output_dir" "$build_nand"
             ;;
         "interactive")
             build_docker_image "$force_rebuild"
