@@ -335,6 +335,20 @@ EOF
     fi
 }
 
+ensure_buildroot_tree() {
+    if [[ -d "$BUILDROOT_DIR" ]]; then
+        return
+    fi
+
+    print_step "Preparing Buildroot Source Tree"
+    make buildroot_create -C "$LUCKFOX_SDK_DIR/sysdrv"
+
+    if [[ ! -d "$BUILDROOT_DIR" ]]; then
+        print_error "Buildroot directory not found after buildroot_create: $BUILDROOT_DIR"
+        exit 1
+    fi
+}
+
 build_profile_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -349,16 +363,8 @@ build_profile_artifacts() {
     # Some SDK clean paths may reset board context; force board selection again.
     select_board_profile "$board_profile" "$boot_medium"
 
-    print_step "Initial Buildroot Configuration (${board_profile}/${boot_medium})"
-    echo -e "\n\n\n" | timeout 180s ./build.sh buildrootconfig || {
-        print_error "buildrootconfig failed"
-        exit 1
-    }
-
-    if [[ ! -d "$BUILDROOT_DIR" ]]; then
-        print_error "Buildroot directory not found: $BUILDROOT_DIR"
-        exit 1
-    fi
+    print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
+    ensure_buildroot_tree
 
     print_step "Installing SeedSigner Packages"
     cp -rv "$SEEDSIGNER_OS_DIR/opt/external-packages/"* "$PACKAGE_DIR/"
