@@ -346,9 +346,13 @@ build_profile_artifacts() {
     print_step "Cleaning Previous Build (${board_profile}/${boot_medium})"
     ./build.sh clean
 
+    # Some SDK clean paths may reset board context; force board selection again.
+    select_board_profile "$board_profile" "$boot_medium"
+
     print_step "Initial Buildroot Configuration (${board_profile}/${boot_medium})"
-    echo -e "\n\n\n" | timeout 5s ./build.sh buildrootconfig || {
-        print_error "buildrootconfig failed, continuing..."
+    echo -e "\n\n\n" | timeout 180s ./build.sh buildrootconfig || {
+        print_error "buildrootconfig failed"
+        exit 1
     }
 
     if [[ ! -d "$BUILDROOT_DIR" ]]; then
@@ -365,7 +369,7 @@ build_profile_artifacts() {
     fi
 
     print_step "Adding SeedSigner Menu to Buildroot"
-    if ! rg -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
+    if ! grep -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
         cat << 'CONFIGMENU' >> "$CONFIG_IN"
 menu "SeedSigner"
         source "package/python-urtypes/Config.in"
@@ -426,6 +430,7 @@ CONFIGMENU
 
     local ts
     ts=$(date +%Y%m%d_%H%M%S)
+    export LAST_PROFILE_BUILD_TS="$ts"
     local sd_image="seedsigner-luckfox-pico-${board_profile}-sd-${ts}.img"
 
     if [[ -f "/build/blkenvflash" ]]; then
@@ -468,9 +473,11 @@ run_automated_build() {
     build_profile_artifacts "mini" "sd" "false"
     build_profile_artifacts "max" "sd" "false"
 
-    # Build NAND artifacts for max when requested.
+    # Build NAND artifacts for max when requested, reusing max SD build outputs.
     if [[ "$build_nand_image" == "true" ]]; then
-        build_profile_artifacts "max" "nand" "true"
+        cd "$LUCKFOX_SDK_DIR/output/image"
+        create_nand_image_artifacts "max" "$LAST_PROFILE_BUILD_TS"
+        cd "$LUCKFOX_SDK_DIR"
     fi
 
     print_success "Build Complete!"
