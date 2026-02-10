@@ -481,8 +481,8 @@ build_profile_artifacts() {
     # toolchain/cmake combinations used in this environment; force plain install.
     local nfc_bindings_mk="$PACKAGE_DIR/nfc-bindings/nfc-bindings.mk"
     if [[ -f "$nfc_bindings_mk" ]] && ! grep -q '^NFC_BINDINGS_INSTALL_TARGET_OPTS' "$nfc_bindings_mk"; then
-        sed -i '/^NFC_BINDINGS_INSTALL_STAGING = YES$/a NFC_BINDINGS_INSTALL_TARGET_OPTS = DESTDIR=$(TARGET_DIR) install
-NFC_BINDINGS_INSTALL_STAGING_OPTS = DESTDIR=$(STAGING_DIR) install' "$nfc_bindings_mk"
+        sed -i '/^NFC_BINDINGS_INSTALL_STAGING = YES$/a NFC_BINDINGS_INSTALL_TARGET_OPTS = DESTDIR=$(TARGET_DIR) install' "$nfc_bindings_mk"
+        sed -i '/^NFC_BINDINGS_INSTALL_TARGET_OPTS = DESTDIR=$(TARGET_DIR) install$/a NFC_BINDINGS_INSTALL_STAGING_OPTS = DESTDIR=$(STAGING_DIR) install' "$nfc_bindings_mk"
     fi
 
     print_step "Updating pyzbar Configuration"
