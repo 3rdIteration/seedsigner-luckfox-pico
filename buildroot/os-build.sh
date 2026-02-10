@@ -210,10 +210,6 @@ select_board_profile() {
             boot_index=0
             ;;
         nand)
-            if [[ "$board_profile" != "max" ]]; then
-                print_error "NAND build is only supported for board profile: max"
-                exit 1
-            fi
             boot_index=1
             ;;
         *)
@@ -539,13 +535,15 @@ run_automated_build() {
 
     # Build NAND/flash bundles using official SPI_NAND build flow.
     if [[ "$build_nand_image" == "true" ]]; then
-        if [[ "$BUILD_MODEL" == "mini" ]]; then
-            print_error "NAND build is not supported for model=mini in this workflow"
-            exit 1
+        if [[ "$BUILD_MODEL" == "mini" || "$BUILD_MODEL" == "both" ]]; then
+            print_step "Generating NAND-Oriented Output (mini, official flow)"
+            build_profile_artifacts "mini" "nand" "true"
         fi
 
-        print_step "Generating NAND-Oriented Output (max, official flow)"
-        build_profile_artifacts "max" "nand" "true"
+        if [[ "$BUILD_MODEL" == "max" || "$BUILD_MODEL" == "both" ]]; then
+            print_step "Generating NAND-Oriented Output (max, official flow)"
+            build_profile_artifacts "max" "nand" "true"
+        fi
     fi
 
     print_success "Build Complete!"
