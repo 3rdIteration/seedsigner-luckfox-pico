@@ -14,12 +14,30 @@ export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
 export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
+export THIRD_ITERATION_OS_REPO_URL="https://github.com/3rdIteration/seedsigner-os.git"
 
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
 export SEEDSIGNER_CODE_DIR="$REPOS_DIR/seedsigner"
 export SEEDSIGNER_OS_DIR="$REPOS_DIR/seedsigner-os"
+export THIRD_ITERATION_OS_DIR="$REPOS_DIR/seedsigner-os-3rditeration"
 export SEEDSIGNER_LUCKFOX_DIR="/build"
+
+export THIRD_ITERATION_PACKAGES=(
+    ccid-sec1210
+    ifdnfc
+    libraqm
+    nfc-bindings
+    openct
+    python-mnemonic
+    python-pgpy
+    python-picamera
+    python-pillow-ep
+    python-pysatochip
+    python-pyscard
+    python-shamir-mnemonic
+    python-smbus2
+)
 
 # Common paths (computed after SDK directory is determined)
 export BUILDROOT_DIR="${LUCKFOX_SDK_DIR}/sysdrv/source/buildroot/buildroot-2023.02.6"
@@ -87,6 +105,15 @@ clone_repositories() {
     else
         print_info "seedsigner-os already exists"
     fi
+
+    # Clone 3rdIteration SeedSigner OS packages
+    if [[ ! -d "seedsigner-os-3rditeration" ]]; then
+        print_info "Cloning 3rdIteration seedsigner-os packages..."
+        git clone "$THIRD_ITERATION_OS_REPO_URL" --depth=1 --single-branch seedsigner-os-3rditeration
+        print_success "seedsigner-os-3rditeration cloned"
+    else
+        print_info "seedsigner-os-3rditeration already exists"
+    fi
     
     # Clone SeedSigner code (specific branch)
     if [[ ! -d "seedsigner" ]]; then
@@ -100,7 +127,8 @@ clone_repositories() {
     # Show repository status
     print_info "Repository Status:"
     echo "  luckfox-pico: $(du -sh luckfox-pico 2>/dev/null | cut -f1 || echo 'missing')"
-    echo "  seedsigner-os: $(du -sh seedsigner-os 2>/dev/null | cut -f1 || echo 'missing')"  
+    echo "  seedsigner-os: $(du -sh seedsigner-os 2>/dev/null | cut -f1 || echo 'missing')"
+    echo "  seedsigner-os-3rditeration: $(du -sh seedsigner-os-3rditeration 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  seedsigner: $(du -sh seedsigner 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  Total: $(du -sh . 2>/dev/null | cut -f1 || echo 'unknown')"
     
@@ -112,14 +140,16 @@ validate_environment() {
     
     local required_dirs=(
         "$LUCKFOX_SDK_DIR"
-        "$SEEDSIGNER_CODE_DIR"  
+        "$SEEDSIGNER_CODE_DIR"
         "$SEEDSIGNER_OS_DIR"
+        "$THIRD_ITERATION_OS_DIR"
     )
     
     local required_items=(
         "$LUCKFOX_SDK_DIR/build.sh"
         "$SEEDSIGNER_CODE_DIR/src"
         "$SEEDSIGNER_OS_DIR/opt/external-packages"
+        "$THIRD_ITERATION_OS_DIR/opt/external-packages"
     )
     
     local missing_dirs=()
@@ -437,6 +467,16 @@ build_profile_artifacts() {
     print_step "Installing SeedSigner Packages"
     cp -rv "$SEEDSIGNER_OS_DIR/opt/external-packages/"* "$PACKAGE_DIR/"
 
+    print_info "Installing additional 3rdIteration external packages"
+    for pkg in "${THIRD_ITERATION_PACKAGES[@]}"; do
+        local src_pkg="$THIRD_ITERATION_OS_DIR/opt/external-packages/$pkg"
+        if [[ ! -d "$src_pkg" ]]; then
+            print_error "Missing 3rdIteration external package: $src_pkg"
+            exit 1
+        fi
+        cp -rv "$src_pkg" "$PACKAGE_DIR/"
+    done
+
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
         sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
@@ -446,10 +486,23 @@ build_profile_artifacts() {
     if ! grep -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
         cat << 'CONFIGMENU' >> "$CONFIG_IN"
 menu "SeedSigner"
+        source "package/ccid-sec1210/Config.in"
+        source "package/ifdnfc/Config.in"
+        source "package/libraqm/Config.in"
+        source "package/nfc-bindings/Config.in"
+        source "package/openct/Config.in"
         source "package/python-urtypes/Config.in"
         source "package/python-pyzbar/Config.in"
         source "package/python-mock/Config.in"
         source "package/python-embit/Config.in"
+        source "package/python-mnemonic/Config.in"
+        source "package/python-pgpy/Config.in"
+        source "package/python-picamera/Config.in"
+        source "package/python-pillow-ep/Config.in"
+        source "package/python-pysatochip/Config.in"
+        source "package/python-pyscard/Config.in"
+        source "package/python-shamir-mnemonic/Config.in"
+        source "package/python-smbus2/Config.in"
         source "package/python-pillow/Config.in"
         source "package/libcamera/Config.in"
         source "package/libcamera-apps/Config.in"
@@ -494,6 +547,7 @@ CONFIGMENU
     [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
+    [[ -f "/build/files/S01pcscd" ]] && cp -v "/build/files/S01pcscd" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
 
     print_step "Packaging Firmware"
