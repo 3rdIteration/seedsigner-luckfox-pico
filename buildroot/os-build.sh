@@ -33,6 +33,7 @@ export BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 export MAKEFLAGS="-j${BUILD_JOBS}"
 export BR2_JLEVEL="${BUILD_JOBS}"
 export FORCE_UNSAFE_CONFIGURE=1
+export BUILD_MODEL="${BUILD_MODEL:-both}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -57,7 +58,7 @@ show_usage() {
     echo "  - No host directory pollution"
     echo "  - Self-contained and portable"
     echo "  - SD artifacts for multiple board labels (default: mini,max)"
-    echo "  - Optional NAND image packaging via image_builder.py"
+    echo "  - Model selector via BUILD_MODEL=mini|max|both"
     echo ""
 }
 
@@ -249,7 +250,6 @@ create_nand_image_artifacts() {
     print_step "Creating NAND-Flashable Image Artifacts (${board_profile})"
 
     local image_dir="$LUCKFOX_SDK_DIR/output/image"
-    local nand_builder="/build/scripts/image_builder.py"
 
     if [[ ! -d "$image_dir" ]]; then
         print_error "Image output directory not found: $image_dir"
@@ -258,11 +258,7 @@ create_nand_image_artifacts() {
 
     cd "$image_dir"
 
-    if [[ -f "update.img" ]]; then
-        local nand_update_image="seedsigner-luckfox-pico-${board_profile}-nand-update-${ts}.img"
-        cp -v "update.img" "$OUTPUT_DIR/$nand_update_image"
-        print_success "NAND update image created: $OUTPUT_DIR/$nand_update_image"
-    else
+    if [[ ! -f "update.img" ]]; then
         print_error "update.img not found. Run './build.sh firmware' before NAND packaging."
         exit 1
     fi
@@ -321,25 +317,6 @@ EOF
     tar -czf "$OUTPUT_DIR/$nand_bundle" -C "$OUTPUT_DIR" "$(basename "$nand_bundle_dir")"
     print_success "NAND bundle folder created: $nand_bundle_dir"
     print_success "NAND bundle archive created: $OUTPUT_DIR/$nand_bundle"
-
-    if [[ -f "$nand_builder" ]]; then
-        local required_parts=(env.img idblock.img uboot.img boot.img oem.img userdata.img rootfs.img)
-        local missing_parts=()
-        for part in "${required_parts[@]}"; do
-            [[ -f "$part" ]] || missing_parts+=("$part")
-        done
-
-        if [[ ${#missing_parts[@]} -eq 0 ]]; then
-            local nand_raw_image="seedsigner-luckfox-pico-${board_profile}-nand-raw-${ts}.img"
-            python3 "$nand_builder" "$image_dir" "$nand_raw_image"
-            cp -v "$nand_raw_image" "$OUTPUT_DIR/"
-            print_success "NAND raw image created: $OUTPUT_DIR/$nand_raw_image"
-        else
-            print_info "Skipping optional NAND raw image (missing parts: ${missing_parts[*]})"
-        fi
-    else
-        print_info "Skipping optional NAND raw image (builder missing: $nand_builder)"
-    fi
 }
 
 
@@ -552,13 +529,21 @@ run_automated_build() {
     cd "$LUCKFOX_SDK_DIR"
 
     if [[ "$build_sd_image" == "true" ]]; then
-        # Build SD images for both board profiles.
-        build_profile_artifacts "mini" "sd" "false"
-        build_profile_artifacts "max" "sd" "false"
+        if [[ "$BUILD_MODEL" == "mini" || "$BUILD_MODEL" == "both" ]]; then
+            build_profile_artifacts "mini" "sd" "false"
+        fi
+        if [[ "$BUILD_MODEL" == "max" || "$BUILD_MODEL" == "both" ]]; then
+            build_profile_artifacts "max" "sd" "false"
+        fi
     fi
 
     # Build NAND/flash bundles using official SPI_NAND build flow.
     if [[ "$build_nand_image" == "true" ]]; then
+        if [[ "$BUILD_MODEL" == "mini" ]]; then
+            print_error "NAND build is not supported for model=mini in this workflow"
+            exit 1
+        fi
+
         print_step "Generating NAND-Oriented Output (max, official flow)"
         build_profile_artifacts "max" "nand" "true"
     fi

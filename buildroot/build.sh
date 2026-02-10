@@ -36,6 +36,7 @@ Options:
   --output DIR   - Set output directory (default: ./build-output)
   --nand         - Build NAND-flashable system image artifacts
   --microsd      - Build MicroSD image artifacts
+  --model TARGET - Target model: mini|max|both (default: both)
 
 Examples:
   ./build.sh build             # Standard build (artifacts in ./build-output)
@@ -109,6 +110,7 @@ run_build() {
     local output_dir="${3:-./build-output}"
     local build_nand="${4:-false}"
     local build_microsd="${5:-false}"
+    local build_model="${6:-both}"
     
     print_header "Running Build ($mode)"
     
@@ -126,9 +128,9 @@ run_build() {
     fi
     
     # Set up build environment variables
-    local env_args=""
+    local env_args="-e BUILD_MODEL=$build_model"
     if [[ -n "$build_jobs" ]]; then
-        env_args="-e BUILD_JOBS=$build_jobs"
+        env_args="-e BUILD_JOBS=$build_jobs -e BUILD_MODEL=$build_model"
         print_success "Using $build_jobs parallel build jobs"
     fi
     
@@ -275,6 +277,7 @@ main() {
     local output_dir=""
     local build_nand=false
     local build_microsd=false
+    local build_model="both"
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -313,6 +316,15 @@ main() {
                 build_microsd=true
                 shift
                 ;;
+            --model)
+                if [[ -n "$2" && "$2" =~ ^(mini|max|both)$ ]]; then
+                    build_model="$2"
+                    shift 2
+                else
+                    print_error "Invalid or missing argument for --model (use: mini|max|both)"
+                    exit 1
+                fi
+                ;;
             *)
                 if [[ -z "${command_set:-}" ]]; then
                     command="$1"
@@ -337,7 +349,7 @@ main() {
             ;;
         "build")
             build_docker_image "$force_rebuild"
-            run_build "build" "$build_jobs" "$output_dir" "$build_nand" "$build_microsd"
+            run_build "build" "$build_jobs" "$output_dir" "$build_nand" "$build_microsd" "$build_model"
             ;;
         "interactive")
             build_docker_image "$force_rebuild"
