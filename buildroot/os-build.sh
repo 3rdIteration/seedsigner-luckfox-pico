@@ -298,7 +298,9 @@ create_nand_image_artifacts() {
         exit 1
     fi
 
-    if ! grep -q "mtd " "$nand_bundle_dir/sd_update.txt" 2>/dev/null; then
+    if [[ "$profile_medium" == "nand" ]]; then
+        validate_nand_oriented_output "$image_dir"
+    elif ! grep -q "mtd " "$nand_bundle_dir/sd_update.txt" 2>/dev/null; then
         print_info "Bundle for ${board_profile} (${profile_medium}) does not contain SPI-NAND mtd script commands."
     fi
 
@@ -338,6 +340,33 @@ EOF
     else
         print_info "Skipping optional NAND raw image (builder missing: $nand_builder)"
     fi
+}
+
+
+validate_nand_oriented_output() {
+    local image_dir="$1"
+
+    local sd_script="$image_dir/sd_update.txt"
+    local tftp_script="$image_dir/tftp_update.txt"
+
+    for script in "$sd_script" "$tftp_script"; do
+        if [[ ! -f "$script" ]]; then
+            print_error "Missing NAND validation script: $script"
+            exit 1
+        fi
+
+        if grep -q "mmc write" "$script"; then
+            print_error "Invalid NAND output: found 'mmc write' in $(basename "$script")"
+            exit 1
+        fi
+
+        if ! grep -q "mtd " "$script"; then
+            print_error "Invalid NAND output: missing 'mtd' commands in $(basename "$script")"
+            exit 1
+        fi
+    done
+
+    print_success "Validated NAND-oriented update scripts"
 }
 
 ensure_buildroot_tree() {
@@ -498,11 +527,14 @@ run_automated_build() {
 
     # Build NAND/flash bundles when requested.
     if [[ "$build_nand_image" == "true" ]]; then
+        print_step "Generating NAND-Oriented Output (max)"
+
         # Re-select max with SPI_NAND so update scripts/offsets are NAND-aligned.
         select_board_profile "max" "nand"
         ./build.sh firmware
 
         cd "$LUCKFOX_SDK_DIR/output/image"
+        validate_nand_oriented_output "$LUCKFOX_SDK_DIR/output/image"
         create_nand_image_artifacts "max" "${LAST_MAX_BUILD_TS:-$(date +%Y%m%d_%H%M%S)}" "nand"
         cd "$LUCKFOX_SDK_DIR"
     fi
