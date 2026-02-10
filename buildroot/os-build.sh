@@ -516,27 +516,12 @@ run_automated_build() {
     # Build SD images for both board profiles.
     cd "$LUCKFOX_SDK_DIR"
     build_profile_artifacts "mini" "sd" "false"
-
-    if [[ "$build_nand_image" == "true" && -n "${LAST_MINI_BUILD_TS:-}" ]]; then
-        cd "$LUCKFOX_SDK_DIR/output/image"
-        create_nand_image_artifacts "mini" "$LAST_MINI_BUILD_TS" "sd"
-        cd "$LUCKFOX_SDK_DIR"
-    fi
-
     build_profile_artifacts "max" "sd" "false"
 
-    # Build NAND/flash bundles when requested.
+    # Build NAND/flash bundles using official SPI_NAND build flow (full rebuild).
     if [[ "$build_nand_image" == "true" ]]; then
-        print_step "Generating NAND-Oriented Output (max)"
-
-        # Re-select max with SPI_NAND so update scripts/offsets are NAND-aligned.
-        select_board_profile "max" "nand"
-        ./build.sh firmware
-
-        cd "$LUCKFOX_SDK_DIR/output/image"
-        validate_nand_oriented_output "$LUCKFOX_SDK_DIR/output/image"
-        create_nand_image_artifacts "max" "${LAST_MAX_BUILD_TS:-$(date +%Y%m%d_%H%M%S)}" "nand"
-        cd "$LUCKFOX_SDK_DIR"
+        print_step "Generating NAND-Oriented Output (max, official flow)"
+        build_profile_artifacts "max" "nand" "true"
     fi
 
     print_success "Build Complete!"
