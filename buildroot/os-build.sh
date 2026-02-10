@@ -369,6 +369,30 @@ validate_nand_oriented_output() {
     print_success "Validated NAND-oriented update scripts"
 }
 
+
+export_official_nand_image_dir() {
+    local board_profile="$1"
+    local ts="$2"
+    local image_root="$LUCKFOX_SDK_DIR/IMAGE"
+
+    if [[ ! -d "$image_root" ]]; then
+        print_info "No SDK IMAGE directory found at: $image_root"
+        return 0
+    fi
+
+    local latest_dir
+    latest_dir=$(find "$image_root" -maxdepth 1 -type d -name 'IPC_SPI_NAND_BUILDROOT_*' | sort | tail -n 1)
+
+    if [[ -z "$latest_dir" ]]; then
+        print_info "No SPI_NAND IMAGE export directory found under: $image_root"
+        return 0
+    fi
+
+    local bundle_name="seedsigner-luckfox-pico-${board_profile}-nand-sdk-images-${ts}.tar.gz"
+    tar -czf "$OUTPUT_DIR/$bundle_name" -C "$image_root" "$(basename "$latest_dir")"
+    print_success "Exported official SDK NAND image directory: $OUTPUT_DIR/$bundle_name"
+}
+
 ensure_buildroot_tree() {
     if [[ -d "$BUILDROOT_DIR" ]]; then
         return
@@ -465,7 +489,6 @@ CONFIGMENU
     print_step "Packaging Firmware"
     ./build.sh firmware
 
-    print_step "Creating Final SD Image (${board_profile})"
     cd "$LUCKFOX_SDK_DIR/output/image"
 
     local ts
@@ -476,20 +499,32 @@ CONFIGMENU
     elif [[ "$board_profile" == "max" ]]; then
         export LAST_MAX_BUILD_TS="$ts"
     fi
-    local sd_image="seedsigner-luckfox-pico-${board_profile}-sd-${ts}.img"
 
-    if [[ -f "/build/blkenvflash" ]]; then
-        "/build/blkenvflash" "$sd_image"
-    else
-        print_error "blkenvflash tool not found"
-        exit 1
+    if [[ "$boot_medium" == "sd" ]]; then
+        print_step "Creating Final SD Image (${board_profile})"
+
+        local sd_image="seedsigner-luckfox-pico-${board_profile}-sd-${ts}.img"
+
+        if [[ -f "/build/blkenvflash" ]]; then
+            "/build/blkenvflash" "$sd_image"
+        else
+            print_error "blkenvflash tool not found"
+            exit 1
+        fi
+
+        if [[ ! -f "$sd_image" ]]; then
+            print_error "Expected SD image not created: $sd_image"
+            exit 1
+        fi
+
+        cp -v "$sd_image" "$OUTPUT_DIR/"
+        print_success "SD image created for ${board_profile}: $OUTPUT_DIR/$sd_image"
     fi
 
-    cp -v "$sd_image" "$OUTPUT_DIR/"
-    print_success "SD image created for ${board_profile}: $OUTPUT_DIR/$sd_image"
-
     if [[ "$include_nand" == "true" ]]; then
+        print_step "Packaging NAND artifacts (${board_profile})"
         create_nand_image_artifacts "$board_profile" "$ts" "$boot_medium"
+        export_official_nand_image_dir "$board_profile" "$ts"
     fi
 
     cd "$LUCKFOX_SDK_DIR"
