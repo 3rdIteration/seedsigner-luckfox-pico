@@ -3,14 +3,25 @@ FROM ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Install all required packages including ca-certificates for git cloning
+# Install required build dependencies (aligned with SeedSigner OS build container)
 RUN apt-get update && \
     apt-get install -y \
         build-essential \
         curl \
         git \
+        locales \
+        lsb-release \
+        wget \
+        patch \
+        gzip \
+        bzip2 \
+        perl \
+        tar \
+        zip \
         python3 \
         python3-pip \
+        python3-virtualenv \
+        swig \
         ssh \
         make gcc \
         gcc-multilib g++-multilib \
@@ -20,9 +31,15 @@ RUN apt-get update && \
         device-tree-compiler libncurses5-dev \
         pkg-config bc python-is-python3 passwd openssl \
         openssh-server openssh-client vim file cpio rsync \
-        ca-certificates \
-        && \
+        squashfs-tools mtools fdisk dosfstools ccache \
+        ca-certificates && \
     rm -rf /var/lib/apt/lists/*
+
+# Configure UTF-8 locale for deterministic tooling behavior
+RUN locale-gen en_US.UTF-8 && \
+    update-locale LANG=en_US.UTF-8
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
 
 # Set working directory for self-contained builds
 WORKDIR /build
