@@ -42,7 +42,7 @@ jobs:
         fi
         
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --nand --output ../build-artifacts
+        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
     
     - name: List build artifacts
       if: always()

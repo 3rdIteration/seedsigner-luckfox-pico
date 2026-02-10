@@ -44,7 +44,7 @@ print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
-    echo "Usage: $0 [auto|auto-nand|interactive|shell|clone-only]"
+    echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
     echo ""
     echo "  auto        - Run full automated SD-card image build (default)"
     echo "  auto-nand   - Run automated build + NAND-flashable image packaging"
@@ -497,6 +497,7 @@ CONFIGMENU
 
 run_automated_build() {
     local build_nand_image="${1:-false}"
+    local build_sd_image="${2:-true}"
 
     print_step "Starting Automated SeedSigner Build"
 
@@ -513,12 +514,15 @@ run_automated_build() {
 
     mkdir -p "$OUTPUT_DIR"
 
-    # Build SD images for both board profiles.
     cd "$LUCKFOX_SDK_DIR"
-    build_profile_artifacts "mini" "sd" "false"
-    build_profile_artifacts "max" "sd" "false"
 
-    # Build NAND/flash bundles using official SPI_NAND build flow (full rebuild).
+    if [[ "$build_sd_image" == "true" ]]; then
+        # Build SD images for both board profiles.
+        build_profile_artifacts "mini" "sd" "false"
+        build_profile_artifacts "max" "sd" "false"
+    fi
+
+    # Build NAND/flash bundles using official SPI_NAND build flow.
     if [[ "$build_nand_image" == "true" ]]; then
         print_step "Generating NAND-Oriented Output (max, official flow)"
         build_profile_artifacts "max" "nand" "true"
@@ -557,12 +561,16 @@ main() {
     
     case "$mode" in
         "auto")
-            print_info "Starting automated build mode..."
-            run_automated_build false
+            print_info "Starting automated MicroSD build mode..."
+            run_automated_build false true
             ;;
         "auto-nand")
-            print_info "Starting automated build mode with NAND packaging..."
-            run_automated_build true
+            print_info "Starting automated build mode with MicroSD + NAND packaging..."
+            run_automated_build true true
+            ;;
+        "auto-nand-only")
+            print_info "Starting automated NAND-only build mode..."
+            run_automated_build true false
             ;;
         "interactive")
             print_info "Starting interactive mode..."
