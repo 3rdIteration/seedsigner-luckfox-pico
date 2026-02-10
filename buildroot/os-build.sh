@@ -34,6 +34,7 @@ export MAKEFLAGS="-j${BUILD_JOBS}"
 export BR2_JLEVEL="${BUILD_JOBS}"
 export FORCE_UNSAFE_CONFIGURE=1
 export BUILD_MODEL="${BUILD_MODEL:-both}"
+export MINI_CMA_SIZE="${MINI_CMA_SIZE:-1M}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -59,6 +60,7 @@ show_usage() {
     echo "  - Self-contained and portable"
     echo "  - SD artifacts for multiple board labels (default: mini,max)"
     echo "  - Model selector via BUILD_MODEL=mini|max|both"
+    echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
     echo ""
 }
 
@@ -225,6 +227,40 @@ select_board_profile() {
 " "$hw_index" "$boot_index" | ./build.sh lunch
 }
 
+
+apply_mini_cma_profile() {
+    if [[ "$board_profile" != "mini" ]]; then
+        return
+    fi
+
+    print_step "Applying Mini CMA profile (${MINI_CMA_SIZE})"
+
+    local cfg_dir="$LUCKFOX_SDK_DIR/project/cfg/BoardConfig_IPC"
+    if [[ ! -d "$cfg_dir" ]]; then
+        print_error "BoardConfig directory not found: $cfg_dir"
+        exit 1
+    fi
+
+    local cfg_files=("$cfg_dir"/BoardConfig-*-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk)
+    local found=false
+
+    for cfg in "${cfg_files[@]}"; do
+        [[ -f "$cfg" ]] || continue
+        found=true
+        if grep -q '^export RK_BOOTARGS_CMA_SIZE=' "$cfg"; then
+            sed -i "s|^export RK_BOOTARGS_CMA_SIZE=.*|export RK_BOOTARGS_CMA_SIZE=\"${MINI_CMA_SIZE}\"|" "$cfg"
+        else
+            echo "export RK_BOOTARGS_CMA_SIZE=\"${MINI_CMA_SIZE}\"" >> "$cfg"
+        fi
+        print_info "Updated CMA size in: $cfg"
+    done
+
+    if [[ "$found" == "false" ]]; then
+        print_error "No Mini board config files found under: $cfg_dir"
+        exit 1
+    fi
+}
+
 resolve_rootfs_dir() {
     local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
     local matches=( $pattern )
@@ -387,6 +423,7 @@ build_profile_artifacts() {
 
     cd "$LUCKFOX_SDK_DIR"
     select_board_profile "$board_profile" "$boot_medium"
+    apply_mini_cma_profile
 
     print_step "Cleaning Previous Build (${board_profile}/${boot_medium})"
     ./build.sh clean
