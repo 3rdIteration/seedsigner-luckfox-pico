@@ -477,6 +477,14 @@ build_profile_artifacts() {
         cp -rv "$src_pkg" "$PACKAGE_DIR/"
     done
 
+    # nfc-bindings does not provide the generated install/fast target with some
+    # toolchain/cmake combinations used in this environment; force plain install.
+    local nfc_bindings_mk="$PACKAGE_DIR/nfc-bindings/nfc-bindings.mk"
+    if [[ -f "$nfc_bindings_mk" ]] && ! grep -q '^NFC_BINDINGS_INSTALL_TARGET_OPTS' "$nfc_bindings_mk"; then
+        sed -i '/^NFC_BINDINGS_INSTALL_STAGING = YES$/a NFC_BINDINGS_INSTALL_TARGET_OPTS = DESTDIR=$(TARGET_DIR) install
+NFC_BINDINGS_INSTALL_STAGING_OPTS = DESTDIR=$(STAGING_DIR) install' "$nfc_bindings_mk"
+    fi
+
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
         sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
