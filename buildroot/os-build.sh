@@ -18,6 +18,7 @@ export BUILDROOT_REPO_URL="https://github.com/buildroot/buildroot.git"
 export BUILDROOT_VERSION_BRANCH="${BUILDROOT_VERSION_BRANCH:-2024.11.x}"
 export BUILDROOT_VERSION_DIR="${BUILDROOT_VERSION_DIR:-2024.11.x}"
 export LEGACY_BUILDROOT_VERSION_DIR="${LEGACY_BUILDROOT_VERSION_DIR:-2023.02.6}"
+export BUILDROOT_GCC_SERIES="${BUILDROOT_GCC_SERIES:-11_X}"
 
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
@@ -408,6 +409,35 @@ export_official_nand_image_dir() {
     print_success "Exported official SDK NAND image directory: $OUTPUT_DIR/$bundle_name"
 }
 
+enforce_modern_buildroot_toolchain() {
+    local config_path="$1"
+
+    if [[ ! -f "$config_path" ]]; then
+        print_error "Buildroot config not found: $config_path"
+        exit 1
+    fi
+
+    # libcamera requires GCC >= 9; force an internal Buildroot toolchain with GCC 11 series.
+    sed -i \
+        -e 's/^BR2_TOOLCHAIN_EXTERNAL=y/# BR2_TOOLCHAIN_EXTERNAL is not set/' \
+        -e 's/^# BR2_TOOLCHAIN_BUILDROOT is not set/BR2_TOOLCHAIN_BUILDROOT=y/' \
+        -e 's/^# BR2_TOOLCHAIN_BUILDROOT_UCLIBC is not set/BR2_TOOLCHAIN_BUILDROOT_UCLIBC=y/' \
+        -e 's/^BR2_TOOLCHAIN_GCC_AT_LEAST="8"/BR2_TOOLCHAIN_GCC_AT_LEAST="11"/' \
+        "$config_path"
+
+    if ! grep -q '^BR2_TOOLCHAIN_BUILDROOT=y$' "$config_path"; then
+        echo 'BR2_TOOLCHAIN_BUILDROOT=y' >> "$config_path"
+    fi
+
+    if ! grep -q '^BR2_TOOLCHAIN_BUILDROOT_UCLIBC=y$' "$config_path"; then
+        echo 'BR2_TOOLCHAIN_BUILDROOT_UCLIBC=y' >> "$config_path"
+    fi
+
+    if ! grep -q '^BR2_GCC_VERSION_'"$BUILDROOT_GCC_SERIES"'=y$' "$config_path"; then
+        printf 'BR2_GCC_VERSION_%s=y\n' "$BUILDROOT_GCC_SERIES" >> "$config_path"
+    fi
+}
+
 ensure_buildroot_tree() {
     print_step "Preparing Buildroot Source Tree ($BUILDROOT_VERSION_BRANCH)"
 
@@ -493,6 +523,8 @@ CONFIGMENU
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
+        enforce_modern_buildroot_toolchain "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        enforce_modern_buildroot_toolchain "$BUILDROOT_DIR/.config"
     else
         print_error "SeedSigner configuration file not found"
         exit 1

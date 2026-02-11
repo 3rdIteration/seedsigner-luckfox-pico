@@ -38,6 +38,10 @@ git clone https://github.com/lightningspore/seedsigner.git \
 
 ## Run OS Build
 
+
+### Toolchain Note (Buildroot 2024.11.x)
+`libcamera` requires GCC 9.0 or newer. The project config now uses Buildroot's internal toolchain with GCC 11-series, rather than the older Luckfox external GCC 8 toolchain.
+
 Run these commands from `buildroot/` directory. This is the directory/repo we cloned above.
 
 ```bash
