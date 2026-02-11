@@ -14,6 +14,10 @@ export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
 export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
+export BUILDROOT_REPO_URL="https://github.com/buildroot/buildroot.git"
+export BUILDROOT_VERSION_BRANCH="${BUILDROOT_VERSION_BRANCH:-2024.11.x}"
+export BUILDROOT_VERSION_DIR="${BUILDROOT_VERSION_DIR:-2024.11.x}"
+export LEGACY_BUILDROOT_VERSION_DIR="${LEGACY_BUILDROOT_VERSION_DIR:-2023.02.6}"
 
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
@@ -22,7 +26,9 @@ export SEEDSIGNER_OS_DIR="$REPOS_DIR/seedsigner-os"
 export SEEDSIGNER_LUCKFOX_DIR="/build"
 
 # Common paths (computed after SDK directory is determined)
-export BUILDROOT_DIR="${LUCKFOX_SDK_DIR}/sysdrv/source/buildroot/buildroot-2023.02.6"
+export BUILDROOT_BASE_DIR="${LUCKFOX_SDK_DIR}/sysdrv/source/buildroot"
+export BUILDROOT_DIR="${BUILDROOT_BASE_DIR}/buildroot-${BUILDROOT_VERSION_DIR}"
+export LEGACY_BUILDROOT_DIR="${BUILDROOT_BASE_DIR}/buildroot-${LEGACY_BUILDROOT_VERSION_DIR}"
 export PACKAGE_DIR="${BUILDROOT_DIR}/package"
 export CONFIG_IN="${PACKAGE_DIR}/Config.in"
 export PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
@@ -403,16 +409,37 @@ export_official_nand_image_dir() {
 }
 
 ensure_buildroot_tree() {
-    if [[ -d "$BUILDROOT_DIR" ]]; then
-        return
+    print_step "Preparing Buildroot Source Tree ($BUILDROOT_VERSION_BRANCH)"
+
+    mkdir -p "$BUILDROOT_BASE_DIR"
+
+    if [[ ! -d "$BUILDROOT_DIR/.git" ]]; then
+        if [[ -d "$BUILDROOT_DIR" ]]; then
+            local backup_dir="${BUILDROOT_DIR}.pre-upstream.$(date +%Y%m%d_%H%M%S)"
+            print_info "Existing Buildroot directory found, preserving at: $backup_dir"
+            mv "$BUILDROOT_DIR" "$backup_dir"
+        fi
+
+        git clone --depth=1 --branch "$BUILDROOT_VERSION_BRANCH" \
+            "$BUILDROOT_REPO_URL" "$BUILDROOT_DIR"
     fi
 
-    print_step "Preparing Buildroot Source Tree"
-    make buildroot_create -C "$LUCKFOX_SDK_DIR/sysdrv"
-
     if [[ ! -d "$BUILDROOT_DIR" ]]; then
-        print_error "Buildroot directory not found after buildroot_create: $BUILDROOT_DIR"
+        print_error "Buildroot directory not found after clone: $BUILDROOT_DIR"
         exit 1
+    fi
+
+    if [[ -L "$LEGACY_BUILDROOT_DIR" ]]; then
+        print_info "Legacy Buildroot path already symlinked: $LEGACY_BUILDROOT_DIR"
+    elif [[ -d "$LEGACY_BUILDROOT_DIR" && "$LEGACY_BUILDROOT_DIR" != "$BUILDROOT_DIR" ]]; then
+        local legacy_backup="${LEGACY_BUILDROOT_DIR}.bundled.$(date +%Y%m%d_%H%M%S)"
+        print_info "Preserving bundled SDK Buildroot at: $legacy_backup"
+        mv "$LEGACY_BUILDROOT_DIR" "$legacy_backup"
+        ln -s "$BUILDROOT_DIR" "$LEGACY_BUILDROOT_DIR"
+        print_info "Created compatibility symlink: $LEGACY_BUILDROOT_DIR -> $BUILDROOT_DIR"
+    elif [[ ! -e "$LEGACY_BUILDROOT_DIR" && "$LEGACY_BUILDROOT_DIR" != "$BUILDROOT_DIR" ]]; then
+        ln -s "$BUILDROOT_DIR" "$LEGACY_BUILDROOT_DIR"
+        print_info "Created compatibility symlink: $LEGACY_BUILDROOT_DIR -> $BUILDROOT_DIR"
     fi
 }
 

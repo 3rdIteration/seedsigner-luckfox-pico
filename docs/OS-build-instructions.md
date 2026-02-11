@@ -88,19 +88,19 @@ This command allows us to choose what packages to install into our OS image.
 ![Buildroot Package Selection](../img/seedsigner-buildroot-select.webp)
 
 After selecting all the above packages, SAVE the configuration.
-The configuration is saved at: `sysdrv/source/buildroot/buildroot-2023.02.6/.config`
+The configuration is saved at: `sysdrv/source/buildroot/buildroot-2024.11.x/.config`
 
 You can sanity check your configuration to ensure the selected packages have been enabled like so:
 ```bash
-cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep "LIBCAMERA"
-cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep "ZBAR"
-cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep "LIBJPEG"
+cat sysdrv/source/buildroot/buildroot-2024.11.x/.config | grep "LIBCAMERA"
+cat sysdrv/source/buildroot/buildroot-2024.11.x/.config | grep "ZBAR"
+cat sysdrv/source/buildroot/buildroot-2024.11.x/.config | grep "LIBJPEG"
 ...
 ```
 
 A final sanity check, this shows all enabled packages... This might be useful as we try and remove any unnecessary packages from the build:
 ```bash
-cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep -v "^#"
+cat sysdrv/source/buildroot/buildroot-2024.11.x/.config | grep -v "^#"
 ```
 
 ### Adding Custom Packages
@@ -119,7 +119,7 @@ To use the script:
 This command will use one of the saved configurations for the build:
 ```bash
 # Use config from repo
-cp ../configs/config_20241218184332.config sysdrv/source/buildroot/buildroot-2023.02.6/.config
+cp ../configs/config_20241218184332.config sysdrv/source/buildroot/buildroot-2024.11.x/.config
 
 # Sanity check the configuration was loaded properly
 # Selected packages like ZBAR should be listed as enabled here
