@@ -593,6 +593,10 @@ CONFIGMENU
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
+
+        local toolchain_external_path
+        toolchain_external_path="$LUCKFOX_SDK_DIR/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf"
+        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_PATH=.*$|BR2_TOOLCHAIN_EXTERNAL_PATH=\"$toolchain_external_path\"|" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
     else
         print_error "SeedSigner configuration file not found"
         exit 1
