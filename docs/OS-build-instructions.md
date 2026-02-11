@@ -42,6 +42,16 @@ git clone https://github.com/lightningspore/seedsigner.git \
 ### Toolchain Note (Buildroot 2024.11.x)
 `libcamera` requires GCC 9.0 or newer. The project config now uses Buildroot's internal toolchain with GCC 11-series, rather than the older Luckfox external GCC 8 toolchain.
 
+### Legacy Config Migration Note (Buildroot 2024.11.x)
+Buildroot 2024.11.x fails when stale legacy symbols remain in `.config` (`Makefile.legacy` error). The automated build now runs `make olddefconfig` after copying the project config, to migrate stale options before compile.
+
+If running manually in the Buildroot tree, run this after updating `.config`:
+
+```bash
+cd sysdrv/source/buildroot/buildroot-2024.11.x
+make olddefconfig
+```
+
 Run these commands from `buildroot/` directory. This is the directory/repo we cloned above.
 
 ```bash

@@ -438,6 +438,14 @@ enforce_modern_buildroot_toolchain() {
     fi
 }
 
+migrate_buildroot_config() {
+    print_step "Migrating Buildroot Configuration"
+
+    # Buildroot 2024.11.x rejects legacy symbols in .config (Makefile.legacy).
+    # Regenerate config defaults from the copied .config to drop stale options.
+    make -C "$BUILDROOT_DIR" olddefconfig
+}
+
 ensure_buildroot_tree() {
     print_step "Preparing Buildroot Source Tree ($BUILDROOT_VERSION_BRANCH)"
 
@@ -525,6 +533,7 @@ CONFIGMENU
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
         enforce_modern_buildroot_toolchain "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         enforce_modern_buildroot_toolchain "$BUILDROOT_DIR/.config"
+        migrate_buildroot_config
     else
         print_error "SeedSigner configuration file not found"
         exit 1

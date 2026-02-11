@@ -36,11 +36,12 @@ Docker-based build system for SeedSigner OS that uses containerized compilation 
    - seedsigner-os packages
 3. Clones upstream Buildroot `2024.11.x` into the SDK tree and redirects legacy `buildroot-2023.02.6` path references to that checkout for compatibility
 4. Forces Buildroot to use an internal GCC 11-series toolchain (>=9 required for libcamera)
-5. Compiles U-Boot bootloader
-6. Builds Linux kernel with device drivers
-7. Creates root filesystem with SeedSigner application
-8. Packages components into flashable image
-9. **Automatically exports artifacts** to host filesystem
+5. Runs `make olddefconfig` to migrate away legacy/deprecated `.config` symbols before compile
+6. Compiles U-Boot bootloader
+7. Builds Linux kernel with device drivers
+8. Creates root filesystem with SeedSigner application
+9. Packages components into flashable image
+10. **Automatically exports artifacts** to host filesystem
 
 ## Output
 
