@@ -494,6 +494,12 @@ endef
 EOF
     fi
 
+    print_step "Patching python-cryptography Rust target for armv7"
+    local python_cryptography_mk="$PACKAGE_DIR/python-cryptography/python-cryptography.mk"
+    if [[ -f "$python_cryptography_mk" ]] && ! rg -q 'CARGO_BUILD_TARGET="armv7-unknown-linux-gnueabihf"' "$python_cryptography_mk"; then
+        sed -i '/^PYTHON_CRYPTOGRAPHY_ENV = \\$/a     CARGO_BUILD_TARGET="armv7-unknown-linux-gnueabihf" \\' "$python_cryptography_mk"
+    fi
+
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
         sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
