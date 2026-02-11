@@ -477,12 +477,21 @@ build_profile_artifacts() {
         cp -rv "$src_pkg" "$PACKAGE_DIR/"
     done
 
-    # nfc-bindings does not provide the generated install/fast target with some
-    # toolchain/cmake combinations used in this environment; force plain install.
+    print_step "Patching nfc-bindings placeholder package for Buildroot install phase"
     local nfc_bindings_mk="$PACKAGE_DIR/nfc-bindings/nfc-bindings.mk"
-    if [[ -f "$nfc_bindings_mk" ]] && ! grep -q '^NFC_BINDINGS_INSTALL_TARGET_OPTS' "$nfc_bindings_mk"; then
-        sed -i '/^NFC_BINDINGS_INSTALL_STAGING = YES$/a NFC_BINDINGS_INSTALL_TARGET_OPTS = DESTDIR=$(TARGET_DIR) install' "$nfc_bindings_mk"
-        sed -i '/^NFC_BINDINGS_INSTALL_TARGET_OPTS = DESTDIR=$(TARGET_DIR) install$/a NFC_BINDINGS_INSTALL_STAGING_OPTS = DESTDIR=$(STAGING_DIR) install' "$nfc_bindings_mk"
+    if [[ -f "$nfc_bindings_mk" ]] && ! rg -q '^define NFC_BINDINGS_INSTALL_TARGET_CMDS$' "$nfc_bindings_mk"; then
+        cat <<'EOF' >> "$nfc_bindings_mk"
+
+# Upstream 0.1-placeholder does not provide make install/install/fast targets.
+# Keep Buildroot install phases as explicit no-ops so rootfs builds do not fail.
+define NFC_BINDINGS_INSTALL_TARGET_CMDS
+	true
+endef
+
+define NFC_BINDINGS_INSTALL_STAGING_CMDS
+	true
+endef
+EOF
     fi
 
     print_step "Updating pyzbar Configuration"
