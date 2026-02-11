@@ -15,12 +15,15 @@ export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
 export THIRD_ITERATION_OS_REPO_URL="https://github.com/3rdIteration/seedsigner-os.git"
+export BUILDROOT_REPO_URL="https://github.com/buildroot/buildroot.git"
+export BUILDROOT_BRANCH="2024.11.x"
 
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
 export SEEDSIGNER_CODE_DIR="$REPOS_DIR/seedsigner"
 export SEEDSIGNER_OS_DIR="$REPOS_DIR/seedsigner-os"
 export THIRD_ITERATION_OS_DIR="$REPOS_DIR/seedsigner-os-3rditeration"
+export BUILDROOT_UPSTREAM_DIR="$REPOS_DIR/buildroot-2024.11.x"
 export SEEDSIGNER_LUCKFOX_DIR="/build"
 
 export THIRD_ITERATION_PACKAGES=(
@@ -115,6 +118,15 @@ clone_repositories() {
         print_info "seedsigner-os-3rditeration already exists"
     fi
     
+    # Clone upstream Buildroot 2024.11.x
+    if [[ ! -d "buildroot-2024.11.x" ]]; then
+        print_info "Cloning upstream Buildroot (branch: $BUILDROOT_BRANCH)..."
+        git clone "$BUILDROOT_REPO_URL" --depth=1 -b "$BUILDROOT_BRANCH" --single-branch buildroot-2024.11.x
+        print_success "buildroot-2024.11.x cloned"
+    else
+        print_info "buildroot-2024.11.x already exists"
+    fi
+
     # Clone SeedSigner code (specific branch)
     if [[ ! -d "seedsigner" ]]; then
         print_info "Cloning seedsigner code (branch: $SEEDSIGNER_BRANCH)..."
@@ -129,6 +141,7 @@ clone_repositories() {
     echo "  luckfox-pico: $(du -sh luckfox-pico 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  seedsigner-os: $(du -sh seedsigner-os 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  seedsigner-os-3rditeration: $(du -sh seedsigner-os-3rditeration 2>/dev/null | cut -f1 || echo 'missing')"
+    echo "  buildroot-2024.11.x: $(du -sh buildroot-2024.11.x 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  seedsigner: $(du -sh seedsigner 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  Total: $(du -sh . 2>/dev/null | cut -f1 || echo 'unknown')"
     
@@ -143,6 +156,7 @@ validate_environment() {
         "$SEEDSIGNER_CODE_DIR"
         "$SEEDSIGNER_OS_DIR"
         "$THIRD_ITERATION_OS_DIR"
+        "$BUILDROOT_UPSTREAM_DIR"
     )
     
     local required_items=(
@@ -150,6 +164,7 @@ validate_environment() {
         "$SEEDSIGNER_CODE_DIR/src"
         "$SEEDSIGNER_OS_DIR/opt/external-packages"
         "$THIRD_ITERATION_OS_DIR/opt/external-packages"
+        "$BUILDROOT_UPSTREAM_DIR/Config.in"
     )
     
     local missing_dirs=()
@@ -433,17 +448,40 @@ export_official_nand_image_dir() {
 }
 
 ensure_buildroot_tree() {
-    if [[ -d "$BUILDROOT_DIR" ]]; then
-        return
-    fi
+    print_step "Preparing Buildroot Source Tree (upstream ${BUILDROOT_BRANCH})"
 
-    print_step "Preparing Buildroot Source Tree"
-    make buildroot_create -C "$LUCKFOX_SDK_DIR/sysdrv"
-
-    if [[ ! -d "$BUILDROOT_DIR" ]]; then
-        print_error "Buildroot directory not found after buildroot_create: $BUILDROOT_DIR"
+    if [[ ! -d "$BUILDROOT_UPSTREAM_DIR" ]]; then
+        print_error "Upstream Buildroot directory not found: $BUILDROOT_UPSTREAM_DIR"
         exit 1
     fi
+
+    local sdk_buildroot_parent
+    sdk_buildroot_parent="$(dirname "$BUILDROOT_DIR")"
+    mkdir -p "$sdk_buildroot_parent"
+
+    if [[ -e "$BUILDROOT_DIR" && ! -L "$BUILDROOT_DIR" ]]; then
+        local backup_dir="${BUILDROOT_DIR}.sdk-backup"
+        if [[ ! -e "$backup_dir" ]]; then
+            print_info "Backing up SDK bundled Buildroot to: $backup_dir"
+            mv "$BUILDROOT_DIR" "$backup_dir"
+        else
+            print_info "SDK bundled Buildroot backup already exists: $backup_dir"
+            rm -rf "$BUILDROOT_DIR"
+        fi
+    fi
+
+    if [[ -L "$BUILDROOT_DIR" ]]; then
+        rm -f "$BUILDROOT_DIR"
+    fi
+
+    ln -sfn "$BUILDROOT_UPSTREAM_DIR" "$BUILDROOT_DIR"
+
+    if [[ ! -d "$BUILDROOT_DIR/package" ]]; then
+        print_error "Buildroot package directory not found after linking: $BUILDROOT_DIR/package"
+        exit 1
+    fi
+
+    print_success "Using upstream Buildroot at: $BUILDROOT_DIR"
 }
 
 build_profile_artifacts() {
