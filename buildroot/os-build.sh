@@ -33,6 +33,8 @@ export BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 export MAKEFLAGS="-j${BUILD_JOBS}"
 export BR2_JLEVEL="${BUILD_JOBS}"
 export FORCE_UNSAFE_CONFIGURE=1
+export BUILD_MODEL="${BUILD_MODEL:-both}"
+export MINI_CMA_SIZE="${MINI_CMA_SIZE:-1M}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -44,9 +46,10 @@ print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
-    echo "Usage: $0 [auto|interactive|shell|clone-only]"
+    echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
     echo ""
-    echo "  auto        - Run full automated build with repo cloning (default)"
+    echo "  auto        - Run full automated SD-card image build (default)"
+    echo "  auto-nand   - Run automated build + NAND-flashable image packaging"
     echo "  interactive - Clone repos + drop into interactive shell"
     echo "  shell       - Drop directly into shell (no setup)"
     echo "  clone-only  - Only clone repositories and exit"
@@ -55,6 +58,9 @@ show_usage() {
     echo "  - All repositories cloned inside container"
     echo "  - No host directory pollution"
     echo "  - Self-contained and portable"
+    echo "  - SD artifacts for multiple board labels (default: mini,max)"
+    echo "  - Model selector via BUILD_MODEL=mini|max|both"
+    echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
     echo ""
 }
 
@@ -179,52 +185,266 @@ setup_sdk_environment() {
     fi
 }
 
-run_automated_build() {
-    print_step "Starting Automated SeedSigner Build"
-    
-    # Show build configuration
-    print_info "Build Configuration:"
-    echo "   CPU Cores Available: $(nproc)"
-    echo "   Build Jobs: $BUILD_JOBS"
-    echo "   MAKEFLAGS: $MAKEFLAGS"
-    echo "   Build Directory: $BUILD_DIR"
-    echo "   Output Directory: $OUTPUT_DIR"
-    
-    # Setup repositories and environment
-    clone_repositories
-    validate_environment
-    setup_sdk_environment
-    
-    # Clean any previous builds
-    print_step "Cleaning Previous Build"
-    cd "$LUCKFOX_SDK_DIR"
-    ./build.sh clean
-    
-    # Initial buildroot configuration
-    print_step "Initial Buildroot Configuration"
-    echo -e "\n\n\n" | timeout 5s ./build.sh buildrootconfig || {
-        print_error "buildrootconfig failed, continuing..."
-    }
-    
-    # Verify buildroot directory exists
-    if [[ ! -d "$BUILDROOT_DIR" ]]; then
-        print_error "Buildroot directory not found: $BUILDROOT_DIR"
+
+
+select_board_profile() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    local hw_index
+    local boot_index
+
+    case "$board_profile" in
+        mini)
+            hw_index=1
+            ;;
+        max)
+            hw_index=4
+            ;;
+        *)
+            print_error "Unsupported board profile: $board_profile (expected: mini,max)"
+            exit 1
+            ;;
+    esac
+
+    case "$boot_medium" in
+        sd)
+            boot_index=0
+            ;;
+        nand)
+            boot_index=1
+            ;;
+        *)
+            print_error "Unsupported boot medium: $boot_medium (expected: sd,nand)"
+            exit 1
+            ;;
+    esac
+
+    print_step "Selecting SDK board profile: ${board_profile} (${boot_medium})"
+    printf "%s
+%s
+0
+" "$hw_index" "$boot_index" | ./build.sh lunch
+}
+
+
+apply_mini_cma_profile() {
+    if [[ "$board_profile" != "mini" ]]; then
+        return
+    fi
+
+    print_step "Applying Mini CMA profile (${MINI_CMA_SIZE})"
+
+    local cfg_dir="$LUCKFOX_SDK_DIR/project/cfg/BoardConfig_IPC"
+    if [[ ! -d "$cfg_dir" ]]; then
+        print_error "BoardConfig directory not found: $cfg_dir"
         exit 1
     fi
-    
-    # Install SeedSigner packages
+
+    local cfg_files=("$cfg_dir"/BoardConfig-*-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk)
+    local found=false
+
+    for cfg in "${cfg_files[@]}"; do
+        [[ -f "$cfg" ]] || continue
+        found=true
+        if grep -q '^export RK_BOOTARGS_CMA_SIZE=' "$cfg"; then
+            sed -i "s|^export RK_BOOTARGS_CMA_SIZE=.*|export RK_BOOTARGS_CMA_SIZE=\"${MINI_CMA_SIZE}\"|" "$cfg"
+        else
+            echo "export RK_BOOTARGS_CMA_SIZE=\"${MINI_CMA_SIZE}\"" >> "$cfg"
+        fi
+        print_info "Updated CMA size in: $cfg"
+    done
+
+    if [[ "$found" == "false" ]]; then
+        print_error "No Mini board config files found under: $cfg_dir"
+        exit 1
+    fi
+}
+
+resolve_rootfs_dir() {
+    local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
+    local matches=( $pattern )
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        print_error "Could not find rootfs output directory matching: $pattern"
+        exit 1
+    fi
+
+    export ROOTFS_DIR="${matches[0]}"
+    print_info "Using rootfs directory: $ROOTFS_DIR"
+}
+
+create_nand_image_artifacts() {
+    local board_profile="$1"
+    local ts="$2"
+    local profile_medium="${3:-unknown}"
+
+    print_step "Creating NAND-Flashable Image Artifacts (${board_profile})"
+
+    local image_dir="$LUCKFOX_SDK_DIR/output/image"
+
+    if [[ ! -d "$image_dir" ]]; then
+        print_error "Image output directory not found: $image_dir"
+        exit 1
+    fi
+
+    cd "$image_dir"
+
+    if [[ ! -f "update.img" ]]; then
+        print_error "update.img not found. Run './build.sh firmware' before NAND packaging."
+        exit 1
+    fi
+
+    local nand_bundle_dir="$OUTPUT_DIR/seedsigner-luckfox-pico-${board_profile}-nand-files-${ts}"
+    mkdir -p "$nand_bundle_dir"
+
+    local required_bundle_files=(
+        update.img
+        download.bin
+        env.img
+        idblock.img
+        uboot.img
+        boot.img
+        oem.img
+        userdata.img
+        rootfs.img
+        sd_update.txt
+        tftp_update.txt
+    )
+
+    local missing_bundle_files=()
+    for file in "${required_bundle_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            cp -v "$file" "$nand_bundle_dir/"
+        else
+            missing_bundle_files+=("$file")
+        fi
+    done
+
+    if [[ ${#missing_bundle_files[@]} -ne 0 ]]; then
+        print_error "Missing required NAND bundle files: ${missing_bundle_files[*]}"
+        exit 1
+    fi
+
+    if [[ "$profile_medium" == "nand" ]]; then
+        validate_nand_oriented_output "$image_dir"
+    elif ! grep -q "mtd " "$nand_bundle_dir/sd_update.txt" 2>/dev/null; then
+        print_info "Bundle for ${board_profile} (${profile_medium}) does not contain SPI-NAND mtd script commands."
+    fi
+
+    cat > "$nand_bundle_dir/README.txt" << 'EOF'
+SeedSigner Luckfox NAND Flash Bundle
+
+Contains SDK-generated NAND flashing files:
+- update.img / download.bin
+- partition images (*.img)
+- U-Boot scripts: sd_update.txt and tftp_update.txt
+
+Flash guidance:
+- Use update.img with official Luckfox/Rockchip upgrade tooling, or
+- Use sd_update.txt / tftp_update.txt with U-Boot workflows.
+EOF
+
+    local nand_bundle="seedsigner-luckfox-pico-${board_profile}-nand-bundle-${ts}.tar.gz"
+    tar -czf "$OUTPUT_DIR/$nand_bundle" -C "$OUTPUT_DIR" "$(basename "$nand_bundle_dir")"
+    print_success "NAND bundle folder created: $nand_bundle_dir"
+    print_success "NAND bundle archive created: $OUTPUT_DIR/$nand_bundle"
+}
+
+
+validate_nand_oriented_output() {
+    local image_dir="$1"
+
+    local sd_script="$image_dir/sd_update.txt"
+    local tftp_script="$image_dir/tftp_update.txt"
+
+    for script in "$sd_script" "$tftp_script"; do
+        if [[ ! -f "$script" ]]; then
+            print_error "Missing NAND validation script: $script"
+            exit 1
+        fi
+
+        if grep -q "mmc write" "$script"; then
+            print_error "Invalid NAND output: found 'mmc write' in $(basename "$script")"
+            exit 1
+        fi
+
+        if ! grep -q "mtd " "$script"; then
+            print_error "Invalid NAND output: missing 'mtd' commands in $(basename "$script")"
+            exit 1
+        fi
+    done
+
+    print_success "Validated NAND-oriented update scripts"
+}
+
+
+export_official_nand_image_dir() {
+    local board_profile="$1"
+    local ts="$2"
+    local image_root="$LUCKFOX_SDK_DIR/IMAGE"
+
+    if [[ ! -d "$image_root" ]]; then
+        print_info "No SDK IMAGE directory found at: $image_root"
+        return 0
+    fi
+
+    local latest_dir
+    latest_dir=$(find "$image_root" -maxdepth 1 -type d -name 'IPC_SPI_NAND_BUILDROOT_*' | sort | tail -n 1)
+
+    if [[ -z "$latest_dir" ]]; then
+        print_info "No SPI_NAND IMAGE export directory found under: $image_root"
+        return 0
+    fi
+
+    local bundle_name="seedsigner-luckfox-pico-${board_profile}-nand-sdk-images-${ts}.tar.gz"
+    tar -czf "$OUTPUT_DIR/$bundle_name" -C "$image_root" "$(basename "$latest_dir")"
+    print_success "Exported official SDK NAND image directory: $OUTPUT_DIR/$bundle_name"
+}
+
+ensure_buildroot_tree() {
+    if [[ -d "$BUILDROOT_DIR" ]]; then
+        return
+    fi
+
+    print_step "Preparing Buildroot Source Tree"
+    make buildroot_create -C "$LUCKFOX_SDK_DIR/sysdrv"
+
+    if [[ ! -d "$BUILDROOT_DIR" ]]; then
+        print_error "Buildroot directory not found after buildroot_create: $BUILDROOT_DIR"
+        exit 1
+    fi
+}
+
+build_profile_artifacts() {
+    local board_profile="$1"
+    local boot_medium="$2"
+    local include_nand="$3"
+
+    cd "$LUCKFOX_SDK_DIR"
+    select_board_profile "$board_profile" "$boot_medium"
+    apply_mini_cma_profile
+
+    print_step "Cleaning Previous Build (${board_profile}/${boot_medium})"
+    ./build.sh clean
+
+    # Some SDK clean paths may reset board context; force board selection again.
+    select_board_profile "$board_profile" "$boot_medium"
+
+    print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
+    ensure_buildroot_tree
+
     print_step "Installing SeedSigner Packages"
     cp -rv "$SEEDSIGNER_OS_DIR/opt/external-packages/"* "$PACKAGE_DIR/"
-    
-    # Update Python path in pyzbar patch
+
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
         sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
     fi
-    
-    # Add SeedSigner packages to Config.in
+
     print_step "Adding SeedSigner Menu to Buildroot"
-    cat << 'CONFIGMENU' >> "$CONFIG_IN"
+    if ! grep -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
+        cat << 'CONFIGMENU' >> "$CONFIG_IN"
 menu "SeedSigner"
         source "package/python-urtypes/Config.in"
         source "package/python-pyzbar/Config.in"
@@ -240,72 +460,130 @@ menu "SeedSigner"
         source "package/python-pyqrcode/Config.in"
 endmenu
 CONFIGMENU
-    
-    # Select a minimal set of packages to run seedsigner using a defconfig
+    fi
+
     print_step "Applying SeedSigner Configuration"
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
-        cp -v "/build/configs/luckfox_pico_defconfig" \
-              "$LUCKFOX_SDK_DIR/sysdrv/source/buildroot/buildroot-2023.02.6/configs/luckfox_pico_defconfig"
-        cp -v "/build/configs/luckfox_pico_defconfig" \
-              "$LUCKFOX_SDK_DIR/sysdrv/source/buildroot/buildroot-2023.02.6/.config"
+        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
     else
         print_error "SeedSigner configuration file not found"
         exit 1
     fi
-    
-    # Build components in order
+
     print_step "Building U-Boot"
     ./build.sh uboot
-    
+
     print_step "Building Kernel"
     ./build.sh kernel
-    
+
     print_step "Building Rootfs"
     ./build.sh rootfs
-    
+
     print_step "Building Media Support"
     ./build.sh media
-    
+
     print_step "Building Applications"
     ./build.sh app
-    
-    # Install SeedSigner code and configuration files
+
+    resolve_rootfs_dir
+
     print_step "Installing SeedSigner Code"
     cp -rv "$SEEDSIGNER_CODE_DIR/src/" "$ROOTFS_DIR/seedsigner"
-    
-    # Copy configuration files if they exist
+
     [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
-    
-    # Package firmware
+
     print_step "Packaging Firmware"
     ./build.sh firmware
-    
-    # Create final image
-    print_step "Creating Final Image"
+
     cd "$LUCKFOX_SDK_DIR/output/image"
-    
-    # Generate timestamped image name
-    TS=$(date +%Y%m%d_%H%M%S)
-    IMAGE="seedsigner-luckfox-pico-${TS}.img"
-    
-    # Create the final image
-    if [[ -f "/build/blkenvflash" ]]; then
-        "/build/blkenvflash" "$IMAGE"
-    else
-        print_error "blkenvflash tool not found"
-        exit 1
+
+    local ts
+    ts=$(date +%Y%m%d_%H%M%S)
+    export LAST_PROFILE_BUILD_TS="$ts"
+    if [[ "$board_profile" == "mini" ]]; then
+        export LAST_MINI_BUILD_TS="$ts"
+    elif [[ "$board_profile" == "max" ]]; then
+        export LAST_MAX_BUILD_TS="$ts"
     fi
-    
-    # Copy output to standardized location
+
+    if [[ "$boot_medium" == "sd" ]]; then
+        print_step "Creating Final SD Image (${board_profile})"
+
+        local sd_image="seedsigner-luckfox-pico-${board_profile}-sd-${ts}.img"
+
+        if [[ -f "/build/blkenvflash" ]]; then
+            "/build/blkenvflash" "$sd_image"
+        else
+            print_error "blkenvflash tool not found"
+            exit 1
+        fi
+
+        if [[ ! -f "$sd_image" ]]; then
+            print_error "Expected SD image not created: $sd_image"
+            exit 1
+        fi
+
+        cp -v "$sd_image" "$OUTPUT_DIR/"
+        print_success "SD image created for ${board_profile}: $OUTPUT_DIR/$sd_image"
+    fi
+
+    if [[ "$include_nand" == "true" ]]; then
+        print_step "Packaging NAND artifacts (${board_profile})"
+        create_nand_image_artifacts "$board_profile" "$ts" "$boot_medium"
+        export_official_nand_image_dir "$board_profile" "$ts"
+    fi
+
+    cd "$LUCKFOX_SDK_DIR"
+}
+
+run_automated_build() {
+    local build_nand_image="${1:-false}"
+    local build_sd_image="${2:-true}"
+
+    print_step "Starting Automated SeedSigner Build"
+
+    print_info "Build Configuration:"
+    echo "   CPU Cores Available: $(nproc)"
+    echo "   Build Jobs: $BUILD_JOBS"
+    echo "   MAKEFLAGS: $MAKEFLAGS"
+    echo "   Build Directory: $BUILD_DIR"
+    echo "   Output Directory: $OUTPUT_DIR"
+
+    clone_repositories
+    validate_environment
+    setup_sdk_environment
+
     mkdir -p "$OUTPUT_DIR"
-    cp -v "$IMAGE" "$OUTPUT_DIR/"
-    cp -v * "$OUTPUT_DIR/" 2>/dev/null || true  # Copy other build artifacts
-    
+
+    cd "$LUCKFOX_SDK_DIR"
+
+    if [[ "$build_sd_image" == "true" ]]; then
+        if [[ "$BUILD_MODEL" == "mini" || "$BUILD_MODEL" == "both" ]]; then
+            build_profile_artifacts "mini" "sd" "false"
+        fi
+        if [[ "$BUILD_MODEL" == "max" || "$BUILD_MODEL" == "both" ]]; then
+            build_profile_artifacts "max" "sd" "false"
+        fi
+    fi
+
+    # Build NAND/flash bundles using official SPI_NAND build flow.
+    if [[ "$build_nand_image" == "true" ]]; then
+        if [[ "$BUILD_MODEL" == "mini" || "$BUILD_MODEL" == "both" ]]; then
+            print_step "Generating NAND-Oriented Output (mini, official flow)"
+            build_profile_artifacts "mini" "nand" "true"
+        fi
+
+        if [[ "$BUILD_MODEL" == "max" || "$BUILD_MODEL" == "both" ]]; then
+            print_step "Generating NAND-Oriented Output (max, official flow)"
+            build_profile_artifacts "max" "nand" "true"
+        fi
+    fi
+
     print_success "Build Complete!"
-    echo "Final image: $OUTPUT_DIR/$IMAGE"
     echo ""
     echo "Build artifacts:"
     ls -la "$OUTPUT_DIR/"
@@ -338,8 +616,16 @@ main() {
     
     case "$mode" in
         "auto")
-            print_info "Starting automated build mode..."
-            run_automated_build
+            print_info "Starting automated MicroSD build mode..."
+            run_automated_build false true
+            ;;
+        "auto-nand")
+            print_info "Starting automated build mode with MicroSD + NAND packaging..."
+            run_automated_build true true
+            ;;
+        "auto-nand-only")
+            print_info "Starting automated NAND-only build mode..."
+            run_automated_build true false
             ;;
         "interactive")
             print_info "Starting interactive mode..."

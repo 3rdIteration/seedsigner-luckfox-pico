@@ -34,6 +34,9 @@ Options:
   --force        - Force rebuild of Docker image
   --jobs, -j N   - Set number of parallel build jobs
   --output DIR   - Set output directory (default: ./build-output)
+  --nand         - Build NAND-flashable system image artifacts
+  --microsd      - Build MicroSD image artifacts
+  --model TARGET - Target model: mini|max|both (default: both)
 
 Examples:
   ./build.sh build             # Standard build (artifacts in ./build-output)
@@ -105,6 +108,9 @@ run_build() {
     local mode="$1"
     local build_jobs="$2"
     local output_dir="${3:-./build-output}"
+    local build_nand="${4:-false}"
+    local build_microsd="${5:-false}"
+    local build_model="${6:-both}"
     
     print_header "Running Build ($mode)"
     
@@ -122,9 +128,9 @@ run_build() {
     fi
     
     # Set up build environment variables
-    local env_args=""
+    local env_args="-e BUILD_MODEL=$build_model"
     if [[ -n "$build_jobs" ]]; then
-        env_args="-e BUILD_JOBS=$build_jobs"
+        env_args="-e BUILD_JOBS=$build_jobs -e BUILD_MODEL=$build_model"
         print_success "Using $build_jobs parallel build jobs"
     fi
     
@@ -146,7 +152,21 @@ run_build() {
             fi
             print_success "Repository volume: $volume_name (persists between builds)"
             print_success "Output directory: $abs_output_dir (artifacts automatically available)"
-            docker run $docker_args "$IMAGE_NAME" auto
+            local container_mode=""
+            if [[ "$build_nand" == "true" && "$build_microsd" == "true" ]]; then
+                container_mode="auto-nand"
+                print_success "NAND + MicroSD artifact generation enabled"
+            elif [[ "$build_nand" == "true" ]]; then
+                container_mode="auto-nand-only"
+                print_success "NAND-only artifact generation enabled"
+            elif [[ "$build_microsd" == "true" ]]; then
+                container_mode="auto"
+                print_success "MicroSD artifact generation enabled"
+            else
+                print_error "No artifact type selected. Use --microsd and/or --nand"
+                exit 1
+            fi
+            docker run $docker_args "$IMAGE_NAME" "$container_mode"
             print_success "Build completed! Artifacts are available in: $abs_output_dir"
             ;;
         "interactive")
@@ -255,6 +275,9 @@ main() {
     local force_rebuild=false
     local build_jobs=""
     local output_dir=""
+    local build_nand=false
+    local build_microsd=false
+    local build_model="both"
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -285,6 +308,23 @@ main() {
                     exit 1
                 fi
                 ;;
+            --nand)
+                build_nand=true
+                shift
+                ;;
+            --microsd)
+                build_microsd=true
+                shift
+                ;;
+            --model)
+                if [[ -n "$2" && "$2" =~ ^(mini|max|both)$ ]]; then
+                    build_model="$2"
+                    shift 2
+                else
+                    print_error "Invalid or missing argument for --model (use: mini|max|both)"
+                    exit 1
+                fi
+                ;;
             *)
                 if [[ -z "${command_set:-}" ]]; then
                     command="$1"
@@ -309,7 +349,7 @@ main() {
             ;;
         "build")
             build_docker_image "$force_rebuild"
-            run_build "build" "$build_jobs" "$output_dir"
+            run_build "build" "$build_jobs" "$output_dir" "$build_nand" "$build_microsd" "$build_model"
             ;;
         "interactive")
             build_docker_image "$force_rebuild"
