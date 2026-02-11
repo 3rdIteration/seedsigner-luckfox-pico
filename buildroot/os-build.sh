@@ -4,10 +4,14 @@
 
 set -e
 
-# Environment setup - everything happens inside /build
-export BUILD_DIR="/build"
-export REPOS_DIR="/build/repos"
-export OUTPUT_DIR="/build/output"
+# Environment setup
+# BUILD_DIR defaults to this script's directory so the build can run locally
+# without Docker volume mounts. In containerized builds this can be overridden
+# (for example: BUILD_DIR=/build).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export BUILD_DIR="${BUILD_DIR:-$SCRIPT_DIR}"
+export REPOS_DIR="${REPOS_DIR:-$BUILD_DIR/repos}"
+export OUTPUT_DIR="${OUTPUT_DIR:-$BUILD_DIR/output}"
 
 # Repository URLs for cloning
 export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
@@ -19,7 +23,7 @@ export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
 export SEEDSIGNER_CODE_DIR="$REPOS_DIR/seedsigner"
 export SEEDSIGNER_OS_DIR="$REPOS_DIR/seedsigner-os"
-export SEEDSIGNER_LUCKFOX_DIR="/build"
+export SEEDSIGNER_LUCKFOX_DIR="${SEEDSIGNER_LUCKFOX_DIR:-$BUILD_DIR}"
 
 # Common paths (computed after SDK directory is determined)
 export BUILDROOT_DIR="${LUCKFOX_SDK_DIR}/sysdrv/source/buildroot/buildroot-2023.02.6"
@@ -463,9 +467,9 @@ CONFIGMENU
     fi
 
     print_step "Applying SeedSigner Configuration"
-    if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
-        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
-        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
+    if [[ -f "$SEEDSIGNER_LUCKFOX_DIR/configs/luckfox_pico_defconfig" ]]; then
+        cp -v "$SEEDSIGNER_LUCKFOX_DIR/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        cp -v "$SEEDSIGNER_LUCKFOX_DIR/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
     else
         print_error "SeedSigner configuration file not found"
         exit 1
@@ -491,10 +495,10 @@ CONFIGMENU
     print_step "Installing SeedSigner Code"
     cp -rv "$SEEDSIGNER_CODE_DIR/src/" "$ROOTFS_DIR/seedsigner"
 
-    [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
-    [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
-    [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
-    [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+    [[ -f "$SEEDSIGNER_LUCKFOX_DIR/files/luckfox.cfg" ]] && cp -v "$SEEDSIGNER_LUCKFOX_DIR/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
+    [[ -f "$SEEDSIGNER_LUCKFOX_DIR/files/nv12_converter" ]] && cp -v "$SEEDSIGNER_LUCKFOX_DIR/files/nv12_converter" "$ROOTFS_DIR/"
+    [[ -f "$SEEDSIGNER_LUCKFOX_DIR/files/start-seedsigner.sh" ]] && cp -v "$SEEDSIGNER_LUCKFOX_DIR/files/start-seedsigner.sh" "$ROOTFS_DIR/"
+    [[ -f "$SEEDSIGNER_LUCKFOX_DIR/files/S99seedsigner" ]] && cp -v "$SEEDSIGNER_LUCKFOX_DIR/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
 
     print_step "Packaging Firmware"
     ./build.sh firmware
@@ -515,8 +519,8 @@ CONFIGMENU
 
         local sd_image="seedsigner-luckfox-pico-${board_profile}-sd-${ts}.img"
 
-        if [[ -f "/build/blkenvflash" ]]; then
-            "/build/blkenvflash" "$sd_image"
+        if [[ -f "$SEEDSIGNER_LUCKFOX_DIR/blkenvflash" ]]; then
+            "$SEEDSIGNER_LUCKFOX_DIR/blkenvflash" "$sd_image"
         else
             print_error "blkenvflash tool not found"
             exit 1
@@ -600,7 +604,7 @@ start_interactive_mode() {
     echo ""
     echo "Available commands:"
     echo "  - cd $LUCKFOX_SDK_DIR && ./build.sh [command]"
-    echo "  - /build/docker-automation.sh auto  # Run full build"
+    echo "  - $SEEDSIGNER_LUCKFOX_DIR/os-build.sh auto  # Run full build"
     echo "  - exit  # Exit interactive mode"
     echo ""
     echo "Build artifacts will be available in: $OUTPUT_DIR"

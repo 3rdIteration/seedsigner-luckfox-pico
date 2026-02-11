@@ -27,7 +27,7 @@ These example builds can build a device for around $60.
 
 
 ## OS Image Build with Buildroot
-The OS image is built using Buildroot in a Docker container. The complete build instructions, package requirements, and troubleshooting process are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).
+The default/recommended workflow is a Docker-based Buildroot build for reproducibility and cleaner host setup. A local host build is also available for development/debugging workflows. Full instructions are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
