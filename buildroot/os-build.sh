@@ -477,6 +477,17 @@ build_profile_artifacts() {
         cp -rv "$src_pkg" "$PACKAGE_DIR/"
     done
 
+    print_step "Patching python-pillow-ep setuptools options"
+    local python_pillow_ep_mk="$PACKAGE_DIR/python-pillow-ep/python-pillow_ep.mk"
+    if [[ -f "$python_pillow_ep_mk" ]]; then
+        # python-pillow-ep package uses setuptools; setup.py does not understand
+        # pep517-style -C--build-option flags.
+        sed -i 's/-C--build-option=//g' "$python_pillow_ep_mk"
+        if ! rg -q '^PYTHON_PILLOW_EP_INSTALL_TARGET_OPTS = \$\(PYTHON_PILLOW_EP_BUILD_OPTS\)$' "$python_pillow_ep_mk"; then
+            sed -i '/^PYTHON_PILLOW_EP_BUILD_OPTS = /a PYTHON_PILLOW_EP_INSTALL_TARGET_OPTS = $(PYTHON_PILLOW_EP_BUILD_OPTS)' "$python_pillow_ep_mk"
+        fi
+    fi
+
     print_step "Patching nfc-bindings placeholder package for Buildroot install phase"
     local nfc_bindings_mk="$PACKAGE_DIR/nfc-bindings/nfc-bindings.mk"
     if [[ -f "$nfc_bindings_mk" ]] && ! rg -q '^define NFC_BINDINGS_INSTALL_TARGET_CMDS$' "$nfc_bindings_mk"; then
