@@ -57,11 +57,13 @@ jobs:
 
         BUILD_ARGS=""
 
-        # For push/PR runs, default to full matrix (both artifact types, both hardware types)
-        BUILD_MICROSD=true
+        # Default behavior mirrors local Docker builds:
+        #   ./build.sh build --nand --model mini
+        # This keeps CI artifacts aligned with known-good local output.
+        BUILD_MICROSD=false
         BUILD_NAND=true
         BUILD_MINI=true
-        BUILD_MAX=true
+        BUILD_MAX=false
 
         # For manual runs, honor workflow_dispatch checkboxes
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -102,6 +104,7 @@ jobs:
 
         echo "Selected build types: microsd=$BUILD_MICROSD nand=$BUILD_NAND"
         echo "Selected hardware targets: mini=$BUILD_MINI max=$BUILD_MAX (model=$BUILD_MODEL)"
+        echo "Equivalent local command: ./build.sh build $BUILD_ARGS --model $BUILD_MODEL"
 
         # Run the build with artifact output to workspace
         ./build.sh build $BUILD_ARGS --model "$BUILD_MODEL" --output ../build-artifacts
