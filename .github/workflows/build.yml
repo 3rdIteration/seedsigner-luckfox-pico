@@ -34,15 +34,31 @@ on:
         type: boolean
 
 jobs:
-  prepare-matrix:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-      count: ${{ steps.matrix.outputs.count }}
+    timeout-minutes: 240
+
     steps:
-      - name: Build matrix from workflow inputs
-        id: matrix
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space for large image builds
         run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache || true
+          docker system prune -af || true
+          df -h
+
+      - name: Build system status
+        run: |
+          cd buildroot
+          ./build.sh status
+
+      - name: Build SeedSigner OS
+        run: |
+          cd buildroot
+          echo "🚀 Starting SeedSigner build..."
+
           BUILD_MINI=true
           BUILD_MAX=true
           BUILD_MICROSD=true
@@ -59,69 +75,84 @@ jobs:
           if [ "$BUILD_MINI" = "true" ]; then MODELS+=(mini); fi
           if [ "$BUILD_MAX" = "true" ]; then MODELS+=(max); fi
 
-          TYPES=()
-          if [ "$BUILD_MICROSD" = "true" ]; then TYPES+=(microsd); fi
-          if [ "$BUILD_NAND" = "true" ]; then TYPES+=(nand); fi
+          ARTIFACT_FLAGS=()
+          if [ "$BUILD_MICROSD" = "true" ]; then ARTIFACT_FLAGS+=(--microsd); fi
+          if [ "$BUILD_NAND" = "true" ]; then ARTIFACT_FLAGS+=(--nand); fi
 
-          if [ ${#MODELS[@]} -eq 0 ] || [ ${#TYPES[@]} -eq 0 ]; then
-            echo "matrix=[]" >> "$GITHUB_OUTPUT"
-            echo "count=0" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ ${#MODELS[@]} -eq 0 ]; then
+            echo "❌ No models selected. Enable at least one of: build_mini, build_max"
+            exit 1
           fi
 
-          entries=()
+          if [ ${#ARTIFACT_FLAGS[@]} -eq 0 ]; then
+            echo "❌ No artifact types selected. Enable at least one of: build_microsd, build_nand"
+            exit 1
+          fi
+
+          BASE_ARGS=(build --output ../build-artifacts)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            BASE_ARGS+=(--force)
+          fi
+
           for model in "${MODELS[@]}"; do
-            for artifact in "${TYPES[@]}"; do
-              flag="--${artifact}"
-              entries+=("{\"model\":\"${model}\",\"artifact\":\"${artifact}\",\"flag\":\"${flag}\"}")
-            done
+            BUILD_ARGS=("${BASE_ARGS[@]}" --model "$model" "${ARTIFACT_FLAGS[@]}")
+            echo "Running: ./build.sh ${BUILD_ARGS[*]}"
+            ./build.sh "${BUILD_ARGS[@]}"
           done
 
-          matrix_json="[$(IFS=,; echo "${entries[*]}")]"
-          echo "matrix=${matrix_json}" >> "$GITHUB_OUTPUT"
-          echo "count=${#entries[@]}" >> "$GITHUB_OUTPUT"
-
-  build:
-    needs: prepare-matrix
-    if: ${{ needs.prepare-matrix.outputs.count != '0' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    strategy:
-      fail-fast: false
-      matrix:
-        build: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build system status
+      - name: Verify generated images are not obviously corrupt
+        if: always()
         run: |
-          cd buildroot
-          ./build.sh status
+          set -e
+          found=0
+          while IFS= read -r -d '' img; do
+            found=1
+            size=$(stat -c '%s' "$img")
+            echo "Checking $img ($size bytes)"
 
-      - name: Build SeedSigner OS
-        run: |
-          cd buildroot
-          echo "🚀 Starting SeedSigner build for model=${{ matrix.build.model }} artifact=${{ matrix.build.artifact }}"
+            # 100MB sanity floor; catches obvious truncation/empty artifacts.
+            if [ "$size" -lt 104857600 ]; then
+              echo "❌ Image too small: $img"
+              exit 1
+            fi
 
-          BUILD_ARGS=(build --output "../build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}" --model "${{ matrix.build.model }}" "${{ matrix.build.flag }}")
+            file "$img"
+          done < <(find build-artifacts -name 'seedsigner-luckfox-pico*.img' -type f -print0)
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-            BUILD_ARGS+=(--force)
+          if [ "$found" -eq 0 ]; then
+            echo "❌ No seedsigner-luckfox-pico image artifacts found"
+            exit 1
           fi
 
-          echo "Running: ./build.sh ${BUILD_ARGS[*]}"
-          ./build.sh "${BUILD_ARGS[@]}"
+      - name: List build artifacts
+        if: always()
+        run: |
+          echo "🎯 Build artifacts:"
+          ls -la build-artifacts/ || echo "No build artifacts found"
+
+          echo ""
+          echo "🔍 Images:"
+          find build-artifacts -name "seedsigner-luckfox-pico*.img" -type f 2>/dev/null || echo "No images found"
+
+          echo ""
+          echo "📊 Image sizes:"
+          find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
+
+          echo ""
+          echo "📦 NAND bundle zips:"
+          find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
+
+          echo ""
+          echo "🗜️ NAND bundle tar.gz files:"
+          find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
 
       - name: Package NAND bundle zips
-        if: ${{ matrix.build.artifact == 'nand' }}
+        if: always()
         run: |
-          ARTIFACT_DIR="build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}"
-          mkdir -p "$ARTIFACT_DIR"
+          mkdir -p build-artifacts
           shopt -s nullglob
 
-          BUNDLES=("$ARTIFACT_DIR"/seedsigner-luckfox-pico-*-nand-files-*)
+          BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
           if [ ${#BUNDLES[@]} -eq 0 ]; then
             echo "No NAND bundle folders found"
           else
@@ -129,40 +160,27 @@ jobs:
               [ -d "$bundle_dir" ] || continue
               bundle_name=$(basename "$bundle_dir")
 
-              hw_target="${{ matrix.build.model }}"
+              hw_target="unknown"
+              if [[ "$bundle_name" =~ seedsigner-luckfox-pico-([^-]+)-nand-files- ]]; then
+                hw_target="${BASH_REMATCH[1]}"
+              fi
+
               zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
               echo "Creating NAND zip: $zip_name from $bundle_name"
 
-              rm -f "$ARTIFACT_DIR/$zip_name"
-              (cd "$ARTIFACT_DIR" && zip -qr "$zip_name" "$bundle_name")
+              rm -f "build-artifacts/$zip_name"
+              (cd build-artifacts && zip -qr "$zip_name" "$bundle_name")
             done
           fi
-
-      - name: List build artifacts
-        if: always()
-        run: |
-          ARTIFACT_DIR="build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}"
-          echo "🎯 Build artifacts in $ARTIFACT_DIR:"
-          ls -la "$ARTIFACT_DIR" || echo "No build artifacts found"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: seedsigner-os-${{ github.run_number }}-${{ matrix.build.model }}-${{ matrix.build.artifact }}
+          name: seedsigner-os-${{ github.run_number }}
           path: |
-            build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}/seedsigner-luckfox-pico*.img
-            build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}/seedsigner-luckfox-pico-*-nand-bundle.zip
-            build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}/seedsigner-luckfox-pico*.tar.gz
+            build-artifacts/seedsigner-luckfox-pico*.img
+            build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
+            build-artifacts/seedsigner-luckfox-pico*.tar.gz
           retention-days: 30
           if-no-files-found: warn
-
-  no-build-selection:
-    needs: prepare-matrix
-    if: ${{ needs.prepare-matrix.outputs.count == '0' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fail when nothing selected
-        run: |
-          echo "❌ No build targets selected. Enable at least one model and one artifact type."
-          exit 1
