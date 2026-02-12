@@ -15,7 +15,7 @@ on:
       build_microsd:
         description: 'Build MicroSD artifacts'
         required: false
-        default: true
+        default: false
         type: boolean
       build_nand:
         description: 'Build NAND artifacts'
@@ -30,7 +30,7 @@ on:
       build_max:
         description: 'Build Max hardware target'
         required: false
-        default: true
+        default: false
         type: boolean
 
 jobs:
