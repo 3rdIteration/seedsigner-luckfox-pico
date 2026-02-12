@@ -41,18 +41,25 @@ jobs:
         cd buildroot
         echo "🚀 Starting SeedSigner build..."
 
-        BUILD_ARGS=(build --microsd --nand --output ../build-artifacts)
+        COMMON_ARGS=(build --output ../build-artifacts)
 
         # Keep CI behavior aligned with local ./build.sh usage.
         if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS+=(--force)
+          COMMON_ARGS+=(--force)
         fi
 
         BUILD_MODEL="${{ github.event.inputs.build_model || 'both' }}"
-        BUILD_ARGS+=(--model "$BUILD_MODEL")
+        COMMON_ARGS+=(--model "$BUILD_MODEL")
 
-        echo "Running: ./build.sh ${BUILD_ARGS[*]}"
-        ./build.sh "${BUILD_ARGS[@]}"
+        # Run as two explicit local-equivalent invocations instead of mixed mode.
+        SD_ARGS=("${COMMON_ARGS[@]}" --microsd)
+        NAND_ARGS=("${COMMON_ARGS[@]}" --nand)
+
+        echo "Running: ./build.sh ${SD_ARGS[*]}"
+        ./build.sh "${SD_ARGS[@]}"
+
+        echo "Running: ./build.sh ${NAND_ARGS[*]}"
+        ./build.sh "${NAND_ARGS[@]}"
     
     - name: List build artifacts
       if: always()
