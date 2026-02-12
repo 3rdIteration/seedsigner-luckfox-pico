@@ -12,6 +12,26 @@ on:
         required: false
         default: false
         type: boolean
+      build_microsd:
+        description: 'Build MicroSD artifacts'
+        required: false
+        default: false
+        type: boolean
+      build_nand:
+        description: 'Build NAND artifacts'
+        required: false
+        default: true
+        type: boolean
+      build_mini:
+        description: 'Build Mini hardware target'
+        required: false
+        default: true
+        type: boolean
+      build_max:
+        description: 'Build Max hardware target'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build:
@@ -34,15 +54,60 @@ jobs:
       run: |
         cd buildroot
         echo "🚀 Starting SeedSigner build..."
-        
-        # Set build options
+
         BUILD_ARGS=""
-        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="--force"
+
+        # Default behavior mirrors local Docker builds:
+        #   ./build.sh build --nand --model mini
+        # This keeps CI artifacts aligned with known-good local output.
+        BUILD_MICROSD=false
+        BUILD_NAND=true
+        BUILD_MINI=true
+        BUILD_MAX=false
+
+        # For manual runs, honor workflow_dispatch checkboxes
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          [ "${{ github.event.inputs.build_microsd }}" = "true" ] && BUILD_MICROSD=true || BUILD_MICROSD=false
+          [ "${{ github.event.inputs.build_nand }}" = "true" ] && BUILD_NAND=true || BUILD_NAND=false
+          [ "${{ github.event.inputs.build_mini }}" = "true" ] && BUILD_MINI=true || BUILD_MINI=false
+          [ "${{ github.event.inputs.build_max }}" = "true" ] && BUILD_MAX=true || BUILD_MAX=false
         fi
-        
+
+        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS --force"
+        fi
+
+        # Build type flags
+        if [ "$BUILD_MICROSD" = true ]; then
+          BUILD_ARGS="$BUILD_ARGS --microsd"
+        fi
+        if [ "$BUILD_NAND" = true ]; then
+          BUILD_ARGS="$BUILD_ARGS --nand"
+        fi
+
+        # Hardware target flag
+        if [ "$BUILD_MINI" = true ] && [ "$BUILD_MAX" = true ]; then
+          BUILD_MODEL="both"
+        elif [ "$BUILD_MINI" = true ]; then
+          BUILD_MODEL="mini"
+        elif [ "$BUILD_MAX" = true ]; then
+          BUILD_MODEL="max"
+        else
+          echo "❌ Invalid selection: at least one hardware target must be selected"
+          exit 1
+        fi
+
+        if [ "$BUILD_MICROSD" != true ] && [ "$BUILD_NAND" != true ]; then
+          echo "❌ Invalid selection: at least one build type must be selected"
+          exit 1
+        fi
+
+        echo "Selected build types: microsd=$BUILD_MICROSD nand=$BUILD_NAND"
+        echo "Selected hardware targets: mini=$BUILD_MINI max=$BUILD_MAX (model=$BUILD_MODEL)"
+        echo "Equivalent local command: ./build.sh build $BUILD_ARGS --model $BUILD_MODEL"
+
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+        ./build.sh build $BUILD_ARGS --model "$BUILD_MODEL" --output ../build-artifacts
     
     - name: List build artifacts
       if: always()
@@ -59,40 +124,51 @@ jobs:
         find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
 
         echo ""
-        echo "📦 NAND bundle zips:"
-        find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-        echo ""
         echo "🗜️ NAND bundle tar.gz files:"
         find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
-    
 
-    - name: Package NAND bundle zips
+    - name: Validate NAND artifacts + create checksums
       if: always()
       run: |
-        mkdir -p build-artifacts
+        set -euo pipefail
         shopt -s nullglob
 
-        BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
-        if [ ${#BUNDLES[@]} -eq 0 ]; then
-          echo "No NAND bundle folders found"
-        else
-          for bundle_dir in "${BUNDLES[@]}"; do
-            [ -d "$bundle_dir" ] || continue
-            bundle_name=$(basename "$bundle_dir")
-
-            hw_target="unknown"
-            if [[ "$bundle_name" =~ seedsigner-luckfox-pico-([^-]+)-nand-files- ]]; then
-              hw_target="${BASH_REMATCH[1]}"
-            fi
-
-            zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
-            echo "Creating NAND zip: $zip_name from $bundle_name"
-
-            rm -f "build-artifacts/$zip_name"
-            (cd build-artifacts && zip -qr "$zip_name" "$bundle_name")
-          done
+        tarballs=(build-artifacts/seedsigner-luckfox-pico-*-nand-bundle-*.tar.gz)
+        if [ ${#tarballs[@]} -eq 0 ]; then
+          echo "No NAND tarballs found for validation"
+          exit 0
         fi
+
+        tmpdir=$(mktemp -d)
+        trap 'rm -rf "$tmpdir"' EXIT
+
+        for tarball in "${tarballs[@]}"; do
+          echo "Validating: $tarball"
+          work="$tmpdir/$(basename "$tarball" .tar.gz)"
+          mkdir -p "$work"
+          tar -xzf "$tarball" -C "$work"
+
+          sd_script=$(find "$work" -name sd_update.txt -type f | head -n 1 || true)
+          tftp_script=$(find "$work" -name tftp_update.txt -type f | head -n 1 || true)
+
+          if [ -z "$sd_script" ] || [ -z "$tftp_script" ]; then
+            echo "Missing NAND update scripts in $tarball"
+            exit 1
+          fi
+
+          if grep -q "mmc write" "$sd_script" "$tftp_script"; then
+            echo "Invalid NAND script content (contains mmc write) in $tarball"
+            exit 1
+          fi
+
+          if ! grep -q "mtd " "$sd_script" || ! grep -q "mtd " "$tftp_script"; then
+            echo "Invalid NAND script content (missing mtd commands) in $tarball"
+            exit 1
+          fi
+        done
+
+        (cd build-artifacts && sha256sum seedsigner-luckfox-pico*.tar.gz > SHA256SUMS.txt)
+        echo "Wrote build-artifacts/SHA256SUMS.txt"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -101,8 +177,9 @@ jobs:
         name: seedsigner-os-${{ github.run_number }}
         path: |
           build-artifacts/seedsigner-luckfox-pico*.img
-          build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
+          build-artifacts/seedsigner-luckfox-pico-*-nand-files-*
           build-artifacts/seedsigner-luckfox-pico*.tar.gz
+          build-artifacts/SHA256SUMS.txt
         retention-days: 30
         if-no-files-found: warn
     
@@ -138,21 +215,20 @@ jobs:
           echo "$IMG_FILES" | xargs -I {} du -sh {} >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          ZIP_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" 2>/dev/null || true)
-          if [ -n "$ZIP_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$ZIP_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
           TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" 2>/dev/null || true)
           if [ -n "$TAR_FILES" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$TAR_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f build-artifacts/SHA256SUMS.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔐 SHA256 Checksums:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat build-artifacts/SHA256SUMS.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
         else
