@@ -12,6 +12,26 @@ on:
         required: false
         default: false
         type: boolean
+      build_microsd:
+        description: 'Build MicroSD artifacts'
+        required: false
+        default: true
+        type: boolean
+      build_nand:
+        description: 'Build NAND artifacts'
+        required: false
+        default: true
+        type: boolean
+      build_mini:
+        description: 'Build Mini hardware target'
+        required: false
+        default: true
+        type: boolean
+      build_max:
+        description: 'Build Max hardware target'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   build:
@@ -34,15 +54,57 @@ jobs:
       run: |
         cd buildroot
         echo "🚀 Starting SeedSigner build..."
-        
-        # Set build options
+
         BUILD_ARGS=""
-        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="--force"
+
+        # For push/PR runs, default to full matrix (both artifact types, both hardware types)
+        BUILD_MICROSD=true
+        BUILD_NAND=true
+        BUILD_MINI=true
+        BUILD_MAX=true
+
+        # For manual runs, honor workflow_dispatch checkboxes
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          [ "${{ github.event.inputs.build_microsd }}" = "true" ] && BUILD_MICROSD=true || BUILD_MICROSD=false
+          [ "${{ github.event.inputs.build_nand }}" = "true" ] && BUILD_NAND=true || BUILD_NAND=false
+          [ "${{ github.event.inputs.build_mini }}" = "true" ] && BUILD_MINI=true || BUILD_MINI=false
+          [ "${{ github.event.inputs.build_max }}" = "true" ] && BUILD_MAX=true || BUILD_MAX=false
         fi
-        
+
+        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS --force"
+        fi
+
+        # Build type flags
+        if [ "$BUILD_MICROSD" = true ]; then
+          BUILD_ARGS="$BUILD_ARGS --microsd"
+        fi
+        if [ "$BUILD_NAND" = true ]; then
+          BUILD_ARGS="$BUILD_ARGS --nand"
+        fi
+
+        # Hardware target flag
+        if [ "$BUILD_MINI" = true ] && [ "$BUILD_MAX" = true ]; then
+          BUILD_MODEL="both"
+        elif [ "$BUILD_MINI" = true ]; then
+          BUILD_MODEL="mini"
+        elif [ "$BUILD_MAX" = true ]; then
+          BUILD_MODEL="max"
+        else
+          echo "❌ Invalid selection: at least one hardware target must be selected"
+          exit 1
+        fi
+
+        if [ "$BUILD_MICROSD" != true ] && [ "$BUILD_NAND" != true ]; then
+          echo "❌ Invalid selection: at least one build type must be selected"
+          exit 1
+        fi
+
+        echo "Selected build types: microsd=$BUILD_MICROSD nand=$BUILD_NAND"
+        echo "Selected hardware targets: mini=$BUILD_MINI max=$BUILD_MAX (model=$BUILD_MODEL)"
+
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+        ./build.sh build $BUILD_ARGS --model "$BUILD_MODEL" --output ../build-artifacts
     
     - name: List build artifacts
       if: always()
