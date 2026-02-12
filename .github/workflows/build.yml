@@ -34,181 +34,135 @@ on:
         type: boolean
 
 jobs:
-  build:
+  prepare-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 180  # 3 hours max
-    
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      count: ${{ steps.matrix.outputs.count }}
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Build matrix from workflow inputs
+        id: matrix
+        run: |
+          BUILD_MINI=true
+          BUILD_MAX=true
+          BUILD_MICROSD=true
+          BUILD_NAND=true
 
-    - name: Build system status
-      run: |
-        cd buildroot
-        ./build.sh status
-    
-    - name: Build SeedSigner OS
-      run: |
-        cd buildroot
-        echo "🚀 Starting SeedSigner build..."
-
-        COMMON_ARGS=(build --output ../build-artifacts)
-
-        # Keep CI behavior aligned with local ./build.sh usage.
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          COMMON_ARGS+=(--force)
-        fi
-
-        BUILD_MINI=true
-        BUILD_MAX=true
-        BUILD_MICROSD=true
-        BUILD_NAND=true
-
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          BUILD_MINI="${{ github.event.inputs.build_mini }}"
-          BUILD_MAX="${{ github.event.inputs.build_max }}"
-          BUILD_MICROSD="${{ github.event.inputs.build_microsd }}"
-          BUILD_NAND="${{ github.event.inputs.build_nand }}"
-        fi
-
-        MODELS=()
-        if [ "$BUILD_MINI" = "true" ]; then MODELS+=(mini); fi
-        if [ "$BUILD_MAX" = "true" ]; then MODELS+=(max); fi
-
-        ARTIFACT_TYPES=()
-        if [ "$BUILD_MICROSD" = "true" ]; then ARTIFACT_TYPES+=(--microsd); fi
-        if [ "$BUILD_NAND" = "true" ]; then ARTIFACT_TYPES+=(--nand); fi
-
-        if [ ${#MODELS[@]} -eq 0 ]; then
-          echo "❌ No models selected. Enable at least one of: build_mini, build_max"
-          exit 1
-        fi
-
-        if [ ${#ARTIFACT_TYPES[@]} -eq 0 ]; then
-          echo "❌ No artifact types selected. Enable at least one of: build_microsd, build_nand"
-          exit 1
-        fi
-
-        for model in "${MODELS[@]}"; do
-          MODEL_ARGS=("${COMMON_ARGS[@]}" --model "$model")
-          for artifact_flag in "${ARTIFACT_TYPES[@]}"; do
-            BUILD_ARGS=("${MODEL_ARGS[@]}" "$artifact_flag")
-            echo "Running: ./build.sh ${BUILD_ARGS[*]}"
-            ./build.sh "${BUILD_ARGS[@]}"
-          done
-        done
-    
-    - name: List build artifacts
-      if: always()
-      run: |
-        echo "🎯 Build artifacts:"
-        ls -la build-artifacts/ || echo "No build artifacts found"
-        
-        echo ""
-        echo "🔍 Searching for SeedSigner images:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.img" -type f 2>/dev/null || echo "No seedsigner-luckfox-pico images found"
-        
-        echo ""
-        echo "📊 Image sizes:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
-
-        echo ""
-        echo "📦 NAND bundle zips:"
-        find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-        echo ""
-        echo "🗜️ NAND bundle tar.gz files:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
-    
-
-    - name: Package NAND bundle zips
-      if: always()
-      run: |
-        mkdir -p build-artifacts
-        shopt -s nullglob
-
-        BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
-        if [ ${#BUNDLES[@]} -eq 0 ]; then
-          echo "No NAND bundle folders found"
-        else
-          for bundle_dir in "${BUNDLES[@]}"; do
-            [ -d "$bundle_dir" ] || continue
-            bundle_name=$(basename "$bundle_dir")
-
-            hw_target="unknown"
-            if [[ "$bundle_name" =~ seedsigner-luckfox-pico-([^-]+)-nand-files- ]]; then
-              hw_target="${BASH_REMATCH[1]}"
-            fi
-
-            zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
-            echo "Creating NAND zip: $zip_name from $bundle_name"
-
-            rm -f "build-artifacts/$zip_name"
-            (cd build-artifacts && zip -qr "$zip_name" "$bundle_name")
-          done
-        fi
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: seedsigner-os-${{ github.run_number }}
-        path: |
-          build-artifacts/seedsigner-luckfox-pico*.img
-          build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
-          build-artifacts/seedsigner-luckfox-pico*.tar.gz
-        retention-days: 30
-        if-no-files-found: warn
-    
-    - name: Build summary
-      if: always()
-      run: |
-        echo "## 🎯 SeedSigner Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Run Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-        
-        # Find and highlight seedsigner-luckfox-pico .img files specifically
-        IMG_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.img" 2>/dev/null || true)
-        if [ -n "$IMG_FILES" ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🎯 Ready to Flash:" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$IMG_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          
-          # Add flashing instructions
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 💾 How to Use:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Download the artifact from this build" >> $GITHUB_STEP_SUMMARY
-          echo "2. Extract the .img file" >> $GITHUB_STEP_SUMMARY
-          echo "3. Flash to SD card using Raspberry Pi Imager or dd" >> $GITHUB_STEP_SUMMARY
-          echo "4. Insert SD card into device and boot!" >> $GITHUB_STEP_SUMMARY
-          
-          # Show file size
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📊 Image Size:" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$IMG_FILES" | xargs -I {} du -sh {} >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-          ZIP_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" 2>/dev/null || true)
-          if [ -n "$ZIP_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$ZIP_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            BUILD_MINI="${{ github.event.inputs.build_mini }}"
+            BUILD_MAX="${{ github.event.inputs.build_max }}"
+            BUILD_MICROSD="${{ github.event.inputs.build_microsd }}"
+            BUILD_NAND="${{ github.event.inputs.build_nand }}"
           fi
 
-          TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" 2>/dev/null || true)
-          if [ -n "$TAR_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$TAR_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+          MODELS=()
+          if [ "$BUILD_MINI" = "true" ]; then MODELS+=(mini); fi
+          if [ "$BUILD_MAX" = "true" ]; then MODELS+=(max); fi
+
+          TYPES=()
+          if [ "$BUILD_MICROSD" = "true" ]; then TYPES+=(microsd); fi
+          if [ "$BUILD_NAND" = "true" ]; then TYPES+=(nand); fi
+
+          if [ ${#MODELS[@]} -eq 0 ] || [ ${#TYPES[@]} -eq 0 ]; then
+            echo "matrix=[]" >> "$GITHUB_OUTPUT"
+            echo "count=0" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-        else
-          echo "- **Image**: ❌ No seedsigner-luckfox-pico image found" >> $GITHUB_STEP_SUMMARY
-        fi
+
+          entries=()
+          for model in "${MODELS[@]}"; do
+            for artifact in "${TYPES[@]}"; do
+              flag="--${artifact}"
+              entries+=("{\"model\":\"${model}\",\"artifact\":\"${artifact}\",\"flag\":\"${flag}\"}")
+            done
+          done
+
+          matrix_json="[$(IFS=,; echo "${entries[*]}")]"
+          echo "matrix=${matrix_json}" >> "$GITHUB_OUTPUT"
+          echo "count=${#entries[@]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare-matrix
+    if: ${{ needs.prepare-matrix.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build system status
+        run: |
+          cd buildroot
+          ./build.sh status
+
+      - name: Build SeedSigner OS
+        run: |
+          cd buildroot
+          echo "🚀 Starting SeedSigner build for model=${{ matrix.build.model }} artifact=${{ matrix.build.artifact }}"
+
+          BUILD_ARGS=(build --output "../build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}" --model "${{ matrix.build.model }}" "${{ matrix.build.flag }}")
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+            BUILD_ARGS+=(--force)
+          fi
+
+          echo "Running: ./build.sh ${BUILD_ARGS[*]}"
+          ./build.sh "${BUILD_ARGS[@]}"
+
+      - name: Package NAND bundle zips
+        if: ${{ matrix.build.artifact == 'nand' }}
+        run: |
+          ARTIFACT_DIR="build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}"
+          mkdir -p "$ARTIFACT_DIR"
+          shopt -s nullglob
+
+          BUNDLES=("$ARTIFACT_DIR"/seedsigner-luckfox-pico-*-nand-files-*)
+          if [ ${#BUNDLES[@]} -eq 0 ]; then
+            echo "No NAND bundle folders found"
+          else
+            for bundle_dir in "${BUNDLES[@]}"; do
+              [ -d "$bundle_dir" ] || continue
+              bundle_name=$(basename "$bundle_dir")
+
+              hw_target="${{ matrix.build.model }}"
+              zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
+              echo "Creating NAND zip: $zip_name from $bundle_name"
+
+              rm -f "$ARTIFACT_DIR/$zip_name"
+              (cd "$ARTIFACT_DIR" && zip -qr "$zip_name" "$bundle_name")
+            done
+          fi
+
+      - name: List build artifacts
+        if: always()
+        run: |
+          ARTIFACT_DIR="build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}"
+          echo "🎯 Build artifacts in $ARTIFACT_DIR:"
+          ls -la "$ARTIFACT_DIR" || echo "No build artifacts found"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: seedsigner-os-${{ github.run_number }}-${{ matrix.build.model }}-${{ matrix.build.artifact }}
+          path: |
+            build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}/seedsigner-luckfox-pico*.img
+            build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}/seedsigner-luckfox-pico-*-nand-bundle.zip
+            build-artifacts/${{ matrix.build.model }}-${{ matrix.build.artifact }}/seedsigner-luckfox-pico*.tar.gz
+          retention-days: 30
+          if-no-files-found: warn
+
+  no-build-selection:
+    needs: prepare-matrix
+    if: ${{ needs.prepare-matrix.outputs.count == '0' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when nothing selected
+        run: |
+          echo "❌ No build targets selected. Enable at least one model and one artifact type."
+          exit 1
