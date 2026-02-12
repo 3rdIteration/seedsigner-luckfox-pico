@@ -83,6 +83,21 @@ checkout_optional_ref() {
     git -C "$repo_dir" checkout --detach FETCH_HEAD
 }
 
+pull_lfs_objects_if_available() {
+    local repo_dir="$1"
+
+    if ! command -v git-lfs >/dev/null 2>&1 && ! git lfs version >/dev/null 2>&1; then
+        print_info "git-lfs not available; skipping LFS pull for $(basename "$repo_dir")"
+        return
+    fi
+
+    if [[ -f "$repo_dir/.gitattributes" ]] && grep -q "filter=lfs" "$repo_dir/.gitattributes"; then
+        print_info "Pulling Git LFS objects for $(basename "$repo_dir")"
+        git -C "$repo_dir" lfs install --local || true
+        git -C "$repo_dir" lfs pull || true
+    fi
+}
+
 print_repository_revisions() {
     print_info "Repository revisions in use:"
     echo "  luckfox-pico: $(git -C luckfox-pico rev-parse HEAD 2>/dev/null || echo 'unknown')"
@@ -105,6 +120,7 @@ clone_repositories() {
         print_info "luckfox-pico already exists"
     fi
     checkout_optional_ref "luckfox-pico" "$LUCKFOX_PICO_REF"
+    pull_lfs_objects_if_available "luckfox-pico"
     
     # Clone SeedSigner OS packages
     if [[ ! -d "seedsigner-os" ]]; then
@@ -115,6 +131,7 @@ clone_repositories() {
         print_info "seedsigner-os already exists"
     fi
     checkout_optional_ref "seedsigner-os" "$SEEDSIGNER_OS_REF"
+    pull_lfs_objects_if_available "seedsigner-os"
     
     # Clone SeedSigner code (specific branch)
     if [[ ! -d "seedsigner" ]]; then
@@ -125,6 +142,7 @@ clone_repositories() {
         print_info "seedsigner already exists"
     fi
     checkout_optional_ref "seedsigner" "$SEEDSIGNER_REF"
+    pull_lfs_objects_if_available "seedsigner"
     
     # Show repository status
     print_info "Repository Status:"

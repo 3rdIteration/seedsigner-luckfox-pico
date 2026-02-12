@@ -56,7 +56,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
+
+      - name: Diagnose Git LFS content
+        run: |
+          git lfs ls-files || true
+          git lfs status || true
+          rg -n "git-lfs.github.com/spec" . || true
       - name: Free disk space for large image builds
         run: |
           df -h

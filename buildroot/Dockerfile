@@ -9,6 +9,7 @@ RUN apt-get update && \
         build-essential \
         curl \
         git \
+        git-lfs \
         python3 \
         python3-pip \
         ssh \
@@ -42,7 +43,8 @@ RUN chmod +x /build/*.sh /build/blkenvflash 2>/dev/null || true
 
 # Set up git configuration (required for cloning repositories inside container)
 RUN git config --global user.email "build@seedsigner.luckfox" && \
-    git config --global user.name "SeedSigner Build"
+    git config --global user.name "SeedSigner Build" && \
+    git lfs install --system
 
 # Create required files for SDK toolchain
 RUN touch /root/.bash_profile
