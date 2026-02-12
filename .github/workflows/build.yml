@@ -12,6 +12,15 @@ on:
         required: false
         default: false
         type: boolean
+      build_model:
+        description: 'Target model to build (matches ./build.sh --model)'
+        required: false
+        default: 'both'
+        type: choice
+        options:
+          - mini
+          - max
+          - both
 
 jobs:
   build:
@@ -22,9 +31,6 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
     - name: Build system status
       run: |
         cd buildroot
@@ -34,15 +40,19 @@ jobs:
       run: |
         cd buildroot
         echo "🚀 Starting SeedSigner build..."
-        
-        # Set build options
-        BUILD_ARGS=""
-        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="--force"
+
+        BUILD_ARGS=(build --microsd --nand --output ../build-artifacts)
+
+        # Keep CI behavior aligned with local ./build.sh usage.
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
+          BUILD_ARGS+=(--force)
         fi
-        
-        # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+
+        BUILD_MODEL="${{ github.event.inputs.build_model || 'both' }}"
+        BUILD_ARGS+=(--model "$BUILD_MODEL")
+
+        echo "Running: ./build.sh ${BUILD_ARGS[*]}"
+        ./build.sh "${BUILD_ARGS[@]}"
     
     - name: List build artifacts
       if: always()
