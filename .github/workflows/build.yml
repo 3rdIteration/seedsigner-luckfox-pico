@@ -59,40 +59,51 @@ jobs:
         find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
 
         echo ""
-        echo "📦 NAND bundle zips:"
-        find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-        echo ""
         echo "🗜️ NAND bundle tar.gz files:"
         find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
-    
 
-    - name: Package NAND bundle zips
+    - name: Validate NAND artifacts + create checksums
       if: always()
       run: |
-        mkdir -p build-artifacts
+        set -euo pipefail
         shopt -s nullglob
 
-        BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
-        if [ ${#BUNDLES[@]} -eq 0 ]; then
-          echo "No NAND bundle folders found"
-        else
-          for bundle_dir in "${BUNDLES[@]}"; do
-            [ -d "$bundle_dir" ] || continue
-            bundle_name=$(basename "$bundle_dir")
-
-            hw_target="unknown"
-            if [[ "$bundle_name" =~ seedsigner-luckfox-pico-([^-]+)-nand-files- ]]; then
-              hw_target="${BASH_REMATCH[1]}"
-            fi
-
-            zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
-            echo "Creating NAND zip: $zip_name from $bundle_name"
-
-            rm -f "build-artifacts/$zip_name"
-            (cd build-artifacts && zip -qr "$zip_name" "$bundle_name")
-          done
+        tarballs=(build-artifacts/seedsigner-luckfox-pico-*-nand-bundle-*.tar.gz)
+        if [ ${#tarballs[@]} -eq 0 ]; then
+          echo "No NAND tarballs found for validation"
+          exit 0
         fi
+
+        tmpdir=$(mktemp -d)
+        trap 'rm -rf "$tmpdir"' EXIT
+
+        for tarball in "${tarballs[@]}"; do
+          echo "Validating: $tarball"
+          work="$tmpdir/$(basename "$tarball" .tar.gz)"
+          mkdir -p "$work"
+          tar -xzf "$tarball" -C "$work"
+
+          sd_script=$(find "$work" -name sd_update.txt -type f | head -n 1 || true)
+          tftp_script=$(find "$work" -name tftp_update.txt -type f | head -n 1 || true)
+
+          if [ -z "$sd_script" ] || [ -z "$tftp_script" ]; then
+            echo "Missing NAND update scripts in $tarball"
+            exit 1
+          fi
+
+          if grep -q "mmc write" "$sd_script" "$tftp_script"; then
+            echo "Invalid NAND script content (contains mmc write) in $tarball"
+            exit 1
+          fi
+
+          if ! grep -q "mtd " "$sd_script" || ! grep -q "mtd " "$tftp_script"; then
+            echo "Invalid NAND script content (missing mtd commands) in $tarball"
+            exit 1
+          fi
+        done
+
+        (cd build-artifacts && sha256sum seedsigner-luckfox-pico*.tar.gz > SHA256SUMS.txt)
+        echo "Wrote build-artifacts/SHA256SUMS.txt"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -101,8 +112,9 @@ jobs:
         name: seedsigner-os-${{ github.run_number }}
         path: |
           build-artifacts/seedsigner-luckfox-pico*.img
-          build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
+          build-artifacts/seedsigner-luckfox-pico-*-nand-files-*
           build-artifacts/seedsigner-luckfox-pico*.tar.gz
+          build-artifacts/SHA256SUMS.txt
         retention-days: 30
         if-no-files-found: warn
     
@@ -138,21 +150,20 @@ jobs:
           echo "$IMG_FILES" | xargs -I {} du -sh {} >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          ZIP_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" 2>/dev/null || true)
-          if [ -n "$ZIP_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$ZIP_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
           TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" 2>/dev/null || true)
           if [ -n "$TAR_FILES" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$TAR_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f build-artifacts/SHA256SUMS.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🔐 SHA256 Checksums:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat build-artifacts/SHA256SUMS.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
         else
