@@ -32,6 +32,21 @@ on:
         required: false
         default: true
         type: boolean
+      luckfox_pico_ref:
+        description: 'Pin luckfox-pico ref (branch/tag/SHA); leave blank for default clone behavior'
+        required: false
+        default: ''
+        type: string
+      seedsigner_os_ref:
+        description: 'Pin seedsigner-os ref (branch/tag/SHA); leave blank for default clone behavior'
+        required: false
+        default: ''
+        type: string
+      seedsigner_ref:
+        description: 'Pin seedsigner ref (branch/tag/SHA); leave blank for default clone behavior'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build:
@@ -93,6 +108,15 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
             BASE_ARGS+=(--force)
           fi
+
+          # Optional upstream ref pinning for deterministic CI builds.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            export LUCKFOX_PICO_REF="${{ github.event.inputs.luckfox_pico_ref }}"
+            export SEEDSIGNER_OS_REF="${{ github.event.inputs.seedsigner_os_ref }}"
+            export SEEDSIGNER_REF="${{ github.event.inputs.seedsigner_ref }}"
+          fi
+
+          echo "Ref pins: LUCKFOX_PICO_REF='${LUCKFOX_PICO_REF:-}', SEEDSIGNER_OS_REF='${SEEDSIGNER_OS_REF:-}', SEEDSIGNER_REF='${SEEDSIGNER_REF:-}'"
 
           for model in "${MODELS[@]}"; do
             BUILD_ARGS=("${BASE_ARGS[@]}" --model "$model" "${ARTIFACT_FLAGS[@]}")

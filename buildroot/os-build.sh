@@ -15,6 +15,11 @@ export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
 
+# Optional pinned refs for deterministic builds (branch, tag, or commit SHA)
+export LUCKFOX_PICO_REF="${LUCKFOX_PICO_REF:-}"
+export SEEDSIGNER_OS_REF="${SEEDSIGNER_OS_REF:-}"
+export SEEDSIGNER_REF="${SEEDSIGNER_REF:-}"
+
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
 export SEEDSIGNER_CODE_DIR="$REPOS_DIR/seedsigner"
@@ -61,7 +66,28 @@ show_usage() {
     echo "  - SD artifacts for multiple board labels (default: mini,max)"
     echo "  - Model selector via BUILD_MODEL=mini|max|both"
     echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
+    echo "  - Optional pinned refs: LUCKFOX_PICO_REF / SEEDSIGNER_OS_REF / SEEDSIGNER_REF"
     echo ""
+}
+
+checkout_optional_ref() {
+    local repo_dir="$1"
+    local ref="$2"
+
+    if [[ -z "$ref" ]]; then
+        return
+    fi
+
+    print_info "Pinning $(basename "$repo_dir") to ref: $ref"
+    git -C "$repo_dir" fetch --depth=1 origin "$ref" || git -C "$repo_dir" fetch origin "$ref"
+    git -C "$repo_dir" checkout --detach FETCH_HEAD
+}
+
+print_repository_revisions() {
+    print_info "Repository revisions in use:"
+    echo "  luckfox-pico: $(git -C luckfox-pico rev-parse HEAD 2>/dev/null || echo 'unknown')"
+    echo "  seedsigner-os: $(git -C seedsigner-os rev-parse HEAD 2>/dev/null || echo 'unknown')"
+    echo "  seedsigner: $(git -C seedsigner rev-parse HEAD 2>/dev/null || echo 'unknown')"
 }
 
 clone_repositories() {
@@ -78,6 +104,7 @@ clone_repositories() {
     else
         print_info "luckfox-pico already exists"
     fi
+    checkout_optional_ref "luckfox-pico" "$LUCKFOX_PICO_REF"
     
     # Clone SeedSigner OS packages
     if [[ ! -d "seedsigner-os" ]]; then
@@ -87,6 +114,7 @@ clone_repositories() {
     else
         print_info "seedsigner-os already exists"
     fi
+    checkout_optional_ref "seedsigner-os" "$SEEDSIGNER_OS_REF"
     
     # Clone SeedSigner code (specific branch)
     if [[ ! -d "seedsigner" ]]; then
@@ -96,6 +124,7 @@ clone_repositories() {
     else
         print_info "seedsigner already exists"
     fi
+    checkout_optional_ref "seedsigner" "$SEEDSIGNER_REF"
     
     # Show repository status
     print_info "Repository Status:"
@@ -103,6 +132,8 @@ clone_repositories() {
     echo "  seedsigner-os: $(du -sh seedsigner-os 2>/dev/null | cut -f1 || echo 'missing')"  
     echo "  seedsigner: $(du -sh seedsigner 2>/dev/null | cut -f1 || echo 'missing')"
     echo "  Total: $(du -sh . 2>/dev/null | cut -f1 || echo 'unknown')"
+
+    print_repository_revisions
     
     print_success "All repositories cloned successfully"
 }

@@ -133,6 +133,20 @@ run_build() {
         env_args="-e BUILD_JOBS=$build_jobs -e BUILD_MODEL=$build_model"
         print_success "Using $build_jobs parallel build jobs"
     fi
+
+    # Pass optional pinned refs through to container for deterministic CI/local parity
+    if [[ -n "${LUCKFOX_PICO_REF:-}" ]]; then
+        env_args="$env_args -e LUCKFOX_PICO_REF=$LUCKFOX_PICO_REF"
+        print_success "Using LUCKFOX_PICO_REF=$LUCKFOX_PICO_REF"
+    fi
+    if [[ -n "${SEEDSIGNER_OS_REF:-}" ]]; then
+        env_args="$env_args -e SEEDSIGNER_OS_REF=$SEEDSIGNER_OS_REF"
+        print_success "Using SEEDSIGNER_OS_REF=$SEEDSIGNER_OS_REF"
+    fi
+    if [[ -n "${SEEDSIGNER_REF:-}" ]]; then
+        env_args="$env_args -e SEEDSIGNER_REF=$SEEDSIGNER_REF"
+        print_success "Using SEEDSIGNER_REF=$SEEDSIGNER_REF"
+    fi
     
     # Docker run arguments with persistent volume
     local docker_args="$PLATFORM_ARGS 
