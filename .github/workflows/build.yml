@@ -12,15 +12,26 @@ on:
         required: false
         default: false
         type: boolean
-      build_model:
-        description: 'Target model to build (matches ./build.sh --model)'
+      build_mini:
+        description: 'Build Mini target'
         required: false
-        default: 'both'
-        type: choice
-        options:
-          - mini
-          - max
-          - both
+        default: true
+        type: boolean
+      build_max:
+        description: 'Build Max target'
+        required: false
+        default: true
+        type: boolean
+      build_microsd:
+        description: 'Build MicroSD artifacts'
+        required: false
+        default: true
+        type: boolean
+      build_nand:
+        description: 'Build NAND artifacts'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   build:
@@ -48,18 +59,44 @@ jobs:
           COMMON_ARGS+=(--force)
         fi
 
-        BUILD_MODEL="${{ github.event.inputs.build_model || 'both' }}"
-        COMMON_ARGS+=(--model "$BUILD_MODEL")
+        BUILD_MINI=true
+        BUILD_MAX=true
+        BUILD_MICROSD=true
+        BUILD_NAND=true
 
-        # Run as two explicit local-equivalent invocations instead of mixed mode.
-        SD_ARGS=("${COMMON_ARGS[@]}" --microsd)
-        NAND_ARGS=("${COMMON_ARGS[@]}" --nand)
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          BUILD_MINI="${{ github.event.inputs.build_mini }}"
+          BUILD_MAX="${{ github.event.inputs.build_max }}"
+          BUILD_MICROSD="${{ github.event.inputs.build_microsd }}"
+          BUILD_NAND="${{ github.event.inputs.build_nand }}"
+        fi
 
-        echo "Running: ./build.sh ${SD_ARGS[*]}"
-        ./build.sh "${SD_ARGS[@]}"
+        MODELS=()
+        if [ "$BUILD_MINI" = "true" ]; then MODELS+=(mini); fi
+        if [ "$BUILD_MAX" = "true" ]; then MODELS+=(max); fi
 
-        echo "Running: ./build.sh ${NAND_ARGS[*]}"
-        ./build.sh "${NAND_ARGS[@]}"
+        ARTIFACT_TYPES=()
+        if [ "$BUILD_MICROSD" = "true" ]; then ARTIFACT_TYPES+=(--microsd); fi
+        if [ "$BUILD_NAND" = "true" ]; then ARTIFACT_TYPES+=(--nand); fi
+
+        if [ ${#MODELS[@]} -eq 0 ]; then
+          echo "❌ No models selected. Enable at least one of: build_mini, build_max"
+          exit 1
+        fi
+
+        if [ ${#ARTIFACT_TYPES[@]} -eq 0 ]; then
+          echo "❌ No artifact types selected. Enable at least one of: build_microsd, build_nand"
+          exit 1
+        fi
+
+        for model in "${MODELS[@]}"; do
+          MODEL_ARGS=("${COMMON_ARGS[@]}" --model "$model")
+          for artifact_flag in "${ARTIFACT_TYPES[@]}"; do
+            BUILD_ARGS=("${MODEL_ARGS[@]}" "$artifact_flag")
+            echo "Running: ./build.sh ${BUILD_ARGS[*]}"
+            ./build.sh "${BUILD_ARGS[@]}"
+          done
+        done
     
     - name: List build artifacts
       if: always()
