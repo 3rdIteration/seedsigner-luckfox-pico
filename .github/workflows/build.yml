@@ -12,6 +12,36 @@ on:
         required: false
         default: false
         type: boolean
+      build_nand:
+        description: 'Build NAND artifacts'
+        required: false
+        default: true
+        type: boolean
+      build_microsd:
+        description: 'Build MicroSD artifacts'
+        required: false
+        default: false
+        type: boolean
+      build_mini:
+        description: 'Build Mini device image'
+        required: false
+        default: true
+        type: boolean
+      build_max:
+        description: 'Build Max device image'
+        required: false
+        default: false
+        type: boolean
+      seedsigner_repo:
+        description: 'SeedSigner repository URL'
+        required: false
+        default: 'https://github.com/lightningspore/seedsigner.git'
+        type: string
+      luckfox_repo:
+        description: 'luckfox-pico SDK repository URL'
+        required: false
+        default: 'https://github.com/lightningspore/luckfox-pico.git'
+        type: string
 
 jobs:
   build:
@@ -34,15 +64,57 @@ jobs:
       run: |
         cd buildroot
         echo "🚀 Starting SeedSigner build..."
-        
-        # Set build options
+
+        # Set defaults when workflow inputs are not present (push/PR triggers)
+        FORCE_REBUILD="${{ github.event.inputs.force_rebuild || 'false' }}"
+        BUILD_NAND="${{ github.event.inputs.build_nand || 'true' }}"
+        BUILD_MICROSD="${{ github.event.inputs.build_microsd || 'false' }}"
+        BUILD_MINI="${{ github.event.inputs.build_mini || 'true' }}"
+        BUILD_MAX="${{ github.event.inputs.build_max || 'false' }}"
+        SEEDSIGNER_REPO="${{ github.event.inputs.seedsigner_repo || 'https://github.com/lightningspore/seedsigner.git' }}"
+        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo || 'https://github.com/lightningspore/luckfox-pico.git' }}"
+
+        # Build argument assembly
         BUILD_ARGS=""
-        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="--force"
+        if [ "$FORCE_REBUILD" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS --force"
         fi
-        
+
+        if [ "$BUILD_NAND" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS --nand"
+        fi
+
+        if [ "$BUILD_MICROSD" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS --microsd"
+        fi
+
+        if [ "$BUILD_MINI" = "true" ] && [ "$BUILD_MAX" = "true" ]; then
+          BUILD_MODEL="both"
+        elif [ "$BUILD_MINI" = "true" ]; then
+          BUILD_MODEL="mini"
+        elif [ "$BUILD_MAX" = "true" ]; then
+          BUILD_MODEL="max"
+        else
+          echo "❌ At least one device type must be selected (mini or max)."
+          exit 1
+        fi
+
+        if [ "$BUILD_NAND" != "true" ] && [ "$BUILD_MICROSD" != "true" ]; then
+          echo "❌ At least one build type must be selected (NAND or MicroSD)."
+          exit 1
+        fi
+
+        export SEEDSIGNER_REPO_URL="$SEEDSIGNER_REPO"
+        export LUCKFOX_REPO_URL="$LUCKFOX_REPO"
+
+        echo "Build model: $BUILD_MODEL"
+        echo "Build NAND: $BUILD_NAND"
+        echo "Build MicroSD: $BUILD_MICROSD"
+        echo "SeedSigner repo: $SEEDSIGNER_REPO_URL"
+        echo "luckfox-pico repo: $LUCKFOX_REPO_URL"
+
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+        ./build.sh build $BUILD_ARGS --model "$BUILD_MODEL" --output ../build-artifacts
     
     - name: List build artifacts
       if: always()

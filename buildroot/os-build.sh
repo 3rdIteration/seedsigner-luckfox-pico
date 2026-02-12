@@ -10,9 +10,9 @@ export REPOS_DIR="/build/repos"
 export OUTPUT_DIR="/build/output"
 
 # Repository URLs for cloning
-export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
-export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
-export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
+export LUCKFOX_REPO_URL="${LUCKFOX_REPO_URL:-https://github.com/lightningspore/luckfox-pico.git}"
+export SEEDSIGNER_REPO_URL="${SEEDSIGNER_REPO_URL:-https://github.com/lightningspore/seedsigner.git}"
+export SEEDSIGNER_BRANCH="${SEEDSIGNER_BRANCH:-upstream-luckfox-staging-1}"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
 
 # Internal paths (after cloning)

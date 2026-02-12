@@ -133,6 +133,16 @@ run_build() {
         env_args="-e BUILD_JOBS=$build_jobs -e BUILD_MODEL=$build_model"
         print_success "Using $build_jobs parallel build jobs"
     fi
+
+    if [[ -n "${SEEDSIGNER_REPO_URL:-}" ]]; then
+        env_args="$env_args -e SEEDSIGNER_REPO_URL=$SEEDSIGNER_REPO_URL"
+        print_success "Using custom SeedSigner repo: $SEEDSIGNER_REPO_URL"
+    fi
+
+    if [[ -n "${LUCKFOX_REPO_URL:-}" ]]; then
+        env_args="$env_args -e LUCKFOX_REPO_URL=$LUCKFOX_REPO_URL"
+        print_success "Using custom luckfox-pico SDK repo: $LUCKFOX_REPO_URL"
+    fi
     
     # Docker run arguments with persistent volume
     local docker_args="$PLATFORM_ARGS 
