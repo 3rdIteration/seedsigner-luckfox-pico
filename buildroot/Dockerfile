@@ -34,6 +34,7 @@ RUN mkdir -p /build/repos /build/output
 # Copy build scripts and configuration files
 COPY configs/ /build/configs/
 COPY files/ /build/files/
+COPY overlay/ /build/overlay/
 COPY scripts/ /build/scripts/
 COPY blkenvflash /build/
 

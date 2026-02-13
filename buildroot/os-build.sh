@@ -633,6 +633,38 @@ ensure_buildroot_tree() {
     fi
 }
 
+apply_required_buildroot_fragment() {
+    local fragment_src="/build/configs/seedsigner_required.fragment"
+    local fragment_tmp="$BUILDROOT_DIR/.seedsigner_required.fragment"
+    local overlay_path="/build/overlay/rootfs"
+
+    if [[ ! -f "$fragment_src" ]]; then
+        print_error "Missing required Buildroot fragment: $fragment_src"
+        exit 1
+    fi
+
+    if [[ ! -d "$overlay_path" ]]; then
+        print_error "Missing required rootfs overlay directory: $overlay_path"
+        exit 1
+    fi
+
+    sed "s|^BR2_ROOTFS_OVERLAY=.*|BR2_ROOTFS_OVERLAY=\"$overlay_path\"|" "$fragment_src" > "$fragment_tmp"
+
+    local merge_script="$BUILDROOT_DIR/scripts/kconfig/merge_config.sh"
+    if [[ -x "$merge_script" ]]; then
+        print_step "Merging required Buildroot fragment"
+        (
+            cd "$BUILDROOT_DIR"
+            "$merge_script" -m .config "$fragment_tmp"
+            make olddefconfig
+        )
+    else
+        print_warning "merge_config.sh not found; appending required fragment directly"
+        cat "$fragment_tmp" >> "$BUILDROOT_DIR/.config"
+        make -C "$BUILDROOT_DIR" olddefconfig
+    fi
+}
+
 validate_buildroot_defconfig_applied() {
     local config_file="$BUILDROOT_DIR/.config"
     local report_file="$1"
@@ -643,6 +675,10 @@ validate_buildroot_defconfig_applied() {
         BR2_PACKAGE_ZBAR=y
         BR2_PACKAGE_LIBCAMERA=y
         BR2_PACKAGE_LIBCAMERA_APPS=y
+        BR2_PACKAGE_EUDEV=y
+        BR2_PACKAGE_KMOD=y
+        BR2_PACKAGE_UTIL_LINUX=y
+        BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y
     )
 
     {
@@ -659,6 +695,8 @@ validate_buildroot_defconfig_applied() {
         echo ""
         echo "BR2_DEFCONFIG line:"
         grep '^BR2_DEFCONFIG=' "$config_file" || true
+        echo "BR2_ROOTFS_OVERLAY line:"
+        grep '^BR2_ROOTFS_OVERLAY=' "$config_file" || true
     } > "$report_file"
 
     local missing=0
@@ -667,6 +705,13 @@ validate_buildroot_defconfig_applied() {
             missing=1
         fi
     done
+
+    local overlay_line=""
+    overlay_line=$(grep '^BR2_ROOTFS_OVERLAY=' "$config_file" || true)
+    if [[ -z "$overlay_line" || "$overlay_line" == 'BR2_ROOTFS_OVERLAY=""' ]]; then
+        missing=1
+        echo "MISSING BR2_ROOTFS_OVERLAY (empty or unset)" >> "$report_file"
+    fi
 
     if [[ "$missing" -ne 0 ]]; then
         print_error "Buildroot defconfig validation failed. See: $report_file"
@@ -735,8 +780,8 @@ CONFIGMENU
         sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$defconfig_path\"|" "$defconfig_path"
         sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$defconfig_path\"|" "$BUILDROOT_DIR/.config"
 
-        # Expand/normalize symbols so subsequent build steps use resolved .config.
-        make -C "$BUILDROOT_DIR" olddefconfig
+        # Merge required packages/overlay and normalize final Buildroot config.
+        apply_required_buildroot_fragment
 
         validate_buildroot_defconfig_applied "$OUTPUT_DIR/buildroot-config-check-${board_profile}-${boot_medium}.txt"
         capture_profile_debug_context "$board_profile" "$boot_medium"

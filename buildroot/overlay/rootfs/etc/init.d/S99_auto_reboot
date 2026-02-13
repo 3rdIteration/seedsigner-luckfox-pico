@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder hook for optional auto-reboot logic
+exit 0

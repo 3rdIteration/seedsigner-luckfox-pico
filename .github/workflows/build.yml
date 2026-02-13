@@ -132,6 +132,9 @@ jobs:
             echo "top_sha: $(git rev-parse HEAD 2>/dev/null || echo unknown)"
             echo "top_status:"
             git status --porcelain || true
+            echo "LFS status:"
+            git lfs ls-files || true
+            git lfs status || true
             if [ -d "$GITHUB_WORKSPACE/buildroot" ]; then
               echo "buildroot_sha: $(cd "$GITHUB_WORKSPACE/buildroot" && git rev-parse HEAD 2>/dev/null || echo unknown)"
             fi

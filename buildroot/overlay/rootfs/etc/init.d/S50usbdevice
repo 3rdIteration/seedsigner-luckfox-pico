@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder hook for USB gadget/device initialization
+exit 0
