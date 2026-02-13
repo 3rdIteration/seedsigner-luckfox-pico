@@ -31,6 +31,8 @@ jobs:
         ./build.sh status
     
     - name: Build SeedSigner OS
+      env:
+        FORCE_REBUILDROOT_CONFIG: "1"
       run: |
         cd buildroot
         echo "🚀 Starting SeedSigner build..."

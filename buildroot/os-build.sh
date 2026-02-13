@@ -35,6 +35,7 @@ export BR2_JLEVEL="${BUILD_JOBS}"
 export FORCE_UNSAFE_CONFIGURE=1
 export BUILD_MODEL="${BUILD_MODEL:-both}"
 export MINI_CMA_SIZE="${MINI_CMA_SIZE:-1M}"
+export FORCE_REBUILDROOT_CONFIG="${FORCE_REBUILDROOT_CONFIG:-1}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -416,6 +417,31 @@ ensure_buildroot_tree() {
     fi
 }
 
+enforce_buildroot_defconfig() {
+    print_step "Enforcing Buildroot defconfig"
+
+    if [[ ! -f "/build/configs/luckfox_pico_defconfig" ]]; then
+        print_error "SeedSigner configuration file not found: /build/configs/luckfox_pico_defconfig"
+        exit 1
+    fi
+
+    cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+
+    # Apply the defconfig through Buildroot itself so SDK builds always use the
+    # same generated .config across local and CI builds.
+    make -C "$BUILDROOT_DIR" luckfox_pico_defconfig
+
+    # Record a few high-signal options in logs to make CI/local config drift obvious.
+    local cfg="$BUILDROOT_DIR/.config"
+    if [[ -f "$cfg" ]]; then
+        print_info "Buildroot config sanity snapshot:"
+        grep -E '^(BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX_LIBBLKID=|BR2_TARGET_GENERIC_HOSTNAME=)' "$cfg" || true
+    else
+        print_error "Expected Buildroot .config missing after defconfig apply: $cfg"
+        exit 1
+    fi
+}
+
 build_profile_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -463,12 +489,12 @@ CONFIGMENU
     fi
 
     print_step "Applying SeedSigner Configuration"
-    if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
+    if [[ "$FORCE_REBUILDROOT_CONFIG" == "1" ]]; then
+        enforce_buildroot_defconfig
+    else
+        print_info "FORCE_REBUILDROOT_CONFIG=0, copying .config directly"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
-    else
-        print_error "SeedSigner configuration file not found"
-        exit 1
     fi
 
     print_step "Building U-Boot"
