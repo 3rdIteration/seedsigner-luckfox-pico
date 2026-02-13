@@ -7,6 +7,24 @@ on:
     branches: [ main, develop, master ]
   workflow_dispatch:
     inputs:
+      hardware_model:
+        description: 'Hardware model to build'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - mini
+          - max
+          - both
+      boot_medium:
+        description: 'Boot medium to build'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - microsd
+          - nand
+          - both
       force_rebuild:
         description: 'Force rebuild Docker image'
         required: false
@@ -14,9 +32,67 @@ on:
         type: boolean
 
 jobs:
-  build:
+  setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 180  # 3 hours max
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Set build matrix
+        id: set-matrix
+        run: |
+          # Determine which models to build
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            HARDWARE="${{ github.event.inputs.hardware_model }}"
+            MEDIUM="${{ github.event.inputs.boot_medium }}"
+          else
+            # For push/PR, build everything
+            HARDWARE="both"
+            MEDIUM="both"
+          fi
+          
+          # Build matrix based on selections
+          MODELS=()
+          if [ "$HARDWARE" = "both" ]; then
+            MODELS=("mini" "max")
+          else
+            MODELS=("$HARDWARE")
+          fi
+          
+          MEDIA=()
+          if [ "$MEDIUM" = "both" ]; then
+            MEDIA=("microsd" "nand")
+          else
+            MEDIA=("$MEDIUM")
+          fi
+          
+          # Create matrix JSON
+          MATRIX_JSON="["
+          FIRST=true
+          for model in "${MODELS[@]}"; do
+            for medium in "${MEDIA[@]}"; do
+              if [ "$FIRST" = true ]; then
+                FIRST=false
+              else
+                MATRIX_JSON+=","
+              fi
+              MATRIX_JSON+="{\"model\":\"$model\",\"medium\":\"$medium\"}"
+            done
+          done
+          MATRIX_JSON+="]"
+          
+          echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
+          echo "Generated matrix: $MATRIX_JSON"
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 hours max per build
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
+    
+    name: Build ${{ matrix.model }} (${{ matrix.medium }})
     
     steps:
     - name: Checkout repository
@@ -30,10 +106,10 @@ jobs:
         cd buildroot
         ./build.sh status
     
-    - name: Build SeedSigner OS
+    - name: Build SeedSigner OS (${{ matrix.model }} - ${{ matrix.medium }})
       run: |
         cd buildroot
-        echo "🚀 Starting SeedSigner build..."
+        echo "🚀 Starting SeedSigner build for ${{ matrix.model }} (${{ matrix.medium }})..."
         
         # Set build options
         BUILD_ARGS=""
@@ -41,8 +117,18 @@ jobs:
           BUILD_ARGS="--force"
         fi
         
+        # Set model-specific flag
+        MODEL_FLAG="--model ${{ matrix.model }}"
+        
+        # Set medium-specific flag
+        if [ "${{ matrix.medium }}" = "microsd" ]; then
+          MEDIUM_FLAG="--microsd"
+        elif [ "${{ matrix.medium }}" = "nand" ]; then
+          MEDIUM_FLAG="--nand"
+        fi
+        
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+        ./build.sh build $BUILD_ARGS $MODEL_FLAG $MEDIUM_FLAG --output ../build-artifacts
     
     - name: List build artifacts
       if: always()
@@ -98,7 +184,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: seedsigner-os-${{ github.run_number }}
+        name: seedsigner-os-${{ matrix.model }}-${{ matrix.medium }}-${{ github.run_number }}
         path: |
           build-artifacts/seedsigner-luckfox-pico*.img
           build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
@@ -109,7 +195,9 @@ jobs:
     - name: Build summary
       if: always()
       run: |
-        echo "## 🎯 SeedSigner Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "## 🎯 SeedSigner Build Summary (${{ matrix.model }} - ${{ matrix.medium }})" >> $GITHUB_STEP_SUMMARY
+        echo "- **Model**: ${{ matrix.model }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Boot Medium**: ${{ matrix.medium }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Run Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
