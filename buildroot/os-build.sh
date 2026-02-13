@@ -166,6 +166,12 @@ export_variant_images() {
 
     print_step "Exporting core image files (${board_profile}/${boot_medium})"
 
+    # Warn if building multiple profiles to same directory
+    if [[ "$BUILD_MODEL" == "both" ]] && [[ -f "$export_dir/rootfs.img" ]]; then
+        print_warning "Building multiple profiles to same output directory - previous profile's files will be overwritten"
+        print_warning "For production builds, use separate output directories for each profile"
+    fi
+
     local files=(
         rootfs.img
         boot.img
