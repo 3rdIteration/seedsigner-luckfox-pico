@@ -1,0 +1,9 @@
+#!/bin/sh
+case "$1" in
+  start)
+    [ -x /sbin/udevd ] && /sbin/udevd --daemon || true
+    /sbin/udevadm trigger --action=add >/dev/null 2>&1 || true
+    /sbin/udevadm settle >/dev/null 2>&1 || true
+    ;;
+esac
+exit 0

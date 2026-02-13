@@ -49,7 +49,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: [mini, max]
-        medium: [sd, nand]
+        medium: [nand, sd]
 
     steps:
       - name: Checkout repository

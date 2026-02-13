@@ -634,9 +634,17 @@ ensure_buildroot_tree() {
 }
 
 apply_required_buildroot_fragment() {
+    local script_path="${WORKSPACE_ROOT:-/workspace}/.github/scripts/apply_buildroot_fragment_and_overlay.sh"
+
+    if [[ "${APPLY_REQUIRED_BUILDROOT_SCRIPT:-1}" == "1" && -x "$script_path" ]]; then
+        print_step "Applying Buildroot fragment/overlay via workspace script"
+        WORKSPACE_ROOT="${WORKSPACE_ROOT:-/workspace}" "$script_path"
+        return
+    fi
+
     local fragment_src="/build/configs/seedsigner_required.fragment"
     local fragment_tmp="$BUILDROOT_DIR/.seedsigner_required.fragment"
-    local overlay_path="/build/overlay/rootfs"
+    local overlay_path="/build/overlay"
 
     if [[ ! -f "$fragment_src" ]]; then
         print_error "Missing required Buildroot fragment: $fragment_src"
@@ -648,7 +656,7 @@ apply_required_buildroot_fragment() {
         exit 1
     fi
 
-    sed "s|^BR2_ROOTFS_OVERLAY=.*|BR2_ROOTFS_OVERLAY=\"$overlay_path\"|" "$fragment_src" > "$fragment_tmp"
+    cp "$fragment_src" "$fragment_tmp"
 
     local merge_script="$BUILDROOT_DIR/scripts/kconfig/merge_config.sh"
     if [[ -x "$merge_script" ]]; then
@@ -656,14 +664,19 @@ apply_required_buildroot_fragment() {
         (
             cd "$BUILDROOT_DIR"
             "$merge_script" -m .config "$fragment_tmp"
+            sed -i '/^BR2_ROOTFS_OVERLAY=/d' .config
+            echo "BR2_ROOTFS_OVERLAY=\"$overlay_path\"" >> .config
             make olddefconfig
         )
     else
         print_warning "merge_config.sh not found; appending required fragment directly"
         cat "$fragment_tmp" >> "$BUILDROOT_DIR/.config"
+        sed -i '/^BR2_ROOTFS_OVERLAY=/d' "$BUILDROOT_DIR/.config"
+        echo "BR2_ROOTFS_OVERLAY=\"$overlay_path\"" >> "$BUILDROOT_DIR/.config"
         make -C "$BUILDROOT_DIR" olddefconfig
     fi
 }
+
 
 validate_buildroot_defconfig_applied() {
     local config_file="$BUILDROOT_DIR/.config"
@@ -708,7 +721,7 @@ validate_buildroot_defconfig_applied() {
 
     local overlay_line=""
     overlay_line=$(grep '^BR2_ROOTFS_OVERLAY=' "$config_file" || true)
-    if [[ -z "$overlay_line" || "$overlay_line" == 'BR2_ROOTFS_OVERLAY=""' ]]; then
+    if [[ -z "$overlay_line" || "$overlay_line" == BR2_ROOTFS_OVERLAY=""* ]]; then
         missing=1
         echo "MISSING BR2_ROOTFS_OVERLAY (empty or unset)" >> "$report_file"
     fi

@@ -148,13 +148,11 @@ run_build() {
         print_success "Using SEEDSIGNER_REF=$SEEDSIGNER_REF"
     fi
     
+    local repo_root
+    repo_root=$(cd "$SCRIPT_DIR/.." && pwd)
+
     # Docker run arguments with persistent volume
-    local docker_args="$PLATFORM_ARGS 
-                       --name $CONTAINER_NAME 
-                       --rm
-                       -v $volume_name:/build/repos
-                       -v $abs_output_dir:/build/output
-                       $env_args"
+    local docker_args="$PLATFORM_ARGS \n                       --name $CONTAINER_NAME \n                       --rm\n                       -v $volume_name:/build/repos\n                       -v $abs_output_dir:/build/output\n                       -v $repo_root:/workspace\n                       -e WORKSPACE_ROOT=/workspace\n                       -e APPLY_REQUIRED_BUILDROOT_SCRIPT=${APPLY_REQUIRED_BUILDROOT_SCRIPT:-1}\n                       $env_args"
     
     case "$mode" in
         "build")

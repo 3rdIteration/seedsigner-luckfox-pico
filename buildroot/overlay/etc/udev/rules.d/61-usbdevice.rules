@@ -1,2 +1,1 @@
-# SeedSigner USB device rules placeholder
 SUBSYSTEM=="usb", ACTION=="add", TAG+="systemd"
