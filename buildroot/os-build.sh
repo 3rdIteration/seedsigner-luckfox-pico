@@ -44,6 +44,41 @@ print_success() { echo -e "\n${GREEN}[SUCCESS] $1${NC}\n"; }
 print_error() { echo -e "\n${RED}[ERROR] $1${NC}\n"; }
 print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 
+apply_buildroot_defconfig() {
+    local source_defconfig="/build/configs/luckfox_pico_defconfig"
+    local target_defconfig="$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+    local required_symbols=(
+        "BR2_PACKAGE_PYTHON_PYZBAR=y"
+        "BR2_PACKAGE_PYTHON_EMBIT=y"
+        "BR2_PACKAGE_ZBAR=y"
+        "BR2_PACKAGE_LIBCAMERA_APPS=y"
+    )
+
+    print_step "Applying SeedSigner Configuration"
+    if [[ ! -f "$source_defconfig" ]]; then
+        print_error "SeedSigner configuration file not found: $source_defconfig"
+        exit 1
+    fi
+
+    cp -v "$source_defconfig" "$target_defconfig"
+
+    # Ensure BR2_DEFCONFIG points to the in-tree config path used by this container build.
+    sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$target_defconfig\"|" "$target_defconfig"
+
+    # Force buildroot to materialize .config from our external defconfig before SDK rootfs build.
+    make -C "$BUILDROOT_DIR" luckfox_pico_defconfig
+    make -C "$BUILDROOT_DIR" olddefconfig
+
+    for symbol in "${required_symbols[@]}"; do
+        if ! grep -q "^${symbol}$" "$BUILDROOT_DIR/.config"; then
+            print_error "Required defconfig symbol missing after apply: ${symbol}"
+            exit 1
+        fi
+    done
+
+    print_success "SeedSigner buildroot defconfig applied and verified"
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -462,14 +497,7 @@ endmenu
 CONFIGMENU
     fi
 
-    print_step "Applying SeedSigner Configuration"
-    if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
-        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
-        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
-    else
-        print_error "SeedSigner configuration file not found"
-        exit 1
-    fi
+    apply_buildroot_defconfig
 
     print_step "Building U-Boot"
     ./build.sh uboot
