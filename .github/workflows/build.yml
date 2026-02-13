@@ -43,7 +43,6 @@ on:
 jobs:
   build-variant:
     name: build-${{ matrix.profile }}-${{ matrix.medium }}
-    if: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.profile == 'all' || github.event.inputs.profile == matrix.profile) && (github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
@@ -59,7 +58,23 @@ jobs:
           lfs: true
           submodules: recursive
 
+      - name: Select matrix variant for this run
+        id: select
+        run: |
+          SELECTED=true
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ "${{ github.event.inputs.profile }}" != "all" ] && [ "${{ github.event.inputs.profile }}" != "${{ matrix.profile }}" ]; then
+              SELECTED=false
+            fi
+            if [ "${{ github.event.inputs.medium }}" != "all" ] && [ "${{ github.event.inputs.medium }}" != "${{ matrix.medium }}" ]; then
+              SELECTED=false
+            fi
+          fi
+          echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
+          echo "Variant ${{ matrix.profile }}-${{ matrix.medium }} selected=$SELECTED"
+
       - name: Free disk space for large image builds
+        if: ${{ steps.select.outputs.selected == 'true' }}
         run: |
           df -h
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache || true
@@ -67,6 +82,7 @@ jobs:
           df -h
 
       - name: Build SeedSigner OS (${{ matrix.profile }}-${{ matrix.medium }})
+        if: ${{ steps.select.outputs.selected == 'true' }}
         run: |
           cd buildroot
           ARTIFACT_DIR="../build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
@@ -94,7 +110,7 @@ jobs:
           ./build.sh "${BUILD_ARGS[@]}"
 
       - name: Debug Buildroot env/config/git from workspace
-        if: always()
+        if: ${{ always() && steps.select.outputs.selected == 'true' }}
         run: |
           ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
           mkdir -p "$ARTIFACT_DIR"
@@ -127,7 +143,7 @@ jobs:
           } | tee "$ARTIFACT_DIR/workspace-git.txt"
 
       - name: Locate NAND rootfs image and log format
-        if: ${{ always() && matrix.medium == 'nand' }}
+        if: ${{ always() && steps.select.outputs.selected == 'true' && matrix.medium == 'nand' }}
         run: |
           ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
           ROOTFS_IMG=$(find "$ARTIFACT_DIR" -type f -name "rootfs.img" | head -n 1)
@@ -142,7 +158,7 @@ jobs:
           fi
 
       - name: Rootfs UBI sanity check (NAND only)
-        if: ${{ matrix.medium == 'nand' }}
+        if: ${{ steps.select.outputs.selected == 'true' && matrix.medium == 'nand' }}
         run: |
           python3 -m pip install --user ubi-reader
           ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
@@ -167,7 +183,7 @@ jobs:
 
       - name: Upload rootfs sanity report
         uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && steps.select.outputs.selected == 'true' }}
         with:
           name: rootfs-sanity-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_id }}
           path: rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}/**
@@ -175,7 +191,7 @@ jobs:
 
       - name: Upload build and debug artifacts
         uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ always() && steps.select.outputs.selected == 'true' }}
         with:
           name: seedsigner-os-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_id }}
           path: |
