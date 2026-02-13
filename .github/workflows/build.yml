@@ -24,7 +24,6 @@ on:
 
 jobs:
   build:
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium }}
     name: build-${{ matrix.profile }}-${{ matrix.medium }}
     strategy:
       fail-fast: false
@@ -43,12 +42,24 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Select variant for this run
+      id: select_variant
+      run: |
+        if [ "${{ github.event_name }}" != "workflow_dispatch" ] || [ "${{ github.event.inputs.medium }}" = "all" ] || [ "${{ github.event.inputs.medium }}" = "${{ matrix.medium }}" ]; then
+          echo "run_variant=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "run_variant=false" >> "$GITHUB_OUTPUT"
+        fi
+        echo "run_variant=$(grep '^run_variant=' "$GITHUB_OUTPUT" | cut -d= -f2) for ${{ matrix.profile }}-${{ matrix.medium }}"
+
     - name: Build system status
+      if: steps.select_variant.outputs.run_variant == 'true'
       run: |
         cd buildroot
         ./build.sh status
 
     - name: Build SeedSigner OS (${{ matrix.profile }} / ${{ matrix.medium }})
+      if: steps.select_variant.outputs.run_variant == 'true'
       run: |
         set -euo pipefail
         cd buildroot
@@ -69,19 +80,19 @@ jobs:
         fi
 
     - name: Collect debug bundle from SDK/container build tree
-      if: always()
+      if: always() && steps.select_variant.outputs.run_variant == 'true'
       run: |
         set -euo pipefail
         mkdir -p "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
         ./.github/scripts/collect_debug.sh "${{ matrix.profile }}" "${{ matrix.medium }}" "$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug"
 
     - name: Install rootfs sanity checker dependency
-      if: matrix.medium == 'nand'
+      if: steps.select_variant.outputs.run_variant == 'true' && matrix.medium == 'nand'
       run: |
         python3 -m pip install --user ubi-reader
 
     - name: Rootfs UBI sanity check (NAND only)
-      if: matrix.medium == 'nand'
+      if: steps.select_variant.outputs.run_variant == 'true' && matrix.medium == 'nand'
       run: |
         set -euo pipefail
         SANITY_DIR="$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}"
@@ -102,13 +113,13 @@ jobs:
         python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$SANITY_DIR" --workspace "$GITHUB_WORKSPACE"
 
     - name: Skip note for SD UBI sanity check
-      if: matrix.medium == 'sd'
+      if: steps.select_variant.outputs.run_variant == 'true' && matrix.medium == 'sd'
       run: |
         echo "Skipping UBI sanity check for SD build variant"
 
     - name: Upload rootfs sanity report
       uses: actions/upload-artifact@v4
-      if: always()
+      if: always() && steps.select_variant.outputs.run_variant == 'true'
       with:
         name: rootfs-sanity-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_id }}
         path: rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}/**
@@ -116,7 +127,7 @@ jobs:
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
-      if: always()
+      if: always() && steps.select_variant.outputs.run_variant == 'true'
       with:
         name: seedsigner-os-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_number }}
         path: |
