@@ -27,9 +27,26 @@ fi
 echo "Using Buildroot dir: $BR_DIR"
 cd "$BR_DIR"
 
+UDEV_SYMBOL=""
+if grep -Rqs '^config BR2_PACKAGE_EUDEV$' package; then
+  UDEV_SYMBOL="BR2_PACKAGE_EUDEV"
+elif grep -Rqs '^config BR2_PACKAGE_HAS_UDEV$' package system; then
+  UDEV_SYMBOL="BR2_PACKAGE_HAS_UDEV"
+fi
+
 make "$DEFCONFIG_NAME"
 
 cp "$FRAGMENT_SRC" "$BR_DIR/seedsigner_required.fragment"
+if [[ -n "$UDEV_SYMBOL" && "$UDEV_SYMBOL" != "BR2_PACKAGE_EUDEV" ]]; then
+  sed -i '/^BR2_PACKAGE_EUDEV=/d' "$BR_DIR/seedsigner_required.fragment"
+  echo "$UDEV_SYMBOL=y" >> "$BR_DIR/seedsigner_required.fragment"
+fi
+# Force dynamic device management to eudev so udev userspace actually lands in rootfs.
+cat >> "$BR_DIR/seedsigner_required.fragment" <<'FRAG'
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV is not set
+FRAG
+
 rm -rf "$BR_DIR/seedsigner_overlay"
 mkdir -p "$BR_DIR/seedsigner_overlay"
 cp -a "$OVERLAY_SRC"/. "$BR_DIR/seedsigner_overlay/"
@@ -37,8 +54,15 @@ chmod +x "$BR_DIR/seedsigner_overlay/etc/init.d/S10udev" || true
 chmod +x "$BR_DIR/seedsigner_overlay/etc/init.d/S50usbdevice" || true
 chmod +x "$BR_DIR/seedsigner_overlay/etc/init.d/S99_auto_reboot" || true
 
+MERGE_SCRIPT=""
 if [[ -f "$BR_DIR/scripts/kconfig/merge_config.sh" ]]; then
-  "$BR_DIR/scripts/kconfig/merge_config.sh" -m "$BR_DIR/.config" "$BR_DIR/seedsigner_required.fragment"
+  MERGE_SCRIPT="$BR_DIR/scripts/kconfig/merge_config.sh"
+elif [[ -f "$BR_DIR/support/kconfig/merge_config.sh" ]]; then
+  MERGE_SCRIPT="$BR_DIR/support/kconfig/merge_config.sh"
+fi
+
+if [[ -n "$MERGE_SCRIPT" ]]; then
+  "$MERGE_SCRIPT" -m "$BR_DIR/.config" "$BR_DIR/seedsigner_required.fragment"
 else
   cat "$BR_DIR/seedsigner_required.fragment" >> "$BR_DIR/.config"
 fi
@@ -48,10 +72,16 @@ echo "BR2_ROOTFS_OVERLAY=\"$BR_DIR/seedsigner_overlay\"" >> "$BR_DIR/.config"
 
 make olddefconfig
 
-grep -q '^BR2_PACKAGE_EUDEV=y' "$BR_DIR/.config" || { echo "EUDEV not enabled"; exit 101; }
+if [[ -n "$UDEV_SYMBOL" ]]; then
+  grep -q "^${UDEV_SYMBOL}=y" "$BR_DIR/.config" || { echo "${UDEV_SYMBOL} not enabled"; exit 101; }
+else
+  echo "Unable to determine udev symbol in Buildroot tree"
+  exit 106
+fi
 grep -q '^BR2_PACKAGE_KMOD=y' "$BR_DIR/.config" || { echo "KMOD not enabled"; exit 102; }
 grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$BR_DIR/.config" || { echo "util-linux not enabled"; exit 103; }
 grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$BR_DIR/.config" || { echo "libblkid not enabled"; exit 104; }
+grep -q '^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y' "$BR_DIR/.config" || { echo "dynamic eudev /dev backend not enabled"; exit 107; }
 grep -q '^BR2_ROOTFS_OVERLAY="' "$BR_DIR/.config" || { echo "overlay not set"; exit 105; }
 
-grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_ROOTFS_OVERLAY)=' "$BR_DIR/.config"
+grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_HAS_UDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_ROOTFS_OVERLAY)=' "$BR_DIR/.config"
