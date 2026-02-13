@@ -417,6 +417,30 @@ ensure_buildroot_tree() {
     fi
 }
 
+force_sdk_buildroot_defconfig() {
+    local board_config_file="$LUCKFOX_SDK_DIR/.BoardConfig.mk"
+
+    if [[ ! -f "$board_config_file" ]]; then
+        print_error "SDK board config file not found: $board_config_file"
+        exit 1
+    fi
+
+    print_step "Pinning SDK Buildroot defconfig"
+
+    if grep -q '^export RK_CFG_BUILDROOT=' "$board_config_file"; then
+        sed -i 's|^export RK_CFG_BUILDROOT=.*|export RK_CFG_BUILDROOT="luckfox_pico_defconfig"|' "$board_config_file"
+    else
+        echo 'export RK_CFG_BUILDROOT="luckfox_pico_defconfig"' >> "$board_config_file"
+    fi
+
+    if grep -q '^export RK_CFG_BUILDROOT_FRAGMENT=' "$board_config_file"; then
+        sed -i 's|^export RK_CFG_BUILDROOT_FRAGMENT=.*|export RK_CFG_BUILDROOT_FRAGMENT=""|' "$board_config_file"
+    fi
+
+    print_info "SDK Buildroot pins:"
+    grep -E '^export RK_CFG_BUILDROOT=|^export RK_CFG_BUILDROOT_FRAGMENT=' "$board_config_file" || true
+}
+
 enforce_buildroot_defconfig() {
     print_step "Enforcing Buildroot defconfig"
 
@@ -426,6 +450,9 @@ enforce_buildroot_defconfig() {
     fi
 
     cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+
+    # Ensure BR2_DEFCONFIG path is valid inside the containerized SDK tree.
+    sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"${BUILDROOT_DIR}/configs/luckfox_pico_defconfig\"|" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
 
     # Apply the defconfig through Buildroot itself so SDK builds always use the
     # same generated .config across local and CI builds.
@@ -456,6 +483,7 @@ build_profile_artifacts() {
 
     # Some SDK clean paths may reset board context; force board selection again.
     select_board_profile "$board_profile" "$boot_medium"
+    force_sdk_buildroot_defconfig
 
     print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
     ensure_buildroot_tree
