@@ -132,28 +132,52 @@ jobs:
             ./build.sh "${BUILD_ARGS[@]}"
           done
 
-      - name: Verify generated images are not obviously corrupt
+      - name: Verify generated artifacts are not obviously corrupt
         if: always()
         run: |
           set -e
-          found=0
-          while IFS= read -r -d '' img; do
-            found=1
-            size=$(stat -c '%s' "$img")
-            echo "Checking $img ($size bytes)"
 
-            # 100MB sanity floor; catches obvious truncation/empty artifacts.
-            if [ "$size" -lt 104857600 ]; then
-              echo "❌ Image too small: $img"
+          BUILD_MICROSD=true
+          BUILD_NAND=true
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            BUILD_MICROSD="${{ github.event.inputs.build_microsd }}"
+            BUILD_NAND="${{ github.event.inputs.build_nand }}"
+          fi
+
+          if [ "$BUILD_MICROSD" = "true" ]; then
+            found_img=0
+            while IFS= read -r -d '' img; do
+              found_img=1
+              size=$(stat -c '%s' "$img")
+              echo "Checking $img ($size bytes)"
+              if [ "$size" -lt 104857600 ]; then
+                echo "❌ Image too small: $img"
+                exit 1
+              fi
+              file "$img"
+            done < <(find build-artifacts -name 'seedsigner-luckfox-pico*.img' -type f -print0)
+
+            if [ "$found_img" -eq 0 ]; then
+              echo "❌ MicroSD build requested but no seedsigner-luckfox-pico*.img artifacts found"
               exit 1
             fi
+          else
+            echo "Skipping .img validation (MicroSD build not requested)"
+          fi
 
-            file "$img"
-          done < <(find build-artifacts -name 'seedsigner-luckfox-pico*.img' -type f -print0)
+          if [ "$BUILD_NAND" = "true" ]; then
+            found_nand=0
+            while IFS= read -r -d '' f; do
+              found_nand=1
+              echo "Found NAND artifact: $f"
+            done < <(find build-artifacts \( -name 'seedsigner-luckfox-pico*-nand-bundle*.tar.gz' -o -name 'seedsigner-luckfox-pico-*-nand-files-*' -o -name 'seedsigner-luckfox-pico-*-nand-sdk-images-*.tar.gz' \) -print0)
 
-          if [ "$found" -eq 0 ]; then
-            echo "❌ No seedsigner-luckfox-pico image artifacts found"
-            exit 1
+            if [ "$found_nand" -eq 0 ]; then
+              echo "❌ NAND build requested but no NAND artifacts found"
+              exit 1
+            fi
+          else
+            echo "Skipping NAND validation (NAND build not requested)"
           fi
 
       - name: List build artifacts
@@ -214,5 +238,6 @@ jobs:
             build-artifacts/seedsigner-luckfox-pico*.img
             build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
             build-artifacts/seedsigner-luckfox-pico*.tar.gz
+            build-artifacts/debug-*/**
           retention-days: 30
           if-no-files-found: warn

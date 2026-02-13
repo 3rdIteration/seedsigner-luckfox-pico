@@ -451,6 +451,65 @@ export_official_nand_image_dir() {
     print_success "Exported official SDK NAND image directory: $OUTPUT_DIR/$bundle_name"
 }
 
+
+emit_build_debug_artifacts() {
+    local board_profile="$1"
+    local boot_medium="$2"
+    local ts="$3"
+
+    local debug_dir="$OUTPUT_DIR/debug-${board_profile}-${boot_medium}-${ts}"
+    mkdir -p "$debug_dir"
+
+    local target_dir="$BUILDROOT_DIR/output/target"
+    if [[ -d "$target_dir" ]]; then
+        print_step "Capturing rootfs manifest (${board_profile}/${boot_medium})"
+        (
+            cd "$target_dir"
+            find . -type f -printf "%s %p\n" | sort -n
+        ) > "$debug_dir/rootfs_filelist.txt"
+
+        (
+            cd "$target_dir"
+            find . -printf "%M %u:%g %s %p\n" | sort
+        ) > "$debug_dir/rootfs_permissions_manifest.txt"
+
+        (
+            cd "$target_dir"
+            du -h --max-depth=3 . | sort -h
+        ) > "$debug_dir/rootfs_du.txt"
+    else
+        echo "target directory missing: $target_dir" > "$debug_dir/rootfs_filelist.txt"
+    fi
+
+    local image_dir="$LUCKFOX_SDK_DIR/output/image"
+    if [[ -d "$image_dir" ]]; then
+        print_step "Capturing image hashes (${board_profile}/${boot_medium})"
+        (
+            cd "$image_dir"
+            local files=(idblock.img uboot.img trust.img boot.img rootfs.img update.img env.img oem.img userdata.img)
+            for f in "${files[@]}"; do
+                [[ -f "$f" ]] || continue
+                sha256sum "$f"
+            done
+        ) > "$debug_dir/sha256sums.txt"
+
+        (
+            cd "$image_dir"
+            ls -lah
+        ) > "$debug_dir/image_dir_listing.txt"
+    fi
+
+    if command -v git >/dev/null 2>&1; then
+        {
+            git -C "$LUCKFOX_SDK_DIR" status --short || true
+            git -C "$SEEDSIGNER_OS_DIR" status --short || true
+            git -C "$SEEDSIGNER_CODE_DIR" status --short || true
+        } > "$debug_dir/git_status.txt"
+    fi
+
+    print_success "Debug artifacts captured under: $debug_dir"
+}
+
 ensure_buildroot_tree() {
     if [[ -d "$BUILDROOT_DIR" ]]; then
         return
@@ -558,6 +617,8 @@ CONFIGMENU
     elif [[ "$board_profile" == "max" ]]; then
         export LAST_MAX_BUILD_TS="$ts"
     fi
+
+    emit_build_debug_artifacts "$board_profile" "$boot_medium" "$ts"
 
     if [[ "$boot_medium" == "sd" ]]; then
         print_step "Creating Final SD Image (${board_profile})"
