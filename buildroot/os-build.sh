@@ -466,6 +466,13 @@ CONFIGMENU
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
+
+        # Ensure Buildroot always references the in-tree defconfig path (portable in CI + local)
+        sed -i 's|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG="$(TOPDIR)/configs/luckfox_pico_defconfig"|' "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        sed -i 's|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG="$(TOPDIR)/configs/luckfox_pico_defconfig"|' "$BUILDROOT_DIR/.config"
+
+        # Materialize the copied .config before SDK build steps so external defconfig is actually active
+        make -C "$BUILDROOT_DIR" olddefconfig
     else
         print_error "SeedSigner configuration file not found"
         exit 1
