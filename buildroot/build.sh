@@ -268,7 +268,12 @@ run_build() {
             fi
             docker run $docker_args "$IMAGE_NAME" "$container_mode"
             print_local_build_diagnostics "$volume_name" "$build_model"
-            run_local_rootfs_sanity_check "$abs_output_dir" "$build_nand"
+            if [[ "$build_nand" == "true" ]]; then
+                run_local_rootfs_sanity_check "$abs_output_dir" "$build_nand"
+            else
+                print_header "Local Rootfs UBI Sanity Check"
+                print_warning "Skipping UBI extraction sanity check (only enabled for NAND builds)"
+            fi
             print_success "Build completed! Artifacts are available in: $abs_output_dir"
             ;;
         "interactive")
