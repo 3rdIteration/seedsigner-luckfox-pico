@@ -330,6 +330,40 @@ apply_mini_cma_profile() {
     fi
 }
 
+capture_profile_debug_context() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    local report="$OUTPUT_DIR/profile-context-${board_profile}-${boot_medium}.txt"
+    mkdir -p "$OUTPUT_DIR"
+
+    {
+        echo "Profile debug context"
+        echo "board_profile=$board_profile"
+        echo "boot_medium=$boot_medium"
+        echo "BUILD_MODEL=${BUILD_MODEL:-}"
+        echo "BUILD_JOBS=${BUILD_JOBS:-}"
+        echo "ROOTFS_DIR=${ROOTFS_DIR:-}"
+        echo "BUILDROOT_DIR=${BUILDROOT_DIR:-}"
+        echo ""
+        echo "BoardConfig (.BoardConfig.mk excerpt):"
+        if [[ -f "$LUCKFOX_SDK_DIR/.BoardConfig.mk" ]]; then
+            grep -E '^(export )?(RK_|TARGET_|CHIP_|BOARD_)' "$LUCKFOX_SDK_DIR/.BoardConfig.mk" || true
+        else
+            echo "missing: $LUCKFOX_SDK_DIR/.BoardConfig.mk"
+        fi
+        echo ""
+        echo "Buildroot .config key lines:"
+        if [[ -f "$BUILDROOT_DIR/.config" ]]; then
+            grep -E '^(BR2_DEFCONFIG|BR2_ROOTFS_OVERLAY|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX)=' "$BUILDROOT_DIR/.config" || true
+        else
+            echo "missing: $BUILDROOT_DIR/.config"
+        fi
+    } > "$report"
+
+    print_success "Profile context report: $report"
+}
+
 resolve_rootfs_dir() {
     local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
     local matches=( $pattern )
@@ -485,6 +519,11 @@ emit_build_debug_artifacts() {
         cp -v "$cfg_report_src" "$debug_dir/buildroot_config_check.txt"
     fi
 
+    local profile_report_src="$OUTPUT_DIR/profile-context-${board_profile}-${boot_medium}.txt"
+    if [[ -f "$profile_report_src" ]]; then
+        cp -v "$profile_report_src" "$debug_dir/profile_context.txt"
+    fi
+
     local target_dir="$BUILDROOT_DIR/output/target"
     if [[ -d "$target_dir" ]]; then
         print_step "Capturing rootfs manifest (${board_profile}/${boot_medium})"
@@ -608,6 +647,8 @@ build_profile_artifacts() {
     # Some SDK clean paths may reset board context; force board selection again.
     select_board_profile "$board_profile" "$boot_medium"
 
+    capture_profile_debug_context "$board_profile" "$boot_medium"
+
     print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
     ensure_buildroot_tree
 
@@ -653,6 +694,7 @@ CONFIGMENU
         make -C "$BUILDROOT_DIR" olddefconfig
 
         validate_buildroot_defconfig_applied "$OUTPUT_DIR/buildroot-config-check-${board_profile}-${boot_medium}.txt"
+        capture_profile_debug_context "$board_profile" "$boot_medium"
     else
         print_error "SeedSigner configuration file not found"
         exit 1

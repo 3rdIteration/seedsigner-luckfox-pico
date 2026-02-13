@@ -181,6 +181,7 @@ run_build() {
                 exit 1
             fi
             docker run $docker_args "$IMAGE_NAME" "$container_mode"
+            run_rootfs_sanity_check "$abs_output_dir"
             print_success "Build completed! Artifacts are available in: $abs_output_dir"
             ;;
         "interactive")
@@ -198,6 +199,38 @@ run_build() {
             exit 1
             ;;
     esac
+}
+
+
+run_rootfs_sanity_check() {
+    local output_dir="$1"
+    local repo_root
+    repo_root=$(cd "$SCRIPT_DIR/.." && pwd)
+    local checker="$repo_root/.github/scripts/check_rootfs_ubi.py"
+
+    if [[ ! -f "$checker" ]]; then
+        print_warning "Rootfs sanity checker not found at: $checker"
+        return 0
+    fi
+
+    local rootfs_img=""
+    rootfs_img=$(find "$output_dir" -type f -name "rootfs.img" -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2-)
+
+    if [[ -z "$rootfs_img" ]]; then
+        print_warning "No rootfs.img found under output dir; skipping local rootfs sanity check"
+        return 0
+    fi
+
+    local sanity_out="$output_dir/rootfs_sanity_local"
+    mkdir -p "$sanity_out"
+
+    print_header "Running Local Rootfs UBI Sanity Check"
+    print_success "Using rootfs image: $rootfs_img"
+
+    python3 -m pip install --user ubi-reader
+    python3 "$checker" --rootfs-img "$rootfs_img" --outdir "$sanity_out" --workspace "$repo_root"
+
+    print_success "Rootfs sanity report written to: $sanity_out"
 }
 
 clean_environment() {
