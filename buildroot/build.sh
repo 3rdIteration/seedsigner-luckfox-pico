@@ -160,7 +160,7 @@ run_build() {
     fi
 
     docker_args=(
-        "${platform_args_arr[@]}"
+        "${platform_args_arr[@]+"${platform_args_arr[@]}"}"
         --name "$CONTAINER_NAME"
         --rm
         -v "$volume_name:/build/repos"
