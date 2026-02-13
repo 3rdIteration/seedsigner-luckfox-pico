@@ -161,7 +161,7 @@ export_variant_images() {
     local boot_medium="$2"
 
     local image_dir="$LUCKFOX_SDK_DIR/output/image"
-    local export_dir="$OUTPUT_DIR/${board_profile}-${boot_medium}-images"
+    local export_dir="$OUTPUT_DIR"
     mkdir -p "$export_dir"
 
     print_step "Exporting core image files (${board_profile}/${boot_medium})"
