@@ -15,12 +15,18 @@ on:
 
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        model: [mini, max]
     runs-on: ubuntu-latest
     timeout-minutes: 180  # 3 hours max
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -42,7 +48,7 @@ jobs:
         fi
         
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+        ./build.sh build $BUILD_ARGS --model ${{ matrix.model }} --microsd --nand --output ../build-artifacts
     
     - name: List build artifacts
       if: always()
@@ -98,7 +104,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: seedsigner-os-${{ github.run_number }}
+        name: seedsigner-os-${{ matrix.model }}-${{ github.run_number }}
         path: |
           build-artifacts/seedsigner-luckfox-pico*.img
           build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
