@@ -565,11 +565,45 @@ enforce_buildroot_defconfig() {
     # same generated .config across local and CI builds.
     make -C "$BUILDROOT_DIR" luckfox_pico_defconfig
 
+    local required_fragment="/build/configs/seedsigner_required.fragment"
+    if [[ ! -f "$required_fragment" ]]; then
+        print_error "Required config fragment missing: $required_fragment"
+        exit 1
+    fi
+
+    print_step "Merging required Buildroot fragment"
+    local merge_script=""
+    if [[ -x "$BUILDROOT_DIR/scripts/kconfig/merge_config.sh" ]]; then
+        merge_script="$BUILDROOT_DIR/scripts/kconfig/merge_config.sh"
+    elif [[ -x "$BUILDROOT_DIR/support/kconfig/merge_config.sh" ]]; then
+        merge_script="$BUILDROOT_DIR/support/kconfig/merge_config.sh"
+    fi
+
+    if [[ -n "$merge_script" ]]; then
+        (cd "$BUILDROOT_DIR" && "$merge_script" -m .config "$required_fragment")
+        make -C "$BUILDROOT_DIR" olddefconfig
+    else
+        cat "$required_fragment" >> "$BUILDROOT_DIR/.config"
+        make -C "$BUILDROOT_DIR" olddefconfig
+    fi
+
     # Record a few high-signal options in logs to make CI/local config drift obvious.
     local cfg="$BUILDROOT_DIR/.config"
     if [[ -f "$cfg" ]]; then
         print_info "Buildroot config sanity snapshot:"
-        grep -E '^(BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX_LIBBLKID=|BR2_TARGET_GENERIC_HOSTNAME=)' "$cfg" || true
+        grep -E '^(BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX=|BR2_PACKAGE_UTIL_LINUX_LIBBLKID=|BR2_ROOTFS_OVERLAY=|BR2_TARGET_GENERIC_HOSTNAME=)' "$cfg" || true
+
+        local overlay_line
+        overlay_line=$(grep -E '^BR2_ROOTFS_OVERLAY=' "$cfg" || true)
+        if [[ -z "$overlay_line" || "$overlay_line" == 'BR2_ROOTFS_OVERLAY=""' ]]; then
+            print_error "BR2_ROOTFS_OVERLAY is empty after fragment merge"
+            exit 1
+        fi
+
+        grep -q '^BR2_PACKAGE_EUDEV=y' "$cfg" || { print_error "BR2_PACKAGE_EUDEV is not enabled"; exit 1; }
+        grep -q '^BR2_PACKAGE_KMOD=y' "$cfg" || { print_error "BR2_PACKAGE_KMOD is not enabled"; exit 1; }
+        grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$cfg" || { print_error "BR2_PACKAGE_UTIL_LINUX is not enabled"; exit 1; }
+        grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$cfg" || { print_error "BR2_PACKAGE_UTIL_LINUX_LIBBLKID is not enabled"; exit 1; }
     else
         print_error "Expected Buildroot .config missing after defconfig apply: $cfg"
         exit 1

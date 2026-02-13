@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder auto reboot hook for SeedSigner
+exit 0
