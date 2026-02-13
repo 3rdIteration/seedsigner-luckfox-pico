@@ -1,0 +1,3 @@
+#!/bin/sh
+# placeholder auto reboot hook for CI/local parity
+exit 0

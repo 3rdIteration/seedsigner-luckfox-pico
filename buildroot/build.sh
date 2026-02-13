@@ -134,12 +134,18 @@ run_build() {
         print_success "Using $build_jobs parallel build jobs"
     fi
     
+    # Mount repo workspace so container can consume CI-managed scripts/configs and export debug data.
+    local workspace_root
+    workspace_root=$(realpath "$SCRIPT_DIR/..")
+
     # Docker run arguments with persistent volume
     local docker_args="$PLATFORM_ARGS 
                        --name $CONTAINER_NAME 
                        --rm
                        -v $volume_name:/build/repos
                        -v $abs_output_dir:/build/output
+                       -v $workspace_root:/workspace
+                       -e WORKSPACE_ROOT=/workspace
                        $env_args"
     
     case "$mode" in

@@ -83,14 +83,14 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
-        ./.github/scripts/collect_debug.sh "${{ matrix.profile }}" "${{ matrix.medium }}" "$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug"
+        ./.github/scripts/collect_debug.sh "${{ matrix.profile }}" "${{ matrix.medium }}" "$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
 
     - name: Print debug quick summary
       if: always() && steps.select_variant.outputs.run_variant == 'true'
       run: |
         set -euo pipefail
-        DBG="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug"
-        echo "Debug dir: $DBG"
+        DBG="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+        echo "Artifacts/debug dir: $DBG"
         test -f "$DBG/selected_rootfs.txt" && cat "$DBG/selected_rootfs.txt" || true
         test -f "$DBG/buildroot.config.grep.txt" && cat "$DBG/buildroot.config.grep.txt" || true
         test -f "$DBG/git.txt" && cat "$DBG/git.txt" || true
@@ -99,7 +99,7 @@ jobs:
       if: steps.select_variant.outputs.run_variant == 'true' && matrix.medium == 'nand'
       run: |
         set -euo pipefail
-        CFG_GREP="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug/buildroot.config.grep.txt"
+        CFG_GREP="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/buildroot.config.grep.txt"
         if [ ! -f "$CFG_GREP" ]; then
           echo "ERROR: missing $CFG_GREP"
           exit 1
@@ -123,7 +123,7 @@ jobs:
         SANITY_DIR="$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}"
         mkdir -p "$SANITY_DIR"
 
-        ROOTFS_IMG="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug/rootfs.img"
+        ROOTFS_IMG="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/rootfs.img"
         if [ ! -f "$ROOTFS_IMG" ]; then
           ROOTFS_IMG=$(find "$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "rootfs.img" | head -n 1 || true)
         fi

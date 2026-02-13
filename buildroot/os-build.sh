@@ -552,6 +552,16 @@ merge_required_buildroot_config() {
     make -C "$BUILDROOT_DIR" olddefconfig
 }
 
+run_workspace_buildroot_apply_script() {
+    local script_path="/workspace/.github/scripts/apply_buildroot_fragment_and_overlay.sh"
+    if [[ -x "$script_path" ]]; then
+        print_step "Applying Buildroot fragment/overlay from workspace script"
+        WORKSPACE_ROOT="/workspace" "$script_path"
+        return 0
+    fi
+    return 1
+}
+
 fail_fast_validate_buildroot_config() {
     local cfg="$BUILDROOT_DIR/.config"
 
@@ -633,14 +643,16 @@ CONFIGMENU
         # Ensure Buildroot always references the in-tree defconfig path (portable in CI + local)
         sed -i 's|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG="$(TOPDIR)/configs/luckfox_pico_defconfig"|' "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
 
-        (cd "$BUILDROOT_DIR" && make luckfox_pico_defconfig)
+        if ! run_workspace_buildroot_apply_script; then
+            (cd "$BUILDROOT_DIR" && make luckfox_pico_defconfig)
 
-        local overlay_path
-        overlay_path=$(resolve_overlay_path)
-        print_info "Using BR2_ROOTFS_OVERLAY=${overlay_path}"
+            local overlay_path
+            overlay_path=$(resolve_overlay_path)
+            print_info "Using BR2_ROOTFS_OVERLAY=${overlay_path}"
 
-        merge_required_buildroot_config "$overlay_path"
-        fail_fast_validate_buildroot_config
+            merge_required_buildroot_config "$overlay_path"
+            fail_fast_validate_buildroot_config
+        fi
     else
         print_error "SeedSigner configuration file not found"
         exit 1

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SDK_ROOT="/build/repos/luckfox-pico"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-/workspace}"
+FRAGMENT_SRC="${WORKSPACE_ROOT}/buildroot/configs/seedsigner_required.fragment"
+OVERLAY_SRC="${WORKSPACE_ROOT}/buildroot/overlay"
+
+BR_DIR=$(find "$SDK_ROOT" -type d -path "*/sysdrv/source/buildroot/buildroot-*" 2>/dev/null | head -n1 || true)
+if [[ -z "$BR_DIR" || ! -d "$BR_DIR" ]]; then
+  echo "ERROR: could not find Buildroot dir under $SDK_ROOT" >&2
+  exit 90
+fi
+
+echo "Using BR_DIR=$BR_DIR"
+cd "$BR_DIR"
+
+if [[ ! -f "$FRAGMENT_SRC" ]]; then
+  echo "ERROR: missing fragment at $FRAGMENT_SRC" >&2
+  exit 91
+fi
+if [[ ! -d "$OVERLAY_SRC" ]]; then
+  echo "ERROR: missing overlay dir at $OVERLAY_SRC" >&2
+  exit 92
+fi
+
+make luckfox_pico_defconfig
+
+cp "$FRAGMENT_SRC" "$BR_DIR/seedsigner_required.fragment"
+rm -rf "$BR_DIR/seedsigner_overlay"
+mkdir -p "$BR_DIR/seedsigner_overlay"
+cp -a "$OVERLAY_SRC"/. "$BR_DIR/seedsigner_overlay/"
+find "$BR_DIR/seedsigner_overlay/etc/init.d" -type f -name 'S*' -exec chmod 0755 {} + 2>/dev/null || true
+
+if [[ -f "$BR_DIR/scripts/kconfig/merge_config.sh" ]]; then
+  "$BR_DIR/scripts/kconfig/merge_config.sh" -m "$BR_DIR/.config" "$BR_DIR/seedsigner_required.fragment"
+else
+  cat "$BR_DIR/seedsigner_required.fragment" >> "$BR_DIR/.config"
+fi
+
+sed -i '/^BR2_ROOTFS_OVERLAY=/d' "$BR_DIR/.config"
+echo "BR2_ROOTFS_OVERLAY=\"$BR_DIR/seedsigner_overlay\"" >> "$BR_DIR/.config"
+
+make olddefconfig
+
+grep -q '^BR2_PACKAGE_EUDEV=y' "$BR_DIR/.config" || { echo 'EUDEV not enabled'; exit 101; }
+grep -q '^BR2_PACKAGE_KMOD=y' "$BR_DIR/.config" || { echo 'KMOD not enabled'; exit 102; }
+grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$BR_DIR/.config" || { echo 'util-linux not enabled'; exit 103; }
+grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$BR_DIR/.config" || { echo 'libblkid not enabled'; exit 104; }
+grep -q '^BR2_ROOTFS_OVERLAY="' "$BR_DIR/.config" || { echo 'overlay not set'; exit 105; }
+
+echo "=== Required Buildroot config summary ==="
+grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_ROOTFS_OVERLAY)=' "$BR_DIR/.config"

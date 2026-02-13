@@ -1,0 +1,3 @@
+#!/bin/sh
+# placeholder usbdevice hook for CI/local parity
+exit 0
