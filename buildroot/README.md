@@ -70,6 +70,16 @@ Override with `--jobs N` option or `BUILD_JOBS` environment variable.
 
 ARM64 hosts use x86_64 emulation which significantly increases build time.
 
+### Buildroot Configuration
+
+The system uses a custom buildroot defconfig (`configs/luckfox_pico_defconfig`) with the following key features:
+
+- **Device Management**: Uses `eudev` for dynamic device node creation and hotplug support
+- **Kernel Modules**: Includes `kmod` tools for kernel module management
+- **Block Device Support**: Includes `libblkid`, `libmount`, and `libuuid` from util-linux
+
+These settings ensure proper hardware detection and device node management, which is critical for camera and display functionality.
+
 ## Troubleshooting
 
 For build failures, use interactive mode to debug individual steps:
