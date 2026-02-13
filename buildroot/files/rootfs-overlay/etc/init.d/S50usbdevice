@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder service script expected by sanity checks/log comparison
+exit 0

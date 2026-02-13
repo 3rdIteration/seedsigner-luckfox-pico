@@ -47,11 +47,17 @@ print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 apply_buildroot_defconfig() {
     local source_defconfig="/build/configs/luckfox_pico_defconfig"
     local target_defconfig="$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+    local overlay_dir="/build/files/rootfs-overlay"
+    local required_fragment="/build/configs/seedsigner_required.fragment"
     local required_symbols=(
         "BR2_PACKAGE_PYTHON_PYZBAR=y"
         "BR2_PACKAGE_PYTHON_EMBIT=y"
         "BR2_PACKAGE_ZBAR=y"
         "BR2_PACKAGE_LIBCAMERA_APPS=y"
+        "BR2_PACKAGE_EUDEV=y"
+        "BR2_PACKAGE_KMOD=y"
+        "BR2_PACKAGE_UTIL_LINUX=y"
+        "BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y"
     )
 
     print_step "Applying SeedSigner Configuration"
@@ -60,24 +66,61 @@ apply_buildroot_defconfig() {
         exit 1
     fi
 
+    if [[ ! -d "$overlay_dir" ]]; then
+        print_error "Required rootfs overlay directory missing: $overlay_dir"
+        exit 1
+    fi
+
+    if [[ ! -f "$required_fragment" ]]; then
+        print_error "Required Buildroot fragment missing: $required_fragment"
+        exit 1
+    fi
+
     cp -v "$source_defconfig" "$target_defconfig"
 
     # Ensure BR2_DEFCONFIG points to the in-tree config path used by this container build.
     sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$target_defconfig\"|" "$target_defconfig"
 
-    # Force buildroot to materialize .config from our external defconfig before SDK rootfs build.
+    # Materialize .config from defconfig first.
     make -C "$BUILDROOT_DIR" luckfox_pico_defconfig
-    make -C "$BUILDROOT_DIR" olddefconfig
+
+    # Force merge required CI/local deterministic symbols.
+    if [[ -x "$BUILDROOT_DIR/support/kconfig/merge_config.sh" ]]; then
+        (cd "$BUILDROOT_DIR" && ./support/kconfig/merge_config.sh -m .config "$required_fragment")
+        make -C "$BUILDROOT_DIR" olddefconfig
+    else
+        cat "$required_fragment" >> "$BUILDROOT_DIR/.config"
+        make -C "$BUILDROOT_DIR" olddefconfig
+    fi
 
     for symbol in "${required_symbols[@]}"; do
         if ! grep -q "^${symbol}$" "$BUILDROOT_DIR/.config"; then
-            print_error "Required defconfig symbol missing after apply: ${symbol}"
+            print_error "Required config symbol missing after merge: ${symbol}"
             exit 1
         fi
     done
 
-    print_success "SeedSigner buildroot defconfig applied and verified"
+    local overlay_value
+    overlay_value=$(grep '^BR2_ROOTFS_OVERLAY=' "$BUILDROOT_DIR/.config" | head -n1 | cut -d'=' -f2-)
+    if [[ -z "$overlay_value" || "$overlay_value" == '""' ]]; then
+        print_error "BR2_ROOTFS_OVERLAY is empty in final Buildroot .config"
+        exit 1
+    fi
+
+    if ! grep -q '^BR2_ROOTFS_OVERLAY="/build/files/rootfs-overlay"$' "$BUILDROOT_DIR/.config"; then
+        print_error "BR2_ROOTFS_OVERLAY is not set to /build/files/rootfs-overlay"
+        grep '^BR2_ROOTFS_OVERLAY=' "$BUILDROOT_DIR/.config" || true
+        exit 1
+    fi
+
+    if [[ ! -f "$overlay_dir/etc/init.d/S10udev" ]]; then
+        print_error "Required overlay init script missing: $overlay_dir/etc/init.d/S10udev"
+        exit 1
+    fi
+
+    print_success "SeedSigner buildroot defconfig + required fragment applied and verified"
 }
+
 
 print_build_diagnostics() {
     local board_profile="$1"
@@ -258,6 +301,7 @@ collect_debug_artifacts() {
 
 check_rootfs_sanity() {
     local board_profile="$1"
+    local boot_medium="$2"
 
     print_step "Running RootFS Sanity Checks (${board_profile})"
     if [[ ! -d "$ROOTFS_DIR" ]]; then
@@ -265,7 +309,18 @@ check_rootfs_sanity() {
         exit 1
     fi
 
+    local sanity_dir="$OUTPUT_DIR/rootfs_sanity_local/${board_profile}-${boot_medium}"
+    local sanity_log="$sanity_dir/check.log"
+    local sanity_summary="$sanity_dir/summary.txt"
+    mkdir -p "$sanity_dir"
+    : > "$sanity_log"
+
     local failed=0
+
+    log_sanity() {
+        echo "$1"
+        echo "$1" >> "$sanity_log"
+    }
 
     check_any_exists() {
         local name="$1"
@@ -278,9 +333,9 @@ check_rootfs_sanity() {
             fi
         done
         if [[ -n "$hit" ]]; then
-            echo "[OK] $name -> $hit"
+            log_sanity "[OK] $name -> $hit"
         else
-            echo "[FAIL] $name (checked: $*)"
+            log_sanity "[FAIL] $name (checked: $*)"
             failed=1
         fi
     }
@@ -296,9 +351,9 @@ check_rootfs_sanity() {
             fi
         done
         if [[ -n "$hit" ]]; then
-            echo "[OK] $name -> $hit (executable)"
+            log_sanity "[OK] $name -> $hit (executable)"
         else
-            echo "[FAIL] $name executable missing (checked: $*)"
+            log_sanity "[FAIL] $name executable missing (checked: $*)"
             failed=1
         fi
     }
@@ -311,22 +366,30 @@ check_rootfs_sanity() {
     check_exec_exists "sbin_init_executable" "sbin/init"
     check_exec_exists "busybox_executable" "bin/busybox" "usr/bin/busybox" "sbin/busybox"
 
-    echo ""
-    echo "Optional presence report:"
+    log_sanity ""
+    log_sanity "Optional presence report:"
     for rel in "etc/init.d/S50usbdevice" "etc/init.d/S99_auto_reboot" "linuxrc" "rockchip_test"; do
         if [[ -e "$ROOTFS_DIR/$rel" ]]; then
-            echo "  present: $rel"
+            log_sanity "  present: $rel"
         else
-            echo "  missing: $rel"
+            log_sanity "  missing: $rel"
         fi
     done
 
+    {
+        echo "profile=$board_profile"
+        echo "medium=$boot_medium"
+        echo "rootfs_dir=$ROOTFS_DIR"
+        echo "status=$([ "$failed" -ne 0 ] && echo fail || echo pass)"
+    } > "$sanity_summary"
+    cat "$sanity_log" >> "$sanity_summary"
+
     if [[ "$failed" -ne 0 ]]; then
-        print_error "RootFS sanity checks failed for profile: $board_profile"
+        print_error "RootFS sanity checks failed for profile: $board_profile ($boot_medium)"
         exit 1
     fi
 
-    print_success "RootFS sanity checks passed for profile: $board_profile"
+    print_success "RootFS sanity checks passed for profile: $board_profile ($boot_medium)"
 }
 
 show_usage() {
@@ -775,7 +838,7 @@ CONFIGMENU
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
 
-    check_rootfs_sanity "$board_profile"
+    check_rootfs_sanity "$board_profile" "$boot_medium"
     collect_debug_artifacts "$board_profile" "$boot_medium" "prepackage"
 
     print_step "Packaging Firmware"
