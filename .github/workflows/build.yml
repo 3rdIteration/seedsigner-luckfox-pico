@@ -33,12 +33,6 @@ jobs:
         profile: [mini, max]
         medium: [sd, nand]
 
-    # For workflow_dispatch, allow selecting medium (default nand).
-    if: |
-      github.event_name != 'workflow_dispatch' ||
-      github.event.inputs.medium == 'all' ||
-      github.event.inputs.medium == matrix.medium
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
