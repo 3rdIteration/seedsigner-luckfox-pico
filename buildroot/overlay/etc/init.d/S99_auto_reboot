@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder auto reboot hook for parity with local images
+exit 0

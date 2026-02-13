@@ -1,0 +1,30 @@
+#!/bin/sh
+# Start eudev for dynamic device management
+
+case "$1" in
+  start)
+    echo "Starting udev..."
+    [ -x /sbin/udevd ] && /sbin/udevd --daemon || [ -x /lib/systemd/systemd-udevd ] && /lib/systemd/systemd-udevd --daemon
+    [ -x /bin/udevadm ] && UDEVADM=/bin/udevadm || UDEVADM=/sbin/udevadm
+    if [ -x "$UDEVADM" ]; then
+      "$UDEVADM" trigger --action=add --type=subsystems
+      "$UDEVADM" trigger --action=add --type=devices
+      "$UDEVADM" settle || true
+    fi
+    ;;
+  stop)
+    echo "Stopping udev..."
+    killall udevd 2>/dev/null || true
+    killall systemd-udevd 2>/dev/null || true
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+
+exit 0

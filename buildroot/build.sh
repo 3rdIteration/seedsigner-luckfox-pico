@@ -240,6 +240,8 @@ run_build() {
                        --rm
                        -v $volume_name:/build/repos
                        -v $abs_output_dir:/build/output
+                       -v $SCRIPT_DIR/..:/workspace
+                       -e WORKSPACE_ROOT=/workspace
                        $env_args"
     
     case "$mode" in

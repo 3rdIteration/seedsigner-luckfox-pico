@@ -1,0 +1,2 @@
+# SeedSigner USB gadget helper hook point (kept for CI/local parity)
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", TAG+="systemd"

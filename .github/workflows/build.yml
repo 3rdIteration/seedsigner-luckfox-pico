@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: [mini, max]
-        medium: ${{ fromJson(github.event_name == 'workflow_dispatch' && github.event.inputs.medium != 'all' && format('["{0}"]', github.event.inputs.medium) || '["sd","nand"]') }}
+        medium: ${{ fromJson(github.event_name == 'workflow_dispatch' && github.event.inputs.medium != 'all' && format('["{0}"]', github.event.inputs.medium) || '["nand","sd"]') }}
 
     steps:
       - name: Checkout repository
@@ -104,17 +104,15 @@ jobs:
           python3 -m pip install --user ubi-reader
 
           VARIANT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
-          ROOTFS_IMG=""
-          if [ -f "$VARIANT_DIR/selected_rootfs_img.txt" ]; then
-            ROOTFS_IMG=$(cat "$VARIANT_DIR/selected_rootfs_img.txt" | head -n1)
+          ROOTFS_IMG="$VARIANT_DIR/rootfs.img"
+          if [ -z "$ROOTFS_IMG" ] || [ ! -f "$ROOTFS_IMG" ]; then
+            echo "ERROR: Exported NAND rootfs image missing at $ROOTFS_IMG"
+            exit 1
           fi
 
-          if [ -z "$ROOTFS_IMG" ] || [ ! -f "$ROOTFS_IMG" ]; then
-            ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name rootfs.img -print0 | xargs -0 -r file | grep -i 'UBI image' | cut -d: -f1 | head -n1 || true)
-          fi
-
-          if [ -z "$ROOTFS_IMG" ] || [ ! -f "$ROOTFS_IMG" ]; then
-            echo "ERROR: No UBI rootfs.img found for NAND sanity check"
+          if ! file "$ROOTFS_IMG" | grep -qi 'UBI image'; then
+            echo "ERROR: Exported NAND rootfs is not a UBI image: $ROOTFS_IMG"
+            file "$ROOTFS_IMG" || true
             exit 1
           fi
 

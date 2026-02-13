@@ -110,7 +110,16 @@ if [ -z "$SELECTED_ROOTFS" ]; then
   SELECTED_ROOTFS=$(grep "/rootfs.img$" "$ARTIFACT_DIR/image.paths.txt" | head -n1 || true)
 fi
 
+if [ "$MEDIUM" = "nand" ] && { [ -z "$SELECTED_ROOTFS" ] || ! file "$SELECTED_ROOTFS" | grep -qi "UBI image"; }; then
+  echo "ERROR: No UBI rootfs.img produced for NAND build" > "$ARTIFACT_DIR/selected_rootfs_report.txt"
+  exit 120
+fi
+
 echo "$SELECTED_ROOTFS" > "$ARTIFACT_DIR/selected_rootfs_img.txt"
+
+if [ -n "$SELECTED_ROOTFS" ] && [ -f "$SELECTED_ROOTFS" ]; then
+  cp -f "$SELECTED_ROOTFS" "$ARTIFACT_DIR/rootfs.img"
+fi
 
 {
   echo "Selected rootfs image: ${SELECTED_ROOTFS:-<none>}"

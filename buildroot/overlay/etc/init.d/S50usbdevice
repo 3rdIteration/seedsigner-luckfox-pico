@@ -1,0 +1,3 @@
+#!/bin/sh
+# Placeholder usbdevice init hook for parity with local images
+exit 0
