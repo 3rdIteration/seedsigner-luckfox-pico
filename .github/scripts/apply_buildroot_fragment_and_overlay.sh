@@ -17,7 +17,8 @@ if [[ ! -d "$OVERLAY_SRC" ]]; then
   exit 91
 fi
 
-BR_DIR=$(find "$SDK_ROOT" -type d -path '*/sysdrv/source/buildroot/buildroot-*' | sort | head -n1)
+mapfile -t BUILDROOT_DIRS < <(find "$SDK_ROOT" -type d -path '*/sysdrv/source/buildroot/buildroot-*' 2>/dev/null | sort)
+BR_DIR="${BUILDROOT_DIRS[0]:-}"
 if [[ -z "$BR_DIR" || ! -d "$BR_DIR" ]]; then
   echo "Unable to locate Buildroot dir under $SDK_ROOT"
   exit 92
