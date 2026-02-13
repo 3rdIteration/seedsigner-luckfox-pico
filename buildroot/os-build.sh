@@ -18,6 +18,9 @@ export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
 export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
+export LUCKFOX_REF="${LUCKFOX_REF:-}"
+export SEEDSIGNER_REF="${SEEDSIGNER_REF:-}"
+export SEEDSIGNER_OS_REF="${SEEDSIGNER_OS_REF:-}"
 
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"
@@ -109,6 +112,61 @@ clone_repositories() {
     echo "  Total: $(du -sh . 2>/dev/null | cut -f1 || echo 'unknown')"
     
     print_success "All repositories cloned successfully"
+}
+
+checkout_repo_ref() {
+    local repo_dir="$1"
+    local repo_name="$2"
+    local repo_ref="$3"
+
+    if [[ -z "$repo_ref" ]]; then
+        return
+    fi
+
+    print_info "Pinning $repo_name to ref: $repo_ref"
+    (
+        cd "$repo_dir"
+        git fetch --depth=1 origin "$repo_ref"
+        git checkout --detach FETCH_HEAD
+    )
+}
+
+pin_repository_refs() {
+    print_step "Applying Optional Repository Ref Pins"
+
+    checkout_repo_ref "$LUCKFOX_SDK_DIR" "luckfox-pico" "$LUCKFOX_REF"
+    checkout_repo_ref "$SEEDSIGNER_CODE_DIR" "seedsigner" "$SEEDSIGNER_REF"
+    checkout_repo_ref "$SEEDSIGNER_OS_DIR" "seedsigner-os" "$SEEDSIGNER_OS_REF"
+
+    print_success "Repository pin step complete"
+}
+
+write_build_manifest() {
+    print_step "Writing Build Source Manifest"
+
+    mkdir -p "$OUTPUT_DIR"
+    local manifest_path="$OUTPUT_DIR/build-source-manifest.txt"
+
+    {
+        echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "BUILD_MODEL: $BUILD_MODEL"
+        echo "MINI_CMA_SIZE: $MINI_CMA_SIZE"
+        echo ""
+
+        for repo_dir in "$LUCKFOX_SDK_DIR" "$SEEDSIGNER_CODE_DIR" "$SEEDSIGNER_OS_DIR"; do
+            if [[ -d "$repo_dir/.git" ]]; then
+                repo_name="$(basename "$repo_dir")"
+                echo "[$repo_name]"
+                echo "remote: $(git -C "$repo_dir" remote get-url origin)"
+                echo "commit: $(git -C "$repo_dir" rev-parse HEAD)"
+                echo "branch: $(git -C "$repo_dir" branch --show-current || true)"
+                echo "describe: $(git -C "$repo_dir" describe --always --dirty --tags 2>/dev/null || true)"
+                echo ""
+            fi
+        done
+    } > "$manifest_path"
+
+    print_info "Wrote source manifest: $manifest_path"
 }
 
 validate_environment() {
@@ -558,7 +616,9 @@ run_automated_build() {
     echo "   Output Directory: $OUTPUT_DIR"
 
     clone_repositories
+    pin_repository_refs
     validate_environment
+    write_build_manifest
     setup_sdk_environment
 
     mkdir -p "$OUTPUT_DIR"
@@ -597,7 +657,9 @@ start_interactive_mode() {
     print_step "Starting Interactive Mode"
     
     clone_repositories
+    pin_repository_refs
     validate_environment
+    write_build_manifest
     setup_sdk_environment
     
     print_success "Environment ready!"
@@ -642,6 +704,8 @@ main() {
         "clone-only")
             print_info "Cloning repositories only..."
             clone_repositories
+            pin_repository_refs
+            write_build_manifest
             print_success "Repositories cloned. Container exiting."
             ;;
         "help"|"-h"|"--help")

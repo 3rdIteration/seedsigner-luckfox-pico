@@ -32,6 +32,21 @@ on:
         required: false
         default: false
         type: boolean
+      luckfox_ref:
+        description: 'Optional luckfox-pico git ref (branch/tag/commit)'
+        required: false
+        default: ''
+        type: string
+      seedsigner_ref:
+        description: 'Optional seedsigner git ref (branch/tag/commit)'
+        required: false
+        default: ''
+        type: string
+      seedsigner_os_ref:
+        description: 'Optional seedsigner-os git ref (branch/tag/commit)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build:
@@ -105,6 +120,13 @@ jobs:
         echo "Selected build types: microsd=$BUILD_MICROSD nand=$BUILD_NAND"
         echo "Selected hardware targets: mini=$BUILD_MINI max=$BUILD_MAX (model=$BUILD_MODEL)"
         echo "Equivalent local command: ./build.sh build $BUILD_ARGS --model $BUILD_MODEL"
+
+        # Optional source pinning refs (useful for CI/local parity)
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          [ -n "${{ github.event.inputs.luckfox_ref }}" ] && export LUCKFOX_REF="${{ github.event.inputs.luckfox_ref }}"
+          [ -n "${{ github.event.inputs.seedsigner_ref }}" ] && export SEEDSIGNER_REF="${{ github.event.inputs.seedsigner_ref }}"
+          [ -n "${{ github.event.inputs.seedsigner_os_ref }}" ] && export SEEDSIGNER_OS_REF="${{ github.event.inputs.seedsigner_os_ref }}"
+        fi
 
         # Run the build with artifact output to workspace
         ./build.sh build $BUILD_ARGS --model "$BUILD_MODEL" --output ../build-artifacts
@@ -180,6 +202,7 @@ jobs:
           build-artifacts/seedsigner-luckfox-pico-*-nand-files-*
           build-artifacts/seedsigner-luckfox-pico*.tar.gz
           build-artifacts/SHA256SUMS.txt
+          build-artifacts/build-source-manifest.txt
         retention-days: 30
         if-no-files-found: warn
     
@@ -229,6 +252,14 @@ jobs:
             echo "### 🔐 SHA256 Checksums:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             cat build-artifacts/SHA256SUMS.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -f build-artifacts/build-source-manifest.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 🧬 Source Manifest:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat build-artifacts/build-source-manifest.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
         else
