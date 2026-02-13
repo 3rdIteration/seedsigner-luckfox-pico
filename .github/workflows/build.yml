@@ -27,7 +27,6 @@ jobs:
     name: build-${{ matrix.profile }}-${{ matrix.medium }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
-    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium }}
     strategy:
       fail-fast: false
       matrix:
@@ -47,6 +46,7 @@ jobs:
           ./build.sh status
 
       - name: Build variant
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium }}
         env:
           FORCE_REBUILDROOT_CONFIG: "1"
           PROFILE: ${{ matrix.profile }}
@@ -70,7 +70,7 @@ jobs:
           fi
 
       - name: Post-build workspace debug
-        if: always()
+        if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) }}
         env:
           PROFILE: ${{ matrix.profile }}
           MEDIUM: ${{ matrix.medium }}
@@ -99,7 +99,7 @@ jobs:
           } > "$VARIANT_DIR/actions.git.txt"
 
       - name: Locate NAND rootfs image
-        if: ${{ matrix.medium == 'nand' }}
+        if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) && matrix.medium == 'nand' }}
         env:
           PROFILE: ${{ matrix.profile }}
           MEDIUM: ${{ matrix.medium }}
@@ -132,11 +132,11 @@ jobs:
           echo "ROOTFS_IMG=$ROOTFS_IMG" >> "$GITHUB_ENV"
 
       - name: Install ubi-reader
-        if: ${{ matrix.medium == 'nand' }}
+        if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) && matrix.medium == 'nand' }}
         run: python3 -m pip install --user ubi-reader
 
       - name: Rootfs UBI sanity check
-        if: ${{ matrix.medium == 'nand' }}
+        if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) && matrix.medium == 'nand' }}
         env:
           PROFILE: ${{ matrix.profile }}
           MEDIUM: ${{ matrix.medium }}
