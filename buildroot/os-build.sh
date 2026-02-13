@@ -585,7 +585,11 @@ CONFIGMENU
     ts=$(date +%Y%m%d_%H%M%S)
     print_build_diagnostics "$board_profile" "$boot_medium"
 
-    run_rootfs_sanity_check "$board_profile" "$boot_medium" "$ts"
+    if [[ "$boot_medium" == "nand" ]]; then
+        run_rootfs_sanity_check "$board_profile" "$boot_medium" "$ts"
+    else
+        print_info "Skipping rootfs UBI sanity check for non-NAND build: ${board_profile}/${boot_medium}"
+    fi
 
     cd "$LUCKFOX_SDK_DIR/output/image"
     export LAST_PROFILE_BUILD_TS="$ts"

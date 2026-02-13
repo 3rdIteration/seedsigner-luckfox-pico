@@ -87,16 +87,24 @@ jobs:
       run: |
         python3 -m pip install --user ubi-reader
 
-    - name: Rootfs UBI sanity check
+    - name: Rootfs UBI sanity check (NAND only)
       run: |
         set -euo pipefail
 
-        ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
+        ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | grep -Ei 'nand|SPI_NAND|IPC_SPI_NAND' | head -n 1 || true)
+        if [ -z "$ROOTFS_IMG" ]; then
+          ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1 || true)
+        fi
         echo "ROOTFS_IMG=$ROOTFS_IMG"
 
         if [ -z "$ROOTFS_IMG" ]; then
           echo "ERROR: Could not find rootfs.img under workspace"
           exit 1
+        fi
+
+        if ! find "$GITHUB_WORKSPACE/build-artifacts" -type f \( -name '*nand*' -o -name '*SPI_NAND*' \) 2>/dev/null | head -n 1 | grep -q .; then
+          echo "No NAND artifacts detected; skipping UBI sanity check for this run."
+          exit 0
         fi
 
         python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$GITHUB_WORKSPACE/rootfs_sanity" --workspace "$GITHUB_WORKSPACE"
