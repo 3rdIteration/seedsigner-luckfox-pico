@@ -129,6 +129,29 @@ run_rootfs_sanity_check() {
     print_success "Rootfs sanity check passed: $report_dir"
 }
 
+collect_debug_bundle() {
+    local board_profile="$1"
+    local boot_medium="$2"
+    local ts="$3"
+    local collector_script="/build/scripts/collect_debug.sh"
+
+    print_step "Collecting debug bundle (${board_profile}/${boot_medium})"
+
+    if [[ ! -x "$collector_script" ]]; then
+        print_error "Debug collector script missing or not executable: $collector_script"
+        exit 1
+    fi
+
+    "$collector_script" \
+        "$board_profile" \
+        "$boot_medium" \
+        "$ts" \
+        "$OUTPUT_DIR" \
+        "$LUCKFOX_SDK_DIR" \
+        "$SEEDSIGNER_LUCKFOX_DIR" \
+        "$ROOTFS_DIR"
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -677,6 +700,7 @@ CONFIGMENU
         export_official_nand_image_dir "$board_profile" "$ts"
     fi
 
+    collect_debug_bundle "$board_profile" "$boot_medium" "$ts"
     run_rootfs_sanity_check "$board_profile" "$boot_medium" "$ts"
 
     cd "$LUCKFOX_SDK_DIR"
