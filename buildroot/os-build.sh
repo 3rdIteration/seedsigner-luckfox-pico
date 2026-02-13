@@ -895,7 +895,8 @@ run_automated_build() {
     if [[ "$BUILD_MODEL" == "both" ]]; then
         print_warning "Building both profiles (mini and max) to single output directory"
         print_warning "Later profile builds will overwrite earlier profile's core image files"
-        print_warning "For production: use separate output directories or build profiles individually"
+        print_warning "To avoid overwrites: build profiles separately with --model mini or --model max"
+        print_warning "Or use GitHub Actions workflow which builds each profile to isolated directories"
     fi
 
     clone_repositories
