@@ -66,6 +66,57 @@ jobs:
           # Run the build with artifact output to workspace
           ./build.sh build $BUILD_ARGS --microsd --nand --model ${{ matrix.model }} --output ../build-artifacts/${{ matrix.model }}
 
+      - name: Debug Buildroot and repo state before rootfs sanity check
+        if: always()
+        run: |
+          echo "=== BR2-related environment variables ==="
+          env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
+
+          echo ""
+          echo "=== Buildroot .config candidates ==="
+          CONFIGS=$(find "$GITHUB_WORKSPACE" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null || true)
+          if [ -n "$CONFIGS" ]; then
+            echo "$CONFIGS"
+          else
+            echo "No Buildroot .config files found with quick patterns"
+          fi
+
+          echo ""
+          echo "=== Key package lines from Buildroot configs ==="
+          for f in $CONFIGS; do
+            echo "=== $f ==="
+            grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$f" || true
+          done
+
+          echo ""
+          echo "=== Git SHAs ==="
+          git rev-parse HEAD || true
+          (cd "$GITHUB_WORKSPACE/buildroot" && git rev-parse HEAD) || true
+          (cd "$GITHUB_WORKSPACE/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
+
+      - name: Run rootfs UBI sanity check
+        if: always()
+        run: |
+          python3 -m pip install --user ubi-reader
+
+          ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
+          echo "ROOTFS_IMG=$ROOTFS_IMG"
+
+          if [ -z "$ROOTFS_IMG" ]; then
+            echo "ERROR: rootfs.img not found in workspace"
+            exit 1
+          fi
+
+          python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.model }}" --workspace "$GITHUB_WORKSPACE"
+
+      - name: Upload rootfs sanity report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rootfs-sanity-${{ matrix.model }}-${{ github.run_id }}
+          path: rootfs_sanity/**
+          if-no-files-found: warn
+
       - name: List build artifacts
         if: always()
         run: |
