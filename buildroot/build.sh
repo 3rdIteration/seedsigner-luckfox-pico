@@ -58,8 +58,108 @@ Performance:
   First build:  30-90 min (clones ~500MB+ of repos)
   Later builds: 15-45 min (reuses persistent repos)
 
-Fast subsequent builds! ⚡
+  Fast subsequent builds! ⚡
 USAGE
+}
+
+run_local_rootfs_sanity_check() {
+    local abs_output_dir="$1"
+    local build_nand="$2"
+
+    print_header "Local Rootfs UBI Sanity Check"
+
+    if ! command -v python3 &> /dev/null; then
+        print_warning "python3 not found; skipping local rootfs sanity check"
+        return 0
+    fi
+
+    local script_path="$SCRIPT_DIR/../.github/scripts/check_rootfs_ubi.py"
+    if [[ ! -f "$script_path" ]]; then
+        print_warning "Sanity check script not found at $script_path; skipping"
+        return 0
+    fi
+
+    python3 -m pip install --user ubi-reader
+
+    local rootfs_img
+    rootfs_img=$(find "$abs_output_dir" "$SCRIPT_DIR" -type f -name "rootfs.img" 2>/dev/null | head -n 1 || true)
+
+    if [[ -z "$rootfs_img" ]]; then
+        if [[ "$build_nand" == "true" ]]; then
+            print_error "No rootfs.img found after NAND build; cannot run sanity check"
+            exit 1
+        fi
+        print_warning "No rootfs.img found; skipping sanity check"
+        return 0
+    fi
+
+    print_success "Found rootfs image: $rootfs_img"
+    python3 "$script_path" \
+        --rootfs-img "$rootfs_img" \
+        --outdir "$abs_output_dir/rootfs_sanity" \
+        --workspace "$SCRIPT_DIR/.."
+
+    print_success "Rootfs sanity check passed. Report: $abs_output_dir/rootfs_sanity"
+}
+
+print_local_build_diagnostics() {
+    local volume_name="$1"
+    local build_model="$2"
+
+    print_header "Local Build Diagnostics"
+    echo "Build model selector: $build_model"
+    echo "Requested defprofiles:"
+    case "$build_model" in
+        mini) echo "  - mini" ;;
+        max) echo "  - max" ;;
+        both) echo "  - mini"; echo "  - max" ;;
+    esac
+
+    echo ""
+    echo "🔧 BR2 environment variables from host:"
+    env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || echo "No BR2* env vars set on host"
+
+    echo ""
+    echo "📍 Git SHAs"
+    echo "Top-level repo:"
+    git -C "$SCRIPT_DIR/.." rev-parse HEAD || true
+
+    if [[ -d "$SCRIPT_DIR/../luckfox_pico_sdk/.git" ]]; then
+        echo "luckfox_pico_sdk:"
+        (cd "$SCRIPT_DIR/../luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
+    else
+        echo "luckfox_pico_sdk repository not present in host workspace"
+    fi
+
+    if docker volume ls | grep -q "$volume_name"; then
+        echo ""
+        echo "🔍 Buildroot .config paths in Docker volume ($volume_name):"
+        docker run --rm -v "$volume_name:/build/repos" "$IMAGE_NAME" /bin/bash -lc '
+            set -e
+            find /build/repos -type f \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) 2>/dev/null || true
+            CONFIG_FILES=$(find /build/repos -type f \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) 2>/dev/null || true)
+            if [ -n "$CONFIG_FILES" ]; then
+              while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                echo "=== $f ==="
+                grep -E "^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=" "$f" || true
+                grep -E "^# (BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY) is not set" "$f" || true
+              done <<< "$CONFIG_FILES"
+            fi
+
+            echo ""
+            echo "📌 Board profile artifacts found in SDK IMAGE exports (defprofile hints):"
+            find /build/repos -maxdepth 6 -type d -name "IPC_SPI_NAND_BUILDROOT_*" 2>/dev/null | sort || true
+
+            if [ -d /build/repos/luckfox-pico/.git ]; then
+              echo ""
+              echo "📍 luckfox-pico SDK git SHA/status:"
+              cd /build/repos/luckfox-pico
+              git rev-parse HEAD || true
+              git status --porcelain || true
+            fi
+        '
+    fi
 }
 
 check_docker() {
@@ -167,6 +267,8 @@ run_build() {
                 exit 1
             fi
             docker run $docker_args "$IMAGE_NAME" "$container_mode"
+            print_local_build_diagnostics "$volume_name" "$build_model"
+            run_local_rootfs_sanity_check "$abs_output_dir" "$build_nand"
             print_success "Build completed! Artifacts are available in: $abs_output_dir"
             ;;
         "interactive")
