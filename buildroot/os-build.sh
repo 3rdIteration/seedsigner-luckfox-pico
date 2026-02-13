@@ -480,6 +480,11 @@ emit_build_debug_artifacts() {
     local debug_dir="$OUTPUT_DIR/debug-${board_profile}-${boot_medium}-${ts}"
     mkdir -p "$debug_dir"
 
+    local cfg_report_src="$OUTPUT_DIR/buildroot-config-check-${board_profile}-${boot_medium}.txt"
+    if [[ -f "$cfg_report_src" ]]; then
+        cp -v "$cfg_report_src" "$debug_dir/buildroot_config_check.txt"
+    fi
+
     local target_dir="$BUILDROOT_DIR/output/target"
     if [[ -d "$target_dir" ]]; then
         print_step "Capturing rootfs manifest (${board_profile}/${boot_medium})"
@@ -544,6 +549,50 @@ ensure_buildroot_tree() {
     fi
 }
 
+validate_buildroot_defconfig_applied() {
+    local config_file="$BUILDROOT_DIR/.config"
+    local report_file="$1"
+
+    local required_symbols=(
+        BR2_PACKAGE_PYTHON_PYZBAR=y
+        BR2_PACKAGE_PYTHON_EMBIT=y
+        BR2_PACKAGE_ZBAR=y
+        BR2_PACKAGE_LIBCAMERA=y
+        BR2_PACKAGE_LIBCAMERA_APPS=y
+    )
+
+    {
+        echo "Buildroot defconfig verification"
+        echo "config_file=$config_file"
+        for sym in "${required_symbols[@]}"; do
+            if grep -q "^${sym}$" "$config_file"; then
+                echo "OK ${sym}"
+            else
+                echo "MISSING ${sym}"
+            fi
+        done
+
+        echo ""
+        echo "BR2_DEFCONFIG line:"
+        grep '^BR2_DEFCONFIG=' "$config_file" || true
+    } > "$report_file"
+
+    local missing=0
+    for sym in "${required_symbols[@]}"; do
+        if ! grep -q "^${sym}$" "$config_file"; then
+            missing=1
+        fi
+    done
+
+    if [[ "$missing" -ne 0 ]]; then
+        print_error "Buildroot defconfig validation failed. See: $report_file"
+        cat "$report_file"
+        exit 1
+    fi
+
+    print_success "Buildroot defconfig validation passed"
+}
+
 build_profile_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -592,8 +641,18 @@ CONFIGMENU
 
     print_step "Applying SeedSigner Configuration"
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
-        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        local defconfig_path="$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        cp -v "/build/configs/luckfox_pico_defconfig" "$defconfig_path"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
+
+        # Ensure BR2_DEFCONFIG points to the in-container path and normalize config.
+        sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$defconfig_path\"|" "$defconfig_path"
+        sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$defconfig_path\"|" "$BUILDROOT_DIR/.config"
+
+        # Expand/normalize symbols so subsequent build steps use resolved .config.
+        make -C "$BUILDROOT_DIR" olddefconfig
+
+        validate_buildroot_defconfig_applied "$OUTPUT_DIR/buildroot-config-check-${board_profile}-${boot_medium}.txt"
     else
         print_error "SeedSigner configuration file not found"
         exit 1
