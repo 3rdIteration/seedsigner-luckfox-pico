@@ -43,7 +43,61 @@ jobs:
         
         # Run the build with artifact output to workspace
         ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
-    
+
+    - name: Debug buildroot environment variables
+      run: |
+        echo "🔧 BR2 environment variables"
+        env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || echo "No BR2* env vars set"
+
+    - name: Debug buildroot config files and key package settings
+      run: |
+        echo "🔍 Buildroot .config paths"
+        CONFIG_FILES=$(find "$GITHUB_WORKSPACE" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null || true)
+        if [ -z "$CONFIG_FILES" ]; then
+          echo "No Buildroot .config files found"
+        else
+          echo "$CONFIG_FILES"
+          echo ""
+          echo "📌 Key package config lines"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            echo "=== $f ==="
+            grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$f" || true
+            grep -E '^# (BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY) is not set' "$f" || true
+          done <<< "$CONFIG_FILES"
+        fi
+
+    - name: Debug git revisions
+      run: |
+        echo "📍 Top-level repo SHA"
+        git rev-parse HEAD || true
+        echo ""
+        if [ -d "$GITHUB_WORKSPACE/luckfox_pico_sdk/.git" ]; then
+          echo "📍 luckfox_pico_sdk SHA and status"
+          (cd "$GITHUB_WORKSPACE/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
+        else
+          echo "luckfox_pico_sdk repository not present"
+        fi
+
+    - name: Rootfs UBI sanity check
+      run: |
+        python3 -m pip install --user ubi-reader
+        ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
+        if [ -z "$ROOTFS_IMG" ]; then
+          echo "ERROR: Could not find rootfs.img under workspace"
+          exit 1
+        fi
+        echo "ROOTFS_IMG=$ROOTFS_IMG"
+        python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$GITHUB_WORKSPACE/rootfs_sanity" --workspace "$GITHUB_WORKSPACE"
+
+    - name: Upload rootfs sanity report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: rootfs-sanity-${{ github.run_id }}
+        path: rootfs_sanity/**
+        if-no-files-found: warn
+
     - name: List build artifacts
       if: always()
       run: |
