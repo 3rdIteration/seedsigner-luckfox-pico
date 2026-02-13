@@ -134,7 +134,7 @@ print_local_build_diagnostics() {
     if docker volume ls | grep -q "$volume_name"; then
         echo ""
         echo "🔍 Buildroot .config paths in Docker volume ($volume_name):"
-        docker run --rm --entrypoint /bin/bash -v "$volume_name:/build/repos" "$IMAGE_NAME" -lc '
+        docker run --rm -v "$volume_name:/build/repos" "$IMAGE_NAME" /bin/bash -lc '
             set -e
             find /build/repos -type f \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) 2>/dev/null || true
             CONFIG_FILES=$(find /build/repos -type f \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) 2>/dev/null || true)
