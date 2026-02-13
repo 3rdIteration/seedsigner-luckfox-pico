@@ -161,7 +161,7 @@ export_variant_images() {
     local boot_medium="$2"
 
     local image_dir="$LUCKFOX_SDK_DIR/output/image"
-    local export_dir="$OUTPUT_DIR/${board_profile}-${boot_medium}-images"
+    local export_dir="$OUTPUT_DIR"
     mkdir -p "$export_dir"
 
     print_step "Exporting core image files (${board_profile}/${boot_medium})"
@@ -890,6 +890,14 @@ run_automated_build() {
     echo "   MAKEFLAGS: $MAKEFLAGS"
     echo "   Build Directory: $BUILD_DIR"
     echo "   Output Directory: $OUTPUT_DIR"
+    echo "   Build Model: $BUILD_MODEL"
+
+    if [[ "$BUILD_MODEL" == "both" ]]; then
+        print_warning "Building both profiles (mini and max) to single output directory"
+        print_warning "Later profile builds will overwrite earlier profile's core image files"
+        print_warning "To avoid overwrites: build profiles separately with --model mini or --model max"
+        print_warning "Or use GitHub Actions workflow which builds each profile to isolated directories"
+    fi
 
     clone_repositories
     validate_environment
