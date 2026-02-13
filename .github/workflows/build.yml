@@ -124,7 +124,7 @@ jobs:
           {
             for f in $CONFIG_FILES; do
               echo "=== $f ==="
-              grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$f" || true
+              grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG|BR2_EXTERNAL)=' "$f" || true
             done
           } | tee "$ARTIFACT_DIR/workspace-config-grep.txt"
 
@@ -142,20 +142,48 @@ jobs:
             fi
           } | tee "$ARTIFACT_DIR/workspace-git.txt"
 
-      - name: Locate NAND rootfs image and log format
+
+      - name: Debug exported container build artifacts
+        if: ${{ always() && steps.select.outputs.selected == 'true' }}
+        run: |
+          ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+
+          echo "=== Exported buildroot config path ==="
+          ls -l "$ARTIFACT_DIR/buildroot.config" || true
+
+          echo "=== Exported buildroot key flags ==="
+          cat "$ARTIFACT_DIR/buildroot.config.grep.txt" || true
+
+          echo "=== Exported target rootfs manifest head ==="
+          head -n 120 "$ARTIFACT_DIR/target.manifest.txt" || true
+
+          echo "=== Exported image report ==="
+          cat "$ARTIFACT_DIR/images.report.txt" || true
+
+          echo "=== Exported selected rootfs ==="
+          cat "$ARTIFACT_DIR/selected-rootfs.txt" || true
+
+          echo "=== Exported git report ==="
+          cat "$ARTIFACT_DIR/git.txt" || true
+
+      - name: Locate NAND UBI rootfs image and log format
         if: ${{ always() && steps.select.outputs.selected == 'true' && matrix.medium == 'nand' }}
         run: |
           ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
-          ROOTFS_IMG=$(find "$ARTIFACT_DIR" -type f -name "rootfs.img" | head -n 1)
+
+          ROOTFS_IMG=$(find "$ARTIFACT_DIR" -type f -name "rootfs.img" -print0 | xargs -0 -I {} sh -c 'file "{}" | grep -qi "UBI image" && echo "{}"' | head -n 1)
           if [ -z "$ROOTFS_IMG" ]; then
-            ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
+            ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" -print0 | xargs -0 -I {} sh -c 'file "{}" | grep -qi "UBI image" && echo "{}"' | head -n 1)
           fi
 
           echo "ROOTFS_IMG=$ROOTFS_IMG" | tee "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
-          if [ -n "$ROOTFS_IMG" ]; then
-            file "$ROOTFS_IMG" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
-            sha256sum "$ROOTFS_IMG" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
+          if [ -z "$ROOTFS_IMG" ]; then
+            echo "❌ Could not locate a NAND UBI rootfs.img in artifacts/workspace" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
+            exit 1
           fi
+
+          file "$ROOTFS_IMG" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
+          sha256sum "$ROOTFS_IMG" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
 
       - name: Rootfs UBI sanity check (NAND only)
         if: ${{ steps.select.outputs.selected == 'true' && matrix.medium == 'nand' }}
@@ -165,14 +193,16 @@ jobs:
           SANITY_DIR="$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}"
           mkdir -p "$SANITY_DIR"
 
-          ROOTFS_IMG=$(find "$ARTIFACT_DIR" -type f -name "rootfs.img" | head -n 1)
-          if [ -z "$ROOTFS_IMG" ]; then
-            ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
-          fi
-
+          ROOTFS_IMG=$(grep '^ROOTFS_IMG=' "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt" | head -n 1 | cut -d'=' -f2-)
           echo "ROOTFS_IMG=$ROOTFS_IMG"
           if [ -z "$ROOTFS_IMG" ]; then
-            echo "❌ Could not locate rootfs.img in workspace"
+            echo "❌ Missing selected NAND UBI rootfs path"
+            exit 1
+          fi
+
+          if ! file "$ROOTFS_IMG" | grep -qi 'UBI image'; then
+            echo "❌ Selected rootfs is not UBI format: $ROOTFS_IMG"
+            file "$ROOTFS_IMG" || true
             exit 1
           fi
 
