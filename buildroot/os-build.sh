@@ -124,6 +124,38 @@ print_build_diagnostics() {
     (cd "$SEEDSIGNER_CODE_DIR" && git rev-parse HEAD) || true
 }
 
+export_variant_images() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    local image_dir="$LUCKFOX_SDK_DIR/output/image"
+    local export_dir="$OUTPUT_DIR/${board_profile}-${boot_medium}-images"
+    mkdir -p "$export_dir"
+
+    print_step "Exporting core image files (${board_profile}/${boot_medium})"
+
+    local files=(
+        rootfs.img
+        boot.img
+        idblock.img
+        uboot.img
+        trust.img
+        update.img
+        env.img
+        download.bin
+        oem.img
+        userdata.img
+    )
+
+    for f in "${files[@]}"; do
+        if [[ -f "$image_dir/$f" ]]; then
+            cp -fv "$image_dir/$f" "$export_dir/$f"
+        fi
+    done
+
+    print_info "Exported images directory: $export_dir"
+}
+
 collect_debug_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -748,6 +780,8 @@ CONFIGMENU
 
     print_step "Packaging Firmware"
     ./build.sh firmware
+
+    export_variant_images "$board_profile" "$boot_medium"
 
     cd "$LUCKFOX_SDK_DIR/output/image"
 

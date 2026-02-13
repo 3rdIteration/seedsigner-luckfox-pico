@@ -44,6 +44,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Git LFS diagnostics
+        run: |
+          if git lfs version >/dev/null 2>&1; then
+            echo "git-lfs is available"
+            git lfs env || true
+            git lfs ls-files || true
+          else
+            echo "git-lfs not installed on runner"
+          fi
+
       - name: Select matrix variant for workflow_dispatch medium
         id: selector
         run: |
@@ -141,11 +151,23 @@ jobs:
         run: |
           python3 -m pip install --user ubi-reader
 
-          ROOTFS_IMG=$(find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "rootfs.img" | head -n 1)
-          echo "NAND ROOTFS_IMG=$ROOTFS_IMG"
+          ROOTFS_IMG=""
+          while IFS= read -r candidate; do
+            file_out=$(file "$candidate" || true)
+            echo "Candidate rootfs: $candidate"
+            echo "$file_out"
+            if echo "$file_out" | grep -qi "UBI image"; then
+              ROOTFS_IMG="$candidate"
+              break
+            fi
+          done < <(find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "rootfs.img")
+
+          echo "Selected NAND ROOTFS_IMG=$ROOTFS_IMG"
 
           if [ -z "$ROOTFS_IMG" ]; then
-            echo "ERROR: NAND rootfs.img not found in artifact-visible outputs"
+            echo "ERROR: No UBI rootfs.img found in artifact-visible outputs"
+            echo "Discovered rootfs.img files:"
+            find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "rootfs.img" -print || true
             exit 1
           fi
 
