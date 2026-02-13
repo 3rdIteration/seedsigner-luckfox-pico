@@ -7,6 +7,15 @@ on:
     branches: [main, develop, master]
   workflow_dispatch:
     inputs:
+      medium:
+        description: Build medium to run
+        required: false
+        default: nand
+        type: choice
+        options:
+          - nand
+          - sd
+          - both
       force_rebuild:
         description: Force rebuild Docker image
         required: false
@@ -17,24 +26,39 @@ permissions:
   contents: read
 
 concurrency:
-  group: seedsigner-build-${{ github.workflow }}-${{ github.ref }}
+  group: seedsigner-build-${{ github.workflow }}-${{ github.ref }}-${{ matrix.profile }}-${{ matrix.medium }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: build-${{ matrix.model }}
+    name: build-${{ matrix.profile }}-${{ matrix.medium }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
-        model: [mini, max]
+        profile: [mini, max]
+        medium: [sd, nand]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Select matrix variant for workflow_dispatch medium
+        id: selector
+        run: |
+          SELECTED=true
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            DISPATCH_MEDIUM="${{ github.event.inputs.medium }}"
+            if [ "$DISPATCH_MEDIUM" != "both" ] && [ "$DISPATCH_MEDIUM" != "${{ matrix.medium }}" ]; then
+              SELECTED=false
+            fi
+          fi
+          echo "selected=$SELECTED" >> "$GITHUB_OUTPUT"
+          echo "selected=$SELECTED for profile=${{ matrix.profile }} medium=${{ matrix.medium }}"
+
       - name: Free disk space
+        if: steps.selector.outputs.selected == 'true'
         run: |
           echo "Disk usage before cleanup:"
           df -h
@@ -45,115 +69,118 @@ jobs:
           df -h
 
       - name: Set up Docker Buildx
+        if: steps.selector.outputs.selected == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build system status
+        if: steps.selector.outputs.selected == 'true'
         run: |
           cd buildroot
           ./build.sh status
 
-      - name: Build SeedSigner OS (${{ matrix.model }})
+      - name: Build SeedSigner OS (${{ matrix.profile }}, ${{ matrix.medium }})
+        if: steps.selector.outputs.selected == 'true'
         run: |
           cd buildroot
-          echo "🚀 Starting SeedSigner build for model: ${{ matrix.model }}"
+          echo "🚀 Starting SeedSigner build for profile=${{ matrix.profile }} medium=${{ matrix.medium }}"
 
-          # Set build options
           BUILD_ARGS=""
           if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
             BUILD_ARGS="--force"
           fi
 
-          # Run the build with artifact output to workspace
-          ./build.sh build $BUILD_ARGS --microsd --nand --model ${{ matrix.model }} --output ../build-artifacts/${{ matrix.model }}
-
-      - name: Debug Buildroot and repo state before rootfs sanity check
-        if: always()
-        run: |
-          echo "=== BR2-related environment variables ==="
-          env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
-
-          echo ""
-          echo "=== Buildroot .config candidates ==="
-          CONFIGS=$(find "$GITHUB_WORKSPACE" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null || true)
-          if [ -n "$CONFIGS" ]; then
-            echo "$CONFIGS"
+          MEDIUM_ARGS=""
+          if [ "${{ matrix.medium }}" = "nand" ]; then
+            MEDIUM_ARGS="--nand"
           else
-            echo "No Buildroot .config files found with quick patterns"
+            MEDIUM_ARGS="--microsd"
           fi
 
-          echo ""
-          echo "=== Key package lines from Buildroot configs ==="
-          for f in $CONFIGS; do
-            echo "=== $f ==="
-            grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$f" || true
-          done
+          ./build.sh build $BUILD_ARGS $MEDIUM_ARGS --model ${{ matrix.profile }} --output ../build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}
+
+      - name: Locate buildroot configs and debug outputs
+        if: always() && steps.selector.outputs.selected == 'true'
+        run: |
+          DEBUG_DIR="build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+          echo "Debug directory: $DEBUG_DIR"
+          ls -la "$DEBUG_DIR" || true
 
           echo ""
-          echo "=== Git SHAs ==="
-          git rev-parse HEAD || true
-          (cd "$GITHUB_WORKSPACE/buildroot" && git rev-parse HEAD) || true
-          (cd "$GITHUB_WORKSPACE/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
+          echo "Looking for copied Buildroot configs and manifests:"
+          find "$DEBUG_DIR" -maxdepth 4 -type f \( -name "buildroot.config" -o -name "buildroot.config.grep.txt" -o -name "target.manifest.txt" -o -name "images.report.txt" -o -name "env.txt" -o -name "git.txt" \) -print || true
+
+      - name: Print copied Buildroot config grep lines
+        if: always() && steps.selector.outputs.selected == 'true'
+        run: |
+          while IFS= read -r f; do
+            echo "=== $f ==="
+            cat "$f"
+          done < <(find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "buildroot.config.grep.txt" 2>/dev/null)
+
+      - name: Print image report and selected NAND rootfs path
+        if: always() && steps.selector.outputs.selected == 'true'
+        run: |
+          REPORTS=$(find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "images.report.txt" 2>/dev/null || true)
+          if [ -n "$REPORTS" ]; then
+            for f in $REPORTS; do
+              echo "=== $f ==="
+              cat "$f"
+            done
+          fi
+
+          if [ "${{ matrix.medium }}" = "nand" ]; then
+            ROOTFS_IMG=$(find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "rootfs.img" | head -n 1)
+            echo "NAND ROOTFS_IMG (artifact-visible)=$ROOTFS_IMG"
+            if [ -n "$ROOTFS_IMG" ]; then
+              file "$ROOTFS_IMG" || true
+            fi
+          fi
 
       - name: Run NAND rootfs UBI sanity check
-        if: always()
+        if: always() && steps.selector.outputs.selected == 'true' && matrix.medium == 'nand'
         run: |
           python3 -m pip install --user ubi-reader
 
-          ROOTFS_IMG=""
-          while IFS= read -r candidate; do
-            img_dir=$(dirname "$candidate")
-            if [ -f "$img_dir/update.img" ] || [ -f "$img_dir/tftp_update.txt" ]; then
-              ROOTFS_IMG="$candidate"
-              break
-            fi
-          done < <(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img")
-
+          ROOTFS_IMG=$(find "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}" -type f -name "rootfs.img" | head -n 1)
           echo "NAND ROOTFS_IMG=$ROOTFS_IMG"
 
           if [ -z "$ROOTFS_IMG" ]; then
-            echo "No NAND rootfs.img found; skipping UBI extraction sanity check"
-            exit 0
+            echo "ERROR: NAND rootfs.img not found in artifact-visible outputs"
+            exit 1
           fi
 
-          python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.model }}" --workspace "$GITHUB_WORKSPACE"
+          file "$ROOTFS_IMG" || true
+          python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}" --workspace "$GITHUB_WORKSPACE"
+
+      - name: Skip UBI sanity check for SD variants
+        if: always() && steps.selector.outputs.selected == 'true' && matrix.medium == 'sd'
+        run: echo "Skipping UBI extraction sanity check for SD build variant"
 
       - name: Upload rootfs sanity report
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.selector.outputs.selected == 'true'
         with:
-          name: rootfs-sanity-${{ matrix.model }}-${{ github.run_id }}
-          path: rootfs_sanity/**
+          name: rootfs-sanity-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_id }}
+          path: rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}/**
           if-no-files-found: warn
 
       - name: List build artifacts
-        if: always()
+        if: always() && steps.selector.outputs.selected == 'true'
         run: |
-          echo "🎯 Build artifacts for ${{ matrix.model }}:"
-          ls -la build-artifacts/${{ matrix.model }}/ || echo "No build artifacts found"
+          echo "🎯 Build artifacts for ${{ matrix.profile }}-${{ matrix.medium }}:"
+          ls -la build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/ || echo "No build artifacts found"
 
           echo ""
-          echo "🔍 Searching for SeedSigner images:"
-          find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico*.img" -type f 2>/dev/null || echo "No seedsigner-luckfox-pico images found"
-
-          echo ""
-          echo "📊 Image sizes:"
-          find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
-
-          echo ""
-          echo "📦 NAND bundle zips:"
-          find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-          echo ""
-          echo "🗜️ NAND bundle tar.gz files:"
-          find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
+          echo "🔍 Images and bundles:"
+          find build-artifacts/${{ matrix.profile }}-${{ matrix.medium }} -maxdepth 3 -type f \( -name "seedsigner-luckfox-pico*.img" -o -name "seedsigner-luckfox-pico*.tar.gz" -o -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -o -name "rootfs.img" \) 2>/dev/null || true
 
       - name: Package NAND bundle zips
-        if: always()
+        if: always() && steps.selector.outputs.selected == 'true' && matrix.medium == 'nand'
         run: |
-          mkdir -p build-artifacts/${{ matrix.model }}
+          mkdir -p build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}
           shopt -s nullglob
 
-          BUNDLES=(build-artifacts/${{ matrix.model }}/seedsigner-luckfox-pico-*-nand-files-*)
+          BUNDLES=(build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/seedsigner-luckfox-pico-*-nand-files-*)
           if [ ${#BUNDLES[@]} -eq 0 ]; then
             echo "No NAND bundle folders found"
           else
@@ -169,63 +196,36 @@ jobs:
               zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
               echo "Creating NAND zip: $zip_name from $bundle_name"
 
-              rm -f "build-artifacts/${{ matrix.model }}/$zip_name"
-              (cd build-artifacts/${{ matrix.model }} && zip -qr "$zip_name" "$bundle_name")
+              rm -f "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/$zip_name"
+              (cd build-artifacts/${{ matrix.profile }}-${{ matrix.medium }} && zip -qr "$zip_name" "$bundle_name")
             done
           fi
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.selector.outputs.selected == 'true'
         with:
-          name: seedsigner-os-${{ matrix.model }}-${{ github.run_number }}
+          name: seedsigner-os-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_number }}
           path: |
-            build-artifacts/${{ matrix.model }}/seedsigner-luckfox-pico*.img
-            build-artifacts/${{ matrix.model }}/seedsigner-luckfox-pico-*-nand-bundle.zip
-            build-artifacts/${{ matrix.model }}/seedsigner-luckfox-pico*.tar.gz
+            build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/**
           retention-days: 30
           if-no-files-found: warn
 
       - name: Build summary
-        if: always()
+        if: always() && steps.selector.outputs.selected == 'true'
         run: |
-          echo "## 🎯 SeedSigner Build Summary (${{ matrix.model }})" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 SeedSigner Build Summary (${{ matrix.profile }}-${{ matrix.medium }})" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Model**: ${{ matrix.model }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Profile**: ${{ matrix.profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Medium**: ${{ matrix.medium }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Run Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
 
-          IMG_FILES=$(find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico*.img" 2>/dev/null || true)
+          IMG_FILES=$(find build-artifacts/${{ matrix.profile }}-${{ matrix.medium }} -name "seedsigner-luckfox-pico*.img" 2>/dev/null || true)
           if [ -n "$IMG_FILES" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🎯 Ready to Flash:" >> $GITHUB_STEP_SUMMARY
+            echo "### Artifacts:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$IMG_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📊 Image Size:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$IMG_FILES" | xargs -I {} du -sh {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-
-            ZIP_FILES=$(find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico-*-nand-bundle.zip" 2>/dev/null || true)
-            if [ -n "$ZIP_FILES" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "$ZIP_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-            fi
-
-            TAR_FILES=$(find build-artifacts/${{ matrix.model }} -name "seedsigner-luckfox-pico*.tar.gz" 2>/dev/null || true)
-            if [ -n "$TAR_FILES" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              echo "$TAR_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "- **Image**: ❌ No seedsigner-luckfox-pico image found" >> $GITHUB_STEP_SUMMARY
           fi

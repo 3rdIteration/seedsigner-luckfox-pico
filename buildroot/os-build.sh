@@ -124,6 +124,106 @@ print_build_diagnostics() {
     (cd "$SEEDSIGNER_CODE_DIR" && git rev-parse HEAD) || true
 }
 
+collect_debug_artifacts() {
+    local board_profile="$1"
+    local boot_medium="$2"
+    local phase="${3:-postpackage}"
+
+    local debug_dir="$OUTPUT_DIR/debug-${board_profile}-${boot_medium}"
+    mkdir -p "$debug_dir"
+
+    print_step "Collecting debug artifacts (${board_profile}/${boot_medium}, ${phase})"
+
+    {
+        echo "board_profile=$board_profile"
+        echo "boot_medium=$boot_medium"
+        echo "phase=$phase"
+        echo "BUILDROOT_DIR=$BUILDROOT_DIR"
+        echo "ROOTFS_DIR=${ROOTFS_DIR:-unset}"
+        echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
+    } > "$debug_dir/env.txt"
+
+    {
+        echo "top-level (/build)"
+        (cd /build && git rev-parse HEAD) || true
+        echo ""
+        echo "luckfox-pico"
+        (cd "$LUCKFOX_SDK_DIR" && git rev-parse HEAD && git status --porcelain) || true
+        echo ""
+        echo "seedsigner-os"
+        (cd "$SEEDSIGNER_OS_DIR" && git rev-parse HEAD) || true
+        echo ""
+        echo "seedsigner"
+        (cd "$SEEDSIGNER_CODE_DIR" && git rev-parse HEAD) || true
+    } > "$debug_dir/git.txt"
+
+    local cfg_candidates=(
+        "$BUILDROOT_DIR/.config"
+        "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+    )
+
+    for cfg in "${cfg_candidates[@]}"; do
+        if [[ -f "$cfg" ]]; then
+            cp -f "$cfg" "$debug_dir/buildroot.config"
+            break
+        fi
+    done
+
+    if [[ -f "$debug_dir/buildroot.config" ]]; then
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$debug_dir/buildroot.config" > "$debug_dir/buildroot.config.grep.txt" || true
+    else
+        echo "No buildroot config found" > "$debug_dir/buildroot.config.grep.txt"
+    fi
+
+    local target_dir
+    target_dir=$(find "$LUCKFOX_SDK_DIR" -type d -path "*buildroot*/output*/target" 2>/dev/null | head -n 1 || true)
+    if [[ -n "$target_dir" ]]; then
+        (cd "$target_dir" && find . -type f -printf "%s %p
+" | sort -n) > "$debug_dir/target.manifest.txt"
+        echo "target_dir=$target_dir" > "$debug_dir/target.path.txt"
+    else
+        echo "Buildroot target directory not found" > "$debug_dir/target.manifest.txt"
+    fi
+
+    local images_report="$debug_dir/images.report.txt"
+    : > "$images_report"
+
+    while IFS= read -r img; do
+        [ -f "$img" ] || continue
+        {
+            echo "=== $img ==="
+            ls -l "$img" || true
+            file "$img" || true
+            sha256sum "$img" || true
+            echo ""
+        } >> "$images_report"
+    done < <(find "$LUCKFOX_SDK_DIR" -type f \( -name "rootfs.img" -o -name "boot.img" -o -name "idblock.img" -o -name "uboot.img" -o -name "trust.img" -o -name "update.img" \) 2>/dev/null)
+
+    local selected_nand_rootfs=""
+    while IFS= read -r candidate; do
+        local img_dir
+        img_dir=$(dirname "$candidate")
+        if file "$candidate" 2>/dev/null | grep -qi "UBI image"; then
+            selected_nand_rootfs="$candidate"
+            break
+        fi
+        if [[ -f "$img_dir/update.img" || -f "$img_dir/tftp_update.txt" ]]; then
+            selected_nand_rootfs="$candidate"
+            break
+        fi
+    done < <(find "$LUCKFOX_SDK_DIR" -type f -name "rootfs.img" 2>/dev/null)
+
+    {
+        echo "selected_nand_rootfs=$selected_nand_rootfs"
+        if [[ -n "$selected_nand_rootfs" ]]; then
+            file "$selected_nand_rootfs" || true
+        fi
+    } > "$debug_dir/nand-rootfs-selection.txt"
+
+    print_success "Debug artifacts collected in: $debug_dir"
+}
+
 check_rootfs_sanity() {
     local board_profile="$1"
 
@@ -644,6 +744,7 @@ CONFIGMENU
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
 
     check_rootfs_sanity "$board_profile"
+    collect_debug_artifacts "$board_profile" "$boot_medium" "prepackage"
 
     print_step "Packaging Firmware"
     ./build.sh firmware
@@ -679,6 +780,8 @@ CONFIGMENU
         cp -v "$sd_image" "$OUTPUT_DIR/"
         print_success "SD image created for ${board_profile}: $OUTPUT_DIR/$sd_image"
     fi
+
+    collect_debug_artifacts "$board_profile" "$boot_medium" "postpackage"
 
     if [[ "$include_nand" == "true" ]]; then
         print_step "Packaging NAND artifacts (${board_profile})"
