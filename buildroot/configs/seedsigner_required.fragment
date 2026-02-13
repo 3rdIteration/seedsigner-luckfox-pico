@@ -1,3 +1,9 @@
+# Disable conflicting device creation methods
+# BR2_ROOTFS_DEVICE_CREATION_STATIC is not set
+# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_DEVTMPFS is not set
+# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV is not set
+
+# Enable EUDEV-based dynamic device management
 BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
 BR2_PACKAGE_EUDEV=y
 BR2_PACKAGE_KMOD=y
