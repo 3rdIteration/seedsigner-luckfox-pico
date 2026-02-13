@@ -79,6 +79,124 @@ apply_buildroot_defconfig() {
     print_success "SeedSigner buildroot defconfig applied and verified"
 }
 
+print_build_diagnostics() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    print_step "Build Diagnostics (${board_profile}/${boot_medium})"
+    echo "Board profile: $board_profile"
+    echo "Boot medium: $boot_medium"
+    echo "BUILD_MODEL: $BUILD_MODEL"
+    echo "BUILD_JOBS: $BUILD_JOBS"
+    echo "MINI_CMA_SIZE: $MINI_CMA_SIZE"
+    echo "BUILDROOT_DIR: $BUILDROOT_DIR"
+    echo "ROOTFS_DIR: ${ROOTFS_DIR:-unset}"
+
+    echo ""
+    echo "BR2 environment variables:"
+    env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
+
+    echo ""
+    echo "Buildroot config file candidates:"
+    find "$LUCKFOX_SDK_DIR" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" -o -path "*buildroot*/output*/buildroot-*/.config" \) -type f 2>/dev/null || true
+
+    echo ""
+    echo "Key Buildroot config lines from $BUILDROOT_DIR/.config:"
+    if [[ -f "$BUILDROOT_DIR/.config" ]]; then
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$BUILDROOT_DIR/.config" || true
+    else
+        echo "Missing: $BUILDROOT_DIR/.config"
+    fi
+
+    echo ""
+    echo "Key Buildroot config lines from $BUILDROOT_DIR/configs/luckfox_pico_defconfig:"
+    if [[ -f "$BUILDROOT_DIR/configs/luckfox_pico_defconfig" ]]; then
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$BUILDROOT_DIR/configs/luckfox_pico_defconfig" || true
+    else
+        echo "Missing: $BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+    fi
+
+    echo ""
+    echo "Git SHAs:"
+    (cd /build && git rev-parse HEAD) || true
+    (cd "$LUCKFOX_SDK_DIR" && git rev-parse HEAD && git status --porcelain) || true
+    (cd "$SEEDSIGNER_OS_DIR" && git rev-parse HEAD) || true
+    (cd "$SEEDSIGNER_CODE_DIR" && git rev-parse HEAD) || true
+}
+
+check_rootfs_sanity() {
+    local board_profile="$1"
+
+    print_step "Running RootFS Sanity Checks (${board_profile})"
+    if [[ ! -d "$ROOTFS_DIR" ]]; then
+        print_error "RootFS directory not found: $ROOTFS_DIR"
+        exit 1
+    fi
+
+    local failed=0
+
+    check_any_exists() {
+        local name="$1"
+        shift
+        local hit=""
+        for rel in "$@"; do
+            if [[ -e "$ROOTFS_DIR/$rel" ]]; then
+                hit="$rel"
+                break
+            fi
+        done
+        if [[ -n "$hit" ]]; then
+            echo "[OK] $name -> $hit"
+        else
+            echo "[FAIL] $name (checked: $*)"
+            failed=1
+        fi
+    }
+
+    check_exec_exists() {
+        local name="$1"
+        shift
+        local hit=""
+        for rel in "$@"; do
+            if [[ -x "$ROOTFS_DIR/$rel" ]]; then
+                hit="$rel"
+                break
+            fi
+        done
+        if [[ -n "$hit" ]]; then
+            echo "[OK] $name -> $hit (executable)"
+        else
+            echo "[FAIL] $name executable missing (checked: $*)"
+            failed=1
+        fi
+    }
+
+    check_any_exists "udevadm_present" "bin/udevadm" "sbin/udevadm"
+    check_any_exists "udev_rules_or_etc" "etc/udev" "lib/udev/rules.d"
+    check_any_exists "libkmod_present" "lib/libkmod.so" "lib/libkmod.so.2" "lib/libkmod.so.2.3.7" "lib32/libkmod.so" "lib32/libkmod.so.2" "lib64/libkmod.so" "lib64/libkmod.so.2"
+    check_any_exists "libblkid_present" "lib/libblkid.so" "lib32/libblkid.so" "lib64/libblkid.so"
+    check_any_exists "init_script_S10udev" "etc/init.d/S10udev"
+    check_exec_exists "sbin_init_executable" "sbin/init"
+    check_exec_exists "busybox_executable" "bin/busybox" "usr/bin/busybox" "sbin/busybox"
+
+    echo ""
+    echo "Optional presence report:"
+    for rel in "etc/init.d/S50usbdevice" "etc/init.d/S99_auto_reboot" "linuxrc" "rockchip_test"; do
+        if [[ -e "$ROOTFS_DIR/$rel" ]]; then
+            echo "  present: $rel"
+        else
+            echo "  missing: $rel"
+        fi
+    done
+
+    if [[ "$failed" -ne 0 ]]; then
+        print_error "RootFS sanity checks failed for profile: $board_profile"
+        exit 1
+    fi
+
+    print_success "RootFS sanity checks passed for profile: $board_profile"
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -498,6 +616,7 @@ CONFIGMENU
     fi
 
     apply_buildroot_defconfig
+    print_build_diagnostics "$board_profile" "$boot_medium"
 
     print_step "Building U-Boot"
     ./build.sh uboot
@@ -523,6 +642,8 @@ CONFIGMENU
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+
+    check_rootfs_sanity "$board_profile"
 
     print_step "Packaging Firmware"
     ./build.sh firmware
