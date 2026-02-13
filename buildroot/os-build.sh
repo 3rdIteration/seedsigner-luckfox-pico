@@ -47,8 +47,7 @@ print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 apply_buildroot_defconfig() {
     local source_defconfig="/build/configs/luckfox_pico_defconfig"
     local target_defconfig="$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
-    local overlay_dir="/build/files/rootfs-overlay"
-    local required_fragment="/build/configs/seedsigner_required.fragment"
+    local apply_script="/workspace/.github/scripts/apply_buildroot_fragment_and_overlay.sh"
     local required_symbols=(
         "BR2_PACKAGE_PYTHON_PYZBAR=y"
         "BR2_PACKAGE_PYTHON_EMBIT=y"
@@ -66,31 +65,18 @@ apply_buildroot_defconfig() {
         exit 1
     fi
 
-    if [[ ! -d "$overlay_dir" ]]; then
-        print_error "Required rootfs overlay directory missing: $overlay_dir"
-        exit 1
-    fi
-
-    if [[ ! -f "$required_fragment" ]]; then
-        print_error "Required Buildroot fragment missing: $required_fragment"
-        exit 1
-    fi
-
     cp -v "$source_defconfig" "$target_defconfig"
-
-    # Ensure BR2_DEFCONFIG points to the in-tree config path used by this container build.
     sed -i "s|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG=\"$target_defconfig\"|" "$target_defconfig"
 
-    # Materialize .config from defconfig first.
+    # Materialize base .config from the luckfox defconfig first.
     make -C "$BUILDROOT_DIR" luckfox_pico_defconfig
 
-    # Force merge required CI/local deterministic symbols.
-    if [[ -x "$BUILDROOT_DIR/support/kconfig/merge_config.sh" ]]; then
-        (cd "$BUILDROOT_DIR" && ./support/kconfig/merge_config.sh -m .config "$required_fragment")
-        make -C "$BUILDROOT_DIR" olddefconfig
+    # Apply required fragment + overlay inside the real SDK Buildroot tree.
+    if [[ -x "$apply_script" ]]; then
+        "$apply_script" "$LUCKFOX_SDK_DIR" "/workspace"
     else
-        cat "$required_fragment" >> "$BUILDROOT_DIR/.config"
-        make -C "$BUILDROOT_DIR" olddefconfig
+        print_error "Required apply script not found/executable: $apply_script"
+        exit 1
     fi
 
     for symbol in "${required_symbols[@]}"; do
@@ -107,18 +93,7 @@ apply_buildroot_defconfig() {
         exit 1
     fi
 
-    if ! grep -q '^BR2_ROOTFS_OVERLAY="/build/files/rootfs-overlay"$' "$BUILDROOT_DIR/.config"; then
-        print_error "BR2_ROOTFS_OVERLAY is not set to /build/files/rootfs-overlay"
-        grep '^BR2_ROOTFS_OVERLAY=' "$BUILDROOT_DIR/.config" || true
-        exit 1
-    fi
-
-    if [[ ! -f "$overlay_dir/etc/init.d/S10udev" ]]; then
-        print_error "Required overlay init script missing: $overlay_dir/etc/init.d/S10udev"
-        exit 1
-    fi
-
-    print_success "SeedSigner buildroot defconfig + required fragment applied and verified"
+    print_success "SeedSigner buildroot defconfig + fragment/overlay applied and verified"
 }
 
 

@@ -135,11 +135,14 @@ run_build() {
     fi
     
     # Docker run arguments with persistent volume
+    local workspace_root
+    workspace_root=$(realpath "$SCRIPT_DIR/..")
     local docker_args="$PLATFORM_ARGS 
                        --name $CONTAINER_NAME 
                        --rm
                        -v $volume_name:/build/repos
                        -v $abs_output_dir:/build/output
+                       -v $workspace_root:/workspace
                        $env_args"
     
     case "$mode" in

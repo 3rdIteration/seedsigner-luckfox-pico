@@ -1,0 +1,2 @@
+# SeedSigner USB gadget defaults
+SUBSYSTEM=="usb", ACTION=="add", MODE="0660"

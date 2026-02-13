@@ -1,0 +1,31 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          udev
+# Required-Start:    $local_fs
+# Required-Stop:
+# Default-Start:     S
+# Default-Stop:
+# Short-Description: Start udev daemon
+### END INIT INFO
+
+case "$1" in
+  start)
+    [ -x /sbin/udevd ] && /sbin/udevd --daemon || true
+    [ -x /bin/udevadm ] && /bin/udevadm trigger --type=subsystems --action=add || true
+    [ -x /bin/udevadm ] && /bin/udevadm trigger --type=devices --action=add || true
+    [ -x /bin/udevadm ] && /bin/udevadm settle || true
+    ;;
+  stop)
+    killall udevd 2>/dev/null || true
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+
+exit 0
