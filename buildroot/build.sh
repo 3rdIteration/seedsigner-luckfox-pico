@@ -181,7 +181,11 @@ run_build() {
                 exit 1
             fi
             docker run $docker_args "$IMAGE_NAME" "$container_mode"
-            run_rootfs_sanity_check "$abs_output_dir"
+            if [[ "$build_nand" == "true" ]]; then
+                run_rootfs_sanity_check "$abs_output_dir"
+            else
+                print_success "Skipping rootfs UBI sanity check (NAND build not requested)"
+            fi
             print_success "Build completed! Artifacts are available in: $abs_output_dir"
             ;;
         "interactive")

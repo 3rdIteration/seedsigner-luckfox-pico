@@ -165,9 +165,19 @@ jobs:
             (cd "$GITHUB_WORKSPACE/buildroot/build-output/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
           fi
 
-      - name: Rootfs UBI sanity check
+      - name: Rootfs UBI sanity check (NAND only)
         if: always()
         run: |
+          BUILD_NAND=true
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            BUILD_NAND="${{ github.event.inputs.build_nand }}"
+          fi
+
+          if [ "$BUILD_NAND" != "true" ]; then
+            echo "Skipping rootfs UBI sanity check (NAND build not requested)"
+            exit 0
+          fi
+
           python3 -m pip install --user ubi-reader
 
           ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
