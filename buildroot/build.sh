@@ -96,10 +96,10 @@ run_local_rootfs_sanity_check() {
     print_success "Found rootfs image: $rootfs_img"
     python3 "$script_path" \
         --rootfs-img "$rootfs_img" \
-        --outdir "$abs_output_dir/rootfs_sanity" \
+        --outdir "$abs_output_dir/rootfs_sanity_local" \
         --workspace "$SCRIPT_DIR/.."
 
-    print_success "Rootfs sanity check passed. Report: $abs_output_dir/rootfs_sanity"
+    print_success "Rootfs sanity check passed. Report: $abs_output_dir/rootfs_sanity_local"
 }
 
 print_local_build_diagnostics() {

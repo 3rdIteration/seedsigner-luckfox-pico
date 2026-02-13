@@ -27,6 +27,9 @@ export PACKAGE_DIR="${BUILDROOT_DIR}/package"
 export CONFIG_IN="${PACKAGE_DIR}/Config.in"
 export PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
 export ROOTFS_DIR="${LUCKFOX_SDK_DIR}/output/out/rootfs_uclibc_rv1106"
+export REQUIRED_FRAGMENT_SRC="/build/configs/seedsigner_required.fragment"
+export REQUIRED_OVERLAY_SRC="/build/rootfs-overlay"
+export REQUIRED_OVERLAY_DST="${LUCKFOX_SDK_DIR}/sysdrv/source/buildroot/rootfs-overlay-seedsigner"
 
 # Parallel build configuration
 export BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
@@ -416,6 +419,55 @@ ensure_buildroot_tree() {
     fi
 }
 
+apply_required_buildroot_config() {
+    print_step "Applying Required Buildroot Fragment"
+
+    if [[ ! -f "$REQUIRED_FRAGMENT_SRC" ]]; then
+        print_error "Required fragment not found: $REQUIRED_FRAGMENT_SRC"
+        exit 1
+    fi
+
+    if [[ ! -d "$REQUIRED_OVERLAY_SRC" ]]; then
+        print_error "Required overlay directory not found: $REQUIRED_OVERLAY_SRC"
+        exit 1
+    fi
+
+    rm -rf "$REQUIRED_OVERLAY_DST"
+    mkdir -p "$(dirname "$REQUIRED_OVERLAY_DST")"
+    cp -a "$REQUIRED_OVERLAY_SRC" "$REQUIRED_OVERLAY_DST"
+
+    if [[ ! -x "$REQUIRED_OVERLAY_DST/etc/init.d/S10udev" ]]; then
+        chmod +x "$REQUIRED_OVERLAY_DST/etc/init.d/S10udev" 2>/dev/null || true
+    fi
+
+    local generated_fragment="$BUILDROOT_DIR/.seedsigner_required.generated.fragment"
+    cp -f "$REQUIRED_FRAGMENT_SRC" "$generated_fragment"
+    echo "BR2_ROOTFS_OVERLAY=\"$REQUIRED_OVERLAY_DST\"" >> "$generated_fragment"
+
+    cd "$BUILDROOT_DIR"
+
+    if [[ -x "./scripts/kconfig/merge_config.sh" ]]; then
+        ./scripts/kconfig/merge_config.sh -m .config "$generated_fragment"
+    else
+        cat "$generated_fragment" >> .config
+    fi
+
+    make olddefconfig
+
+    print_step "Fail-fast validation of required Buildroot options"
+    grep -E '^BR2_ROOTFS_OVERLAY=' .config || { print_error "BR2_ROOTFS_OVERLAY missing from .config"; exit 1; }
+    grep -E '^BR2_ROOTFS_OVERLAY=".+"' .config || { print_error "BR2_ROOTFS_OVERLAY is empty in .config"; exit 1; }
+    grep -E '^BR2_PACKAGE_EUDEV=y' .config || { print_error "BR2_PACKAGE_EUDEV is not enabled"; exit 1; }
+    grep -E '^BR2_PACKAGE_KMOD=y' .config || { print_error "BR2_PACKAGE_KMOD is not enabled"; exit 1; }
+    grep -E '^BR2_PACKAGE_UTIL_LINUX=y' .config || { print_error "BR2_PACKAGE_UTIL_LINUX is not enabled"; exit 1; }
+    grep -E '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' .config || { print_error "BR2_PACKAGE_UTIL_LINUX_LIBBLKID is not enabled"; exit 1; }
+
+    print_info "Using BR2_ROOTFS_OVERLAY=$REQUIRED_OVERLAY_DST"
+    print_success "Required Buildroot options validated"
+
+    cd "$LUCKFOX_SDK_DIR"
+}
+
 build_profile_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -466,6 +518,7 @@ CONFIGMENU
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
+        apply_required_buildroot_config
     else
         print_error "SeedSigner configuration file not found"
         exit 1
