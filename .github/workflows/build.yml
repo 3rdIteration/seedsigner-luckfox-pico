@@ -10,7 +10,7 @@ on:
       force_rebuild:
         description: 'Force rebuild Docker image'
         required: false
-        default: false
+        default: true
         type: boolean
       medium:
         description: 'Build medium selection for manual runs'
@@ -29,7 +29,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: [mini, max]
-        medium: [sd, nand]
+        medium: [nand, sd]
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -50,7 +50,6 @@ jobs:
         else
           echo "run_variant=false" >> "$GITHUB_OUTPUT"
         fi
-        echo "run_variant=$(grep '^run_variant=' "$GITHUB_OUTPUT" | cut -d= -f2) for ${{ matrix.profile }}-${{ matrix.medium }}"
 
     - name: Build system status
       if: steps.select_variant.outputs.run_variant == 'true'
@@ -65,9 +64,9 @@ jobs:
         cd buildroot
         echo "🚀 Starting build for profile=${{ matrix.profile }} medium=${{ matrix.medium }}"
 
-        BUILD_ARGS=""
-        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="--force"
+        BUILD_ARGS="--force"
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" != "true" ]; then
+          BUILD_ARGS=""
         fi
 
         VARIANT_DIR="../build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
@@ -85,6 +84,32 @@ jobs:
         set -euo pipefail
         mkdir -p "build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
         ./.github/scripts/collect_debug.sh "${{ matrix.profile }}" "${{ matrix.medium }}" "$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug"
+
+    - name: Print debug quick summary
+      if: always() && steps.select_variant.outputs.run_variant == 'true'
+      run: |
+        set -euo pipefail
+        DBG="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug"
+        echo "Debug dir: $DBG"
+        test -f "$DBG/selected_rootfs.txt" && cat "$DBG/selected_rootfs.txt" || true
+        test -f "$DBG/buildroot.config.grep.txt" && cat "$DBG/buildroot.config.grep.txt" || true
+        test -f "$DBG/git.txt" && cat "$DBG/git.txt" || true
+
+    - name: Verify NAND Buildroot package toggles from .config
+      if: steps.select_variant.outputs.run_variant == 'true' && matrix.medium == 'nand'
+      run: |
+        set -euo pipefail
+        CFG_GREP="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/debug/buildroot.config.grep.txt"
+        if [ ! -f "$CFG_GREP" ]; then
+          echo "ERROR: missing $CFG_GREP"
+          exit 1
+        fi
+        cat "$CFG_GREP"
+        grep -q '^BR2_PACKAGE_EUDEV=y' "$CFG_GREP"
+        grep -q '^BR2_PACKAGE_KMOD=y' "$CFG_GREP"
+        grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$CFG_GREP"
+        grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$CFG_GREP"
+        grep -q '^BR2_PACKAGE_BUSYBOX=y' "$CFG_GREP"
 
     - name: Install rootfs sanity checker dependency
       if: steps.select_variant.outputs.run_variant == 'true' && matrix.medium == 'nand'
@@ -109,7 +134,13 @@ jobs:
           exit 1
         fi
 
-        file "$ROOTFS_IMG" || true
+        ROOTFS_FILE_OUT=$(file "$ROOTFS_IMG" || true)
+        echo "$ROOTFS_FILE_OUT"
+        if ! echo "$ROOTFS_FILE_OUT" | grep -qi 'UBI image'; then
+          echo "ERROR: selected NAND rootfs.img is not a UBI image"
+          exit 1
+        fi
+
         python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$SANITY_DIR" --workspace "$GITHUB_WORKSPACE"
 
     - name: Skip note for SD UBI sanity check

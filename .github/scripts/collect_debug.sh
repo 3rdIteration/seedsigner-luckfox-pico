@@ -18,7 +18,18 @@ env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' > "$OUTDIR/env.txt" || true
 
 {
   echo "top_repo_sha=$(git rev-parse HEAD 2>/dev/null || true)"
+  echo "top_repo_status:"
+  git status --porcelain 2>/dev/null || true
 } > "$OUTDIR/git.txt"
+
+if git lfs version >/dev/null 2>&1; then
+  {
+    echo "git-lfs-installed=yes"
+    git lfs env 2>/dev/null || true
+  } > "$OUTDIR/git-lfs.txt"
+else
+  echo "git-lfs-installed=no" > "$OUTDIR/git-lfs.txt"
+fi
 
 # Inspect persistent SDK volume via the built container image.
 # This is where the SDK build tree lives during build.sh runs.
@@ -29,10 +40,23 @@ docker run --rm \
   bash -lc '
 set -euo pipefail
 SDK=/repos/luckfox-pico
+SEEDSIGNER=/repos/seedsigner
+SEEDSIGNER_OS=/repos/seedsigner-os
 
 echo "sdk_repo_sha=$(git -C "$SDK" rev-parse HEAD 2>/dev/null || true)" >> /out/git.txt
 echo "sdk_repo_status:" >> /out/git.txt
 git -C "$SDK" status --porcelain >> /out/git.txt 2>/dev/null || true
+echo "seedsigner_repo_sha=$(git -C \"$SEEDSIGNER\" rev-parse HEAD 2>/dev/null || true)" >> /out/git.txt
+echo "seedsigner_os_repo_sha=$(git -C \"$SEEDSIGNER_OS\" rev-parse HEAD 2>/dev/null || true)" >> /out/git.txt
+
+echo "--- sdk .BoardConfig.mk ---" > /out/boardconfig.txt
+if [[ -f "$SDK/.BoardConfig.mk" ]]; then
+  grep -E "^(export RK_UBOOT_DEFCONFIG|export RK_KERNEL_DEFCONFIG|export RK_BUILDROOT_CFG|export RK_BOOTARGS_CMA_SIZE|export RK_BOOT_MEDIUM|export RK_TARGET_PRODUCT)=" "$SDK/.BoardConfig.mk" >> /out/boardconfig.txt || true
+else
+  echo ".BoardConfig.mk missing" >> /out/boardconfig.txt
+fi
+
+env | sort | grep -E "^(BR2_EXTERNAL|BR2_)" > /out/container-br2-env.txt || true
 
 CFG=$(find "$SDK" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null | head -n 1 || true)
 if [[ -n "$CFG" && -f "$CFG" ]]; then
@@ -40,6 +64,10 @@ if [[ -n "$CFG" && -f "$CFG" ]]; then
   grep -E "^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=" "$CFG" > /out/buildroot.config.grep.txt || true
 else
   echo "no buildroot .config found" > /out/buildroot.config.grep.txt
+fi
+
+if [[ -f "$SDK/sysdrv/source/buildroot-2023.02.6/configs/luckfox_pico_defconfig" ]]; then
+  cp -f "$SDK/sysdrv/source/buildroot-2023.02.6/configs/luckfox_pico_defconfig" /out/luckfox_pico_defconfig
 fi
 
 TARGET=$(find "$SDK" -type d -path "*buildroot*/output*/target" 2>/dev/null | head -n 1 || true)
