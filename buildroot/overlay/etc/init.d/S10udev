@@ -1,0 +1,10 @@
+#!/bin/sh
+
+[ -x /sbin/udevd ] || exit 0
+
+mkdir -p /dev/.udev /run/udev
+/sbin/udevd --daemon
+udevadm trigger --action=add
+udevadm settle
+
+exit 0

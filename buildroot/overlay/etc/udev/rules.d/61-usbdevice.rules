@@ -1,0 +1,2 @@
+# SeedSigner Luckfox Pico USB device permissions
+SUBSYSTEM=="usb", MODE="0660", GROUP="root"

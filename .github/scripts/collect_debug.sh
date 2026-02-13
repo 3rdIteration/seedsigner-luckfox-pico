@@ -58,7 +58,7 @@ fi
 
 env | sort | grep -E "^(BR2_EXTERNAL|BR2_)" > /out/container-br2-env.txt || true
 
-CFG=$(find "$SDK" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null | head -n 1 || true)
+CFG=$(find "$SDK" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d" " -f2- || true)
 if [[ -n "$CFG" && -f "$CFG" ]]; then
   cp -f "$CFG" /out/buildroot.config
   grep -E "^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=" "$CFG" > /out/buildroot.config.grep.txt || true
@@ -70,7 +70,7 @@ if [[ -f "$SDK/sysdrv/source/buildroot-2023.02.6/configs/luckfox_pico_defconfig"
   cp -f "$SDK/sysdrv/source/buildroot-2023.02.6/configs/luckfox_pico_defconfig" /out/luckfox_pico_defconfig
 fi
 
-TARGET=$(find "$SDK" -type d -path "*buildroot*/output*/target" 2>/dev/null | head -n 1 || true)
+TARGET=$(find "$SDK" -type d -path "*buildroot*/output*/target" -printf "%T@ %p\n" 2>/dev/null | sort -nr | head -n 1 | cut -d" " -f2- || true)
 if [[ -n "$TARGET" && -d "$TARGET" ]]; then
   (cd "$TARGET" && find . -type f -printf "%s %p\n" | sort -n) > /out/target.manifest.txt
 else

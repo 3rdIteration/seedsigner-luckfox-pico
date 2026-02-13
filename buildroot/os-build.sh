@@ -491,6 +491,95 @@ ensure_buildroot_tree() {
     fi
 }
 
+resolve_overlay_path() {
+    local overlay_candidate="/build/overlay"
+
+    if [[ -f "$overlay_candidate/etc/init.d/S10udev" ]]; then
+        echo "$overlay_candidate"
+        return 0
+    fi
+
+    local s10_src
+    s10_src=$(find "$SEEDSIGNER_OS_DIR" -type f -name "S10udev" 2>/dev/null | head -n 1 || true)
+    if [[ -n "$s10_src" ]]; then
+        local generated_overlay="/build/generated-overlay"
+        mkdir -p "$generated_overlay"
+        cp -a /build/overlay/. "$generated_overlay/" 2>/dev/null || true
+
+        local s10_dir
+        s10_dir=$(dirname "$s10_src")
+        if [[ "$s10_dir" == */etc/init.d ]]; then
+            local overlay_root="${s10_dir%/etc/init.d}"
+            cp -a "$overlay_root"/. "$generated_overlay/"
+        else
+            mkdir -p "$generated_overlay/etc/init.d"
+            cp -a "$s10_src" "$generated_overlay/etc/init.d/S10udev"
+        fi
+
+        local rules_src
+        rules_src=$(find "$SEEDSIGNER_OS_DIR" -type f -name "61-usbdevice.rules" 2>/dev/null | head -n 1 || true)
+        if [[ -n "$rules_src" ]]; then
+            mkdir -p "$generated_overlay/etc/udev/rules.d"
+            cp -a "$rules_src" "$generated_overlay/etc/udev/rules.d/61-usbdevice.rules"
+        fi
+
+        echo "$generated_overlay"
+        return 0
+    fi
+
+    print_error "Could not find rootfs overlay with S10udev in /build/overlay or seedsigner-os"
+    exit 1
+}
+
+merge_required_buildroot_config() {
+    local overlay_path="$1"
+    local fragment_src="/build/configs/seedsigner_required.fragment"
+    local fragment_tmp="/tmp/seedsigner_required.fragment"
+
+    if [[ ! -f "$fragment_src" ]]; then
+        print_error "Missing required Buildroot fragment: $fragment_src"
+        exit 1
+    fi
+
+    sed "s|^BR2_ROOTFS_OVERLAY=.*|BR2_ROOTFS_OVERLAY="$overlay_path"|" "$fragment_src" > "$fragment_tmp"
+
+    if [[ -x "$BUILDROOT_DIR/scripts/kconfig/merge_config.sh" ]]; then
+        (cd "$BUILDROOT_DIR" && ./scripts/kconfig/merge_config.sh -m .config "$fragment_tmp")
+    else
+        cat "$fragment_tmp" >> "$BUILDROOT_DIR/.config"
+    fi
+
+    make -C "$BUILDROOT_DIR" olddefconfig
+}
+
+fail_fast_validate_buildroot_config() {
+    local cfg="$BUILDROOT_DIR/.config"
+
+    if [[ ! -f "$cfg" ]]; then
+        print_error "Buildroot .config not found for validation: $cfg"
+        exit 1
+    fi
+
+    print_step "Fail-fast Buildroot config validation"
+    local grep_out
+    grep_out=$(grep -E '^(BR2_ROOTFS_OVERLAY|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID)=' "$cfg" || true)
+    echo "$grep_out"
+
+    local overlay_line
+    overlay_line=$(grep '^BR2_ROOTFS_OVERLAY=' "$cfg" | tail -n 1 || true)
+    if [[ -z "$overlay_line" || "$overlay_line" =~ ^BR2_ROOTFS_OVERLAY=""$ ]]; then
+        print_error "BR2_ROOTFS_OVERLAY is empty after required fragment merge"
+        exit 1
+    fi
+
+    grep -q '^BR2_PACKAGE_EUDEV=y' "$cfg" || { print_error "BR2_PACKAGE_EUDEV is not enabled"; exit 1; }
+    grep -q '^BR2_PACKAGE_KMOD=y' "$cfg" || { print_error "BR2_PACKAGE_KMOD is not enabled"; exit 1; }
+    grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$cfg" || { print_error "BR2_PACKAGE_UTIL_LINUX is not enabled"; exit 1; }
+    grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$cfg" || { print_error "BR2_PACKAGE_UTIL_LINUX_LIBBLKID is not enabled"; exit 1; }
+
+    print_success "Required Buildroot config options validated"
+}
+
 build_profile_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -540,14 +629,18 @@ CONFIGMENU
     print_step "Applying SeedSigner Configuration"
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
-        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
 
         # Ensure Buildroot always references the in-tree defconfig path (portable in CI + local)
         sed -i 's|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG="$(TOPDIR)/configs/luckfox_pico_defconfig"|' "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
-        sed -i 's|^BR2_DEFCONFIG=.*|BR2_DEFCONFIG="$(TOPDIR)/configs/luckfox_pico_defconfig"|' "$BUILDROOT_DIR/.config"
 
-        # Materialize the copied .config before SDK build steps so external defconfig is actually active
-        make -C "$BUILDROOT_DIR" olddefconfig
+        (cd "$BUILDROOT_DIR" && make luckfox_pico_defconfig)
+
+        local overlay_path
+        overlay_path=$(resolve_overlay_path)
+        print_info "Using BR2_ROOTFS_OVERLAY=${overlay_path}"
+
+        merge_required_buildroot_config "$overlay_path"
+        fail_fast_validate_buildroot_config
     else
         print_error "SeedSigner configuration file not found"
         exit 1
