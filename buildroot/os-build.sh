@@ -45,6 +45,85 @@ print_success() { echo -e "\n${GREEN}[SUCCESS] $1${NC}\n"; }
 print_error() { echo -e "\n${RED}[ERROR] $1${NC}\n"; }
 print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 
+log_buildroot_and_sdk_diagnostics() {
+    print_step "Buildroot/SDK Diagnostics"
+
+    local board_config_file="$LUCKFOX_SDK_DIR/.BoardConfig.mk"
+    if [[ -f "$board_config_file" ]]; then
+        print_info "SDK profile selection (.BoardConfig.mk):"
+        grep -E '^export RK_((TARGET_|CFG_BUILDROOT|CFG_BUILDROOT_FRAGMENT|BOOT_.*|ROOTFS_.*|KERNEL_.*)|.*DEFCONFIG)' "$board_config_file" || true
+    else
+        print_info "SDK board config not found: $board_config_file"
+    fi
+
+    print_info "BR2-related environment variables:"
+    env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
+
+    print_info "Buildroot .config paths and key options:"
+    local config_files
+    config_files=$(find "$LUCKFOX_SDK_DIR" \( -path '*buildroot*/output*/.config' -o -path '*buildroot*/output*/build/.config' \) -type f 2>/dev/null || true)
+    if [[ -n "$config_files" ]]; then
+        echo "$config_files"
+        while IFS= read -r cfg; do
+            [[ -n "$cfg" ]] || continue
+            echo "=== $cfg ==="
+            grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$cfg" || true
+        done <<< "$config_files"
+    else
+        echo "No Buildroot .config files found under SDK tree"
+    fi
+
+    print_info "Git SHAs and status:"
+    (cd "$SEEDSIGNER_LUCKFOX_DIR" && echo "repo=$SEEDSIGNER_LUCKFOX_DIR" && git rev-parse HEAD && git status --porcelain) || true
+    (cd "$LUCKFOX_SDK_DIR" && echo "repo=$LUCKFOX_SDK_DIR" && git rev-parse HEAD && git status --porcelain) || true
+    (cd "$SEEDSIGNER_OS_DIR" && echo "repo=$SEEDSIGNER_OS_DIR" && git rev-parse HEAD && git status --porcelain) || true
+    (cd "$SEEDSIGNER_CODE_DIR" && echo "repo=$SEEDSIGNER_CODE_DIR" && git rev-parse HEAD && git status --porcelain) || true
+}
+
+ensure_ubireader_installed() {
+    if python3 -c 'import ubireader' >/dev/null 2>&1; then
+        return
+    fi
+
+    print_step "Installing ubi-reader"
+    python3 -m pip install --user ubi-reader
+}
+
+run_rootfs_sanity_check() {
+    local board_profile="$1"
+    local boot_medium="$2"
+    local ts="$3"
+    local rootfs_img="$LUCKFOX_SDK_DIR/output/image/rootfs.img"
+    local checker_script="/build/scripts/check_rootfs_ubi.py"
+    local report_dir="$OUTPUT_DIR/rootfs_sanity/${board_profile}-${boot_medium}-${ts}"
+
+    print_step "Running rootfs UBI sanity check (${board_profile}/${boot_medium})"
+
+    if [[ ! -f "$rootfs_img" ]]; then
+        print_error "rootfs.img not found for sanity check: $rootfs_img"
+        exit 1
+    fi
+
+    if [[ ! -f "$checker_script" ]]; then
+        print_error "Sanity checker script missing: $checker_script"
+        exit 1
+    fi
+
+    ensure_ubireader_installed
+    mkdir -p "$report_dir"
+
+    print_info "Sanity check inputs:"
+    echo "  rootfs_img=$rootfs_img"
+    echo "  report_dir=$report_dir"
+
+    python3 "$checker_script" \
+        --rootfs-img "$rootfs_img" \
+        --outdir "$report_dir" \
+        --workspace "$LUCKFOX_SDK_DIR"
+
+    print_success "Rootfs sanity check passed: $report_dir"
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -525,6 +604,8 @@ CONFIGMENU
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
     fi
 
+    log_buildroot_and_sdk_diagnostics
+
     print_step "Building U-Boot"
     ./build.sh uboot
 
@@ -590,6 +671,8 @@ CONFIGMENU
         create_nand_image_artifacts "$board_profile" "$ts" "$boot_medium"
         export_official_nand_image_dir "$board_profile" "$ts"
     fi
+
+    run_rootfs_sanity_check "$board_profile" "$boot_medium" "$ts"
 
     cd "$LUCKFOX_SDK_DIR"
 }
