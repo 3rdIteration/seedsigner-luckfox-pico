@@ -98,11 +98,28 @@ pull_lfs_objects_if_available() {
     fi
 }
 
+ensure_submodules_current() {
+    local repo_dir="$1"
+
+    if [[ -f "$repo_dir/.gitmodules" ]]; then
+        print_info "Syncing/updating submodules for $(basename "$repo_dir")"
+        git -C "$repo_dir" submodule sync --recursive || true
+        git -C "$repo_dir" submodule update --init --recursive
+    fi
+}
+
 print_repository_revisions() {
     print_info "Repository revisions in use:"
     echo "  luckfox-pico: $(git -C luckfox-pico rev-parse HEAD 2>/dev/null || echo 'unknown')"
     echo "  seedsigner-os: $(git -C seedsigner-os rev-parse HEAD 2>/dev/null || echo 'unknown')"
     echo "  seedsigner: $(git -C seedsigner rev-parse HEAD 2>/dev/null || echo 'unknown')"
+
+    for repo in luckfox-pico seedsigner-os seedsigner; do
+        if [[ -f "$repo/.gitmodules" ]]; then
+            print_info "Submodule status for $repo:"
+            git -C "$repo" submodule status --recursive || true
+        fi
+    done
 }
 
 clone_repositories() {
@@ -120,6 +137,7 @@ clone_repositories() {
         print_info "luckfox-pico already exists"
     fi
     checkout_optional_ref "luckfox-pico" "$LUCKFOX_PICO_REF"
+    ensure_submodules_current "luckfox-pico"
     pull_lfs_objects_if_available "luckfox-pico"
     
     # Clone SeedSigner OS packages
@@ -131,6 +149,7 @@ clone_repositories() {
         print_info "seedsigner-os already exists"
     fi
     checkout_optional_ref "seedsigner-os" "$SEEDSIGNER_OS_REF"
+    ensure_submodules_current "seedsigner-os"
     pull_lfs_objects_if_available "seedsigner-os"
     
     # Clone SeedSigner code (specific branch)
@@ -142,6 +161,7 @@ clone_repositories() {
         print_info "seedsigner already exists"
     fi
     checkout_optional_ref "seedsigner" "$SEEDSIGNER_REF"
+    ensure_submodules_current "seedsigner"
     pull_lfs_objects_if_available "seedsigner"
     
     # Show repository status
