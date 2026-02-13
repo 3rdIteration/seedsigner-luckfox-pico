@@ -274,6 +274,81 @@ resolve_rootfs_dir() {
     print_info "Using rootfs directory: $ROOTFS_DIR"
 }
 
+print_build_diagnostics() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    print_step "Build Diagnostics (${board_profile}/${boot_medium})"
+    echo "BUILD_MODEL=${BUILD_MODEL}"
+    echo "BOARD_PROFILE=${board_profile}"
+    echo "BOOT_MEDIUM=${boot_medium}"
+    echo "LUCKFOX_SDK_DIR=${LUCKFOX_SDK_DIR}"
+    echo "BUILDROOT_DIR=${BUILDROOT_DIR}"
+
+    if [[ -f "$LUCKFOX_SDK_DIR/.BoardConfig.mk" ]]; then
+        echo "--- .BoardConfig.mk key values ---"
+        grep -E '^(export RK_UBOOT_DEFCONFIG|export RK_KERNEL_DEFCONFIG|export RK_BUILDROOT_CFG|export RK_BOOTARGS_CMA_SIZE|export RK_BOOT_MEDIUM|export RK_TARGET_PRODUCT)=' "$LUCKFOX_SDK_DIR/.BoardConfig.mk" || true
+    else
+        print_info ".BoardConfig.mk not found"
+    fi
+
+    echo "--- BR2 env vars ---"
+    env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
+
+    echo "--- Buildroot config files ---"
+    find "$LUCKFOX_SDK_DIR" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null || true
+
+    echo "--- Key Buildroot package selections ---"
+    local cfg
+    while IFS= read -r cfg; do
+        [[ -n "$cfg" ]] || continue
+        echo "=== $cfg ==="
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$cfg" || true
+    done < <(find "$LUCKFOX_SDK_DIR" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null)
+
+    echo "--- Git SHAs/status ---"
+    if git -C "$SEEDSIGNER_LUCKFOX_DIR" rev-parse HEAD >/dev/null 2>&1; then
+        echo "Top-level repo SHA: $(git -C "$SEEDSIGNER_LUCKFOX_DIR" rev-parse HEAD)"
+    fi
+    if git -C "$LUCKFOX_SDK_DIR" rev-parse HEAD >/dev/null 2>&1; then
+        echo "Luckfox SDK SHA: $(git -C "$LUCKFOX_SDK_DIR" rev-parse HEAD)"
+        git -C "$LUCKFOX_SDK_DIR" status --porcelain || true
+    fi
+}
+
+run_rootfs_sanity_check() {
+    local board_profile="$1"
+    local boot_medium="$2"
+    local ts="$3"
+
+    local check_script="/build/scripts/check_rootfs_ubi.py"
+    if [[ ! -f "$check_script" ]]; then
+        print_error "Rootfs sanity script missing: $check_script"
+        exit 1
+    fi
+
+    local rootfs_img="$LUCKFOX_SDK_DIR/output/image/rootfs.img"
+    if [[ ! -f "$rootfs_img" ]]; then
+        rootfs_img=$(find "$LUCKFOX_SDK_DIR" -type f -name "rootfs.img" | head -n 1 || true)
+    fi
+
+    if [[ -z "$rootfs_img" || ! -f "$rootfs_img" ]]; then
+        print_error "Could not find rootfs.img for sanity check"
+        exit 1
+    fi
+
+    local sanity_out="$OUTPUT_DIR/rootfs-sanity-${board_profile}-${boot_medium}-${ts}"
+    mkdir -p "$sanity_out"
+
+    print_step "Installing ubi-reader for rootfs sanity checks"
+    python3 -m pip install --user ubi-reader
+
+    print_step "Running rootfs UBI sanity check (${board_profile}/${boot_medium})"
+    echo "ROOTFS_IMG=$rootfs_img"
+    python3 "$check_script" --rootfs-img "$rootfs_img" --outdir "$sanity_out" --workspace "/build"
+    print_success "Rootfs sanity check passed: $sanity_out"
+}
+
 create_nand_image_artifacts() {
     local board_profile="$1"
     local ts="$2"
@@ -506,10 +581,13 @@ CONFIGMENU
     print_step "Packaging Firmware"
     ./build.sh firmware
 
-    cd "$LUCKFOX_SDK_DIR/output/image"
-
     local ts
     ts=$(date +%Y%m%d_%H%M%S)
+    print_build_diagnostics "$board_profile" "$boot_medium"
+
+    run_rootfs_sanity_check "$board_profile" "$boot_medium" "$ts"
+
+    cd "$LUCKFOX_SDK_DIR/output/image"
     export LAST_PROFILE_BUILD_TS="$ts"
     if [[ "$board_profile" == "mini" ]]; then
         export LAST_MINI_BUILD_TS="$ts"
