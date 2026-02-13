@@ -24,7 +24,19 @@ env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' > "$ARTIFACT_DIR/env.txt" || true
 {
   echo "[workspace]"
   (cd "$WORKSPACE" && git rev-parse HEAD && git status --porcelain) || true
+  echo ""
+  echo "[workspace git-lfs]"
+  (cd "$WORKSPACE" && git lfs version && git lfs ls-files | head -n 50) || echo "git-lfs not available or no lfs files"
 } > "$ARTIFACT_DIR/git.txt"
+
+if [ -f "$WORKSPACE/buildroot/configs/luckfox_pico_defconfig" ]; then
+  cp -f "$WORKSPACE/buildroot/configs/luckfox_pico_defconfig" "$ARTIFACT_DIR/expected.luckfox_pico_defconfig"
+  {
+    echo "EXPECTED_DEFCONFIG=$WORKSPACE/buildroot/configs/luckfox_pico_defconfig"
+    grep -E "^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=" "$WORKSPACE/buildroot/configs/luckfox_pico_defconfig" || true
+    grep -E "^# (BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY) is not set" "$WORKSPACE/buildroot/configs/luckfox_pico_defconfig" || true
+  } > "$ARTIFACT_DIR/expected.defconfig.grep.txt"
+fi
 
 # Extract build debug details from the same docker volume where the SDK repos live.
 docker run --rm \
@@ -53,6 +65,14 @@ if [ -n "${CONFIG_PATH:-}" ] && [ -f "$CONFIG_PATH" ]; then
     grep -E "^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=" "$CONFIG_PATH" || true
     grep -E "^# (BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY) is not set" "$CONFIG_PATH" || true
   } > "$ARTIFACT_DIR/buildroot.config.grep.txt"
+  {
+    echo "buildroot.config sha256:"
+    sha256sum "$ARTIFACT_DIR/buildroot.config" || true
+    if [ -f "$ARTIFACT_DIR/expected.luckfox_pico_defconfig" ]; then
+      echo "expected defconfig sha256:"
+      sha256sum "$ARTIFACT_DIR/expected.luckfox_pico_defconfig" || true
+    fi
+  } > "$ARTIFACT_DIR/config.sha256.txt"
 else
   echo "No Buildroot .config found" > "$ARTIFACT_DIR/buildroot.config.grep.txt"
 fi

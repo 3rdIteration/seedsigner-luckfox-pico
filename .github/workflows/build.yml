@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: [mini, max]
-        medium: [sd, nand]
+        medium: ${{ fromJson(github.event_name == 'workflow_dispatch' && github.event.inputs.medium != 'all' && format('["{0}"]', github.event.inputs.medium) || '["sd","nand"]') }}
 
     steps:
       - name: Checkout repository
@@ -44,6 +44,13 @@ jobs:
         run: |
           cd buildroot
           ./build.sh status
+
+      - name: Show selected matrix variant
+        run: |
+          echo "event=${{ github.event_name }}"
+          echo "workflow_dispatch.medium=${{ github.event.inputs.medium || 'n/a' }}"
+          echo "profile=${{ matrix.profile }}"
+          echo "medium=${{ matrix.medium }}"
 
       - name: Build variant
         run: |
