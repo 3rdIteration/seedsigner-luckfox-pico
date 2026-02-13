@@ -94,17 +94,25 @@ jobs:
           (cd "$GITHUB_WORKSPACE/buildroot" && git rev-parse HEAD) || true
           (cd "$GITHUB_WORKSPACE/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
 
-      - name: Run rootfs UBI sanity check
+      - name: Run NAND rootfs UBI sanity check
         if: always()
         run: |
           python3 -m pip install --user ubi-reader
 
-          ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
-          echo "ROOTFS_IMG=$ROOTFS_IMG"
+          ROOTFS_IMG=""
+          while IFS= read -r candidate; do
+            img_dir=$(dirname "$candidate")
+            if [ -f "$img_dir/update.img" ] || [ -f "$img_dir/tftp_update.txt" ]; then
+              ROOTFS_IMG="$candidate"
+              break
+            fi
+          done < <(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img")
+
+          echo "NAND ROOTFS_IMG=$ROOTFS_IMG"
 
           if [ -z "$ROOTFS_IMG" ]; then
-            echo "ERROR: rootfs.img not found in workspace"
-            exit 1
+            echo "No NAND rootfs.img found; skipping UBI extraction sanity check"
+            exit 0
           fi
 
           python3 .github/scripts/check_rootfs_ubi.py --rootfs-img "$ROOTFS_IMG" --outdir "$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.model }}" --workspace "$GITHUB_WORKSPACE"
