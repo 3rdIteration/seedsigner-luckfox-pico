@@ -44,11 +44,18 @@ echo "BR2_ROOTFS_OVERLAY=\"$BR_DIR/seedsigner_overlay\"" >> "$BR_DIR/.config"
 
 make olddefconfig
 
-grep -q '^BR2_PACKAGE_EUDEV=y' "$BR_DIR/.config" || { echo "EUDEV not enabled"; exit 101; }
+if grep -q '^BR2_PACKAGE_EUDEV=' "$BR_DIR/.config"; then
+  grep -q '^BR2_PACKAGE_EUDEV=y' "$BR_DIR/.config" || { echo "EUDEV package not enabled"; exit 101; }
+elif grep -q '^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=' "$BR_DIR/.config"; then
+  grep -q '^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y' "$BR_DIR/.config" || { echo "EUDEV dynamic device creation not enabled"; exit 101; }
+else
+  echo "EUDEV symbol not found in final config"; exit 101
+fi
+
 grep -q '^BR2_PACKAGE_KMOD=y' "$BR_DIR/.config" || { echo "KMOD not enabled"; exit 102; }
 grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$BR_DIR/.config" || { echo "util-linux not enabled"; exit 103; }
 grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$BR_DIR/.config" || { echo "libblkid not enabled"; exit 104; }
 grep -q '^BR2_ROOTFS_OVERLAY="' "$BR_DIR/.config" || { echo "overlay not set"; exit 105; }
 
 echo "Configured Buildroot symbols:"
-grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_ROOTFS_OVERLAY)=' "$BR_DIR/.config"
+grep -E '^(BR2_PACKAGE_EUDEV|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_ROOTFS_OVERLAY)=' "$BR_DIR/.config"

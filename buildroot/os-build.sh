@@ -53,7 +53,6 @@ apply_buildroot_defconfig() {
         "BR2_PACKAGE_PYTHON_EMBIT=y"
         "BR2_PACKAGE_ZBAR=y"
         "BR2_PACKAGE_LIBCAMERA_APPS=y"
-        "BR2_PACKAGE_EUDEV=y"
         "BR2_PACKAGE_KMOD=y"
         "BR2_PACKAGE_UTIL_LINUX=y"
         "BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y"
@@ -85,6 +84,21 @@ apply_buildroot_defconfig() {
             exit 1
         fi
     done
+
+    if grep -q '^BR2_PACKAGE_EUDEV=' "$BUILDROOT_DIR/.config"; then
+        if ! grep -q '^BR2_PACKAGE_EUDEV=y' "$BUILDROOT_DIR/.config"; then
+            print_error "EUDEV package not enabled in final Buildroot .config"
+            exit 1
+        fi
+    elif grep -q '^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=' "$BUILDROOT_DIR/.config"; then
+        if ! grep -q '^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y' "$BUILDROOT_DIR/.config"; then
+            print_error "EUDEV dynamic device creation not enabled in final Buildroot .config"
+            exit 1
+        fi
+    else
+        print_error "Could not find EUDEV-related symbols in final Buildroot .config"
+        exit 1
+    fi
 
     local overlay_value
     overlay_value=$(grep '^BR2_ROOTFS_OVERLAY=' "$BUILDROOT_DIR/.config" | head -n1 | cut -d'=' -f2-)
@@ -121,7 +135,7 @@ print_build_diagnostics() {
     echo ""
     echo "Key Buildroot config lines from $BUILDROOT_DIR/.config:"
     if [[ -f "$BUILDROOT_DIR/.config" ]]; then
-        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$BUILDROOT_DIR/.config" || true
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$BUILDROOT_DIR/.config" || true
     else
         echo "Missing: $BUILDROOT_DIR/.config"
     fi
@@ -129,7 +143,7 @@ print_build_diagnostics() {
     echo ""
     echo "Key Buildroot config lines from $BUILDROOT_DIR/configs/luckfox_pico_defconfig:"
     if [[ -f "$BUILDROOT_DIR/configs/luckfox_pico_defconfig" ]]; then
-        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$BUILDROOT_DIR/configs/luckfox_pico_defconfig" || true
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$BUILDROOT_DIR/configs/luckfox_pico_defconfig" || true
     else
         echo "Missing: $BUILDROOT_DIR/configs/luckfox_pico_defconfig"
     fi
@@ -221,7 +235,7 @@ collect_debug_artifacts() {
     done
 
     if [[ -f "$debug_dir/buildroot.config" ]]; then
-        grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$debug_dir/buildroot.config" > "$debug_dir/buildroot.config.grep.txt" || true
+        grep -E '^(BR2_PACKAGE_EUDEV|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$debug_dir/buildroot.config" > "$debug_dir/buildroot.config.grep.txt" || true
     else
         echo "No buildroot config found" > "$debug_dir/buildroot.config.grep.txt"
     fi
