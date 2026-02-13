@@ -40,7 +40,6 @@ fi
 
 # Extract build debug details from the same docker volume where the SDK repos live.
 docker run --rm \
-  --entrypoint /bin/bash \
   -v "$VOLUME_NAME:/build/repos" \
   -v "$WORKSPACE:$WORKSPACE" \
   -e ARTIFACT_DIR="$ARTIFACT_DIR" \
