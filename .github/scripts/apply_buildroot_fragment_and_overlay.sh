@@ -39,17 +39,16 @@ make "$DEFCONFIG_NAME"
 cp "$FRAGMENT_SRC" "$BR_DIR/seedsigner_required.fragment"
 
 # Force dynamic device management to eudev so udev userspace actually lands in rootfs.
-# Remove any existing device creation lines to avoid duplicates/conflicts
+# Remove any existing device creation and eudev lines to avoid duplicates/conflicts
 sed -i \
   -e '/^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=/d' \
-  -e '/^# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV is not set$/d' \
+  -e '/^# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV is not set/d' \
   -e '/^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV=/d' \
-  -e '/^# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV is not set$/d' \
+  -e '/^# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV is not set/d' \
+  -e '/^BR2_PACKAGE_EUDEV=/d' \
   "$BR_DIR/seedsigner_required.fragment"
 
 # Always ensure BR2_PACKAGE_EUDEV is set (required for DYNAMIC_EUDEV device creation)
-# Remove any existing line and re-add to ensure it's always set correctly
-sed -i '/^BR2_PACKAGE_EUDEV=/d' "$BR_DIR/seedsigner_required.fragment"
 echo "BR2_PACKAGE_EUDEV=y" >> "$BR_DIR/seedsigner_required.fragment"
 
 cat >> "$BR_DIR/seedsigner_required.fragment" <<'FRAG'
