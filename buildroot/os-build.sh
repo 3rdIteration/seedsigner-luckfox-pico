@@ -355,7 +355,7 @@ capture_profile_debug_context() {
         echo ""
         echo "Buildroot .config key lines:"
         if [[ -f "$BUILDROOT_DIR/.config" ]]; then
-            grep -E '^(BR2_DEFCONFIG|BR2_ROOTFS_OVERLAY|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX)=' "$BUILDROOT_DIR/.config" || true
+            grep -E '^(BR2_DEFCONFIG|BR2_ROOTFS_OVERLAY|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX)=' "$BUILDROOT_DIR/.config" || true
         else
             echo "missing: $BUILDROOT_DIR/.config"
         fi
@@ -528,7 +528,7 @@ emit_build_debug_artifacts() {
     if [[ -f "$br_config" ]]; then
         cp -v "$br_config" "$OUTPUT_DIR/buildroot.config"
         cp -v "$br_config" "$debug_dir/buildroot.config"
-        grep -E '^(BR2_DEFCONFIG|BR2_EXTERNAL|BR2_ROOTFS_OVERLAY|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX)=' "$br_config" > "$OUTPUT_DIR/buildroot.config.grep.txt" || true
+        grep -E '^(BR2_DEFCONFIG|BR2_EXTERNAL|BR2_ROOTFS_OVERLAY|BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX)=' "$br_config" > "$OUTPUT_DIR/buildroot.config.grep.txt" || true
         cp -v "$OUTPUT_DIR/buildroot.config.grep.txt" "$debug_dir/buildroot.config.grep.txt" || true
     fi
 
@@ -688,6 +688,7 @@ validate_buildroot_defconfig_applied() {
         BR2_PACKAGE_ZBAR=y
         BR2_PACKAGE_LIBCAMERA=y
         BR2_PACKAGE_LIBCAMERA_APPS=y
+        BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
         BR2_PACKAGE_EUDEV=y
         BR2_PACKAGE_KMOD=y
         BR2_PACKAGE_UTIL_LINUX=y
