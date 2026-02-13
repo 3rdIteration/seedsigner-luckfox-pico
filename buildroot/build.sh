@@ -128,23 +128,24 @@ run_build() {
     fi
     
     # Set up build environment variables
-    local env_args="-e BUILD_MODEL=$build_model"
+    local -a env_args
+    env_args=(-e "BUILD_MODEL=$build_model")
     if [[ -n "$build_jobs" ]]; then
-        env_args="-e BUILD_JOBS=$build_jobs -e BUILD_MODEL=$build_model"
+        env_args=(-e "BUILD_JOBS=$build_jobs" -e "BUILD_MODEL=$build_model")
         print_success "Using $build_jobs parallel build jobs"
     fi
 
     # Pass optional pinned refs through to container for deterministic CI/local parity
     if [[ -n "${LUCKFOX_PICO_REF:-}" ]]; then
-        env_args="$env_args -e LUCKFOX_PICO_REF=$LUCKFOX_PICO_REF"
+        env_args+=(-e "LUCKFOX_PICO_REF=$LUCKFOX_PICO_REF")
         print_success "Using LUCKFOX_PICO_REF=$LUCKFOX_PICO_REF"
     fi
     if [[ -n "${SEEDSIGNER_OS_REF:-}" ]]; then
-        env_args="$env_args -e SEEDSIGNER_OS_REF=$SEEDSIGNER_OS_REF"
+        env_args+=(-e "SEEDSIGNER_OS_REF=$SEEDSIGNER_OS_REF")
         print_success "Using SEEDSIGNER_OS_REF=$SEEDSIGNER_OS_REF"
     fi
     if [[ -n "${SEEDSIGNER_REF:-}" ]]; then
-        env_args="$env_args -e SEEDSIGNER_REF=$SEEDSIGNER_REF"
+        env_args+=(-e "SEEDSIGNER_REF=$SEEDSIGNER_REF")
         print_success "Using SEEDSIGNER_REF=$SEEDSIGNER_REF"
     fi
     
@@ -152,7 +153,23 @@ run_build() {
     repo_root=$(cd "$SCRIPT_DIR/.." && pwd)
 
     # Docker run arguments with persistent volume
-    local docker_args="$PLATFORM_ARGS \n                       --name $CONTAINER_NAME \n                       --rm\n                       -v $volume_name:/build/repos\n                       -v $abs_output_dir:/build/output\n                       -v $repo_root:/workspace\n                       -e WORKSPACE_ROOT=/workspace\n                       -e APPLY_REQUIRED_BUILDROOT_SCRIPT=${APPLY_REQUIRED_BUILDROOT_SCRIPT:-1}\n                       $env_args"
+    local -a docker_args platform_args_arr
+    if [[ -n "${PLATFORM_ARGS:-}" ]]; then
+        # shellcheck disable=SC2206
+        platform_args_arr=($PLATFORM_ARGS)
+    fi
+
+    docker_args=(
+        "${platform_args_arr[@]}"
+        --name "$CONTAINER_NAME"
+        --rm
+        -v "$volume_name:/build/repos"
+        -v "$abs_output_dir:/build/output"
+        -v "$repo_root:/workspace"
+        -e WORKSPACE_ROOT=/workspace
+        -e "APPLY_REQUIRED_BUILDROOT_SCRIPT=${APPLY_REQUIRED_BUILDROOT_SCRIPT:-1}"
+    )
+    docker_args+=("${env_args[@]}")
     
     case "$mode" in
         "build")
@@ -178,7 +195,7 @@ run_build() {
                 print_error "No artifact type selected. Use --microsd and/or --nand"
                 exit 1
             fi
-            docker run $docker_args "$IMAGE_NAME" "$container_mode"
+            docker run "${docker_args[@]}" "$IMAGE_NAME" "$container_mode"
             if [[ "$build_nand" == "true" ]]; then
                 run_rootfs_sanity_check "$abs_output_dir"
             else
@@ -189,12 +206,12 @@ run_build() {
         "interactive")
             print_success "Starting interactive mode..."
             print_success "Repository volume: $volume_name (persists between sessions)"
-            docker run -it $docker_args "$IMAGE_NAME" interactive
+            docker run -it "${docker_args[@]}" "$IMAGE_NAME" interactive
             ;;
         "shell")
             print_success "Starting direct shell..."
             print_success "Repository volume: $volume_name (persists between sessions)"
-            docker run -it $docker_args "$IMAGE_NAME" shell
+            docker run -it "${docker_args[@]}" "$IMAGE_NAME" shell
             ;;
         *)
             print_error "Unknown mode: $mode"
