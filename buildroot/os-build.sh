@@ -97,6 +97,11 @@ run_rootfs_sanity_check() {
     local checker_script="/build/scripts/check_rootfs_ubi.py"
     local report_dir="$OUTPUT_DIR/rootfs_sanity/${board_profile}-${boot_medium}-${ts}"
 
+    if [[ "$boot_medium" != "nand" ]]; then
+        print_info "Skipping rootfs UBI sanity check for non-NAND build (${board_profile}/${boot_medium})"
+        return
+    fi
+
     print_step "Running rootfs UBI sanity check (${board_profile}/${boot_medium})"
 
     if [[ ! -f "$rootfs_img" ]]; then
