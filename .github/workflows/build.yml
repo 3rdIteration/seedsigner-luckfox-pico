@@ -2,9 +2,9 @@ name: Build SeedSigner OS
 
 on:
   push:
-    branches: [ main, develop, master ]
+    branches: [main, develop, master]
   pull_request:
-    branches: [ main, develop, master ]
+    branches: [main, develop, master]
   workflow_dispatch:
     inputs:
       force_rebuild:
@@ -17,10 +17,7 @@ on:
         required: false
         default: nand
         type: choice
-        options:
-          - nand
-          - sd
-          - all
+        options: [nand, sd, all]
 
 jobs:
   build:
@@ -62,14 +59,13 @@ jobs:
             BUILD_ARGS="--force"
           fi
 
-          echo "🚀 Building ${PROFILE}/${MEDIUM}"
           if [ "$MEDIUM" = "nand" ]; then
             ./build.sh build $BUILD_ARGS --nand --model "$PROFILE" --output "$VARIANT_DIR"
           else
             ./build.sh build $BUILD_ARGS --microsd --model "$PROFILE" --output "$VARIANT_DIR"
           fi
 
-      - name: Post-build workspace debug
+      - name: Show exported debug summary
         if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) }}
         env:
           PROFILE: ${{ matrix.profile }}
@@ -77,61 +73,28 @@ jobs:
         run: |
           set -euo pipefail
           VARIANT_DIR="$GITHUB_WORKSPACE/build-artifacts/${PROFILE}-${MEDIUM}"
-          mkdir -p "$VARIANT_DIR"
+          ls -la "$VARIANT_DIR" || true
+          echo "=== buildroot.config.grep.txt ==="
+          cat "$VARIANT_DIR/buildroot.config.grep.txt" || true
+          echo "=== rootfs.selected.txt ==="
+          cat "$VARIANT_DIR/rootfs.selected.txt" || true
+          echo "=== images.report.txt (head) ==="
+          head -200 "$VARIANT_DIR/images.report.txt" || true
 
-          echo "🔧 BR2-related environment variables"
-          env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' | tee "$VARIANT_DIR/actions.env.txt" || true
-
-          echo "🔍 Buildroot .config files in workspace"
-          find "$GITHUB_WORKSPACE" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null | tee "$VARIANT_DIR/actions.buildroot.config.paths.txt" || true
-
-          echo "🧪 Key Buildroot config lines"
-          while IFS= read -r cfg; do
-            [ -n "$cfg" ] || continue
-            echo "=== $cfg ===" | tee -a "$VARIANT_DIR/actions.buildroot.config.grep.txt"
-            grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$cfg" | tee -a "$VARIANT_DIR/actions.buildroot.config.grep.txt" || true
-          done < "$VARIANT_DIR/actions.buildroot.config.paths.txt"
-
-          {
-            echo "repo=$GITHUB_WORKSPACE"
-            git rev-parse HEAD || true
-            git status --porcelain || true
-            echo ""
-            echo "git-lfs:"
-            git lfs version || true
-            git lfs ls-files || true
-          } > "$VARIANT_DIR/actions.git.txt"
-
-      - name: Locate NAND rootfs image
+      - name: Verify NAND rootfs export
         if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) && matrix.medium == 'nand' }}
         env:
           PROFILE: ${{ matrix.profile }}
           MEDIUM: ${{ matrix.medium }}
         run: |
           set -euo pipefail
-          VARIANT_DIR="$GITHUB_WORKSPACE/build-artifacts/${PROFILE}-${MEDIUM}"
-          CANDIDATES=$(find "$VARIANT_DIR" -type f -name 'rootfs.img' 2>/dev/null || true)
-          if [ -z "$CANDIDATES" ]; then
-            CANDIDATES=$(find "$GITHUB_WORKSPACE" -type f -name 'rootfs.img' 2>/dev/null || true)
-          fi
-
-          ROOTFS_IMG=""
-          while IFS= read -r img; do
-            [ -n "$img" ] || continue
-            if file "$img" | grep -qi 'UBI image'; then
-              ROOTFS_IMG="$img"
-              break
-            fi
-          done <<< "$CANDIDATES"
-
-          if [ -z "$ROOTFS_IMG" ]; then
-            echo "ERROR: could not find NAND UBI rootfs.img"
-            echo "$CANDIDATES"
+          ROOTFS_IMG="$GITHUB_WORKSPACE/build-artifacts/${PROFILE}-${MEDIUM}/rootfs.img"
+          test -f "$ROOTFS_IMG" || { echo "No exported NAND rootfs.img found at $ROOTFS_IMG"; exit 1; }
+          file "$ROOTFS_IMG"
+          if ! file "$ROOTFS_IMG" | grep -qi 'UBI image'; then
+            echo "Exported NAND rootfs.img is not a UBI image"
             exit 1
           fi
-
-          echo "Selected NAND rootfs image: $ROOTFS_IMG"
-          file "$ROOTFS_IMG"
           sha256sum "$ROOTFS_IMG"
           echo "ROOTFS_IMG=$ROOTFS_IMG" >> "$GITHUB_ENV"
 
@@ -139,7 +102,7 @@ jobs:
         if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) && matrix.medium == 'nand' }}
         run: python3 -m pip install --user ubi-reader
 
-      - name: Rootfs UBI sanity check
+      - name: Rootfs UBI sanity check (NAND only)
         if: ${{ (github.event_name != 'workflow_dispatch' || github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium) && matrix.medium == 'nand' }}
         env:
           PROFILE: ${{ matrix.profile }}

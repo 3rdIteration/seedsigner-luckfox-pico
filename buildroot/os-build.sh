@@ -551,6 +551,13 @@ force_sdk_buildroot_defconfig() {
 enforce_buildroot_defconfig() {
     print_step "Enforcing Buildroot defconfig"
 
+    local workspace_apply_script="/workspace/.github/scripts/apply_buildroot_fragment_and_overlay.sh"
+    if [[ -x "$workspace_apply_script" ]]; then
+        print_step "Applying Buildroot fragment/overlay from workspace"
+        WORKSPACE_ROOT="/workspace" SDK_ROOT="$LUCKFOX_SDK_DIR" DEFCONFIG_NAME="luckfox_pico_defconfig" "$workspace_apply_script"
+        return
+    fi
+
     if [[ ! -f "/build/configs/luckfox_pico_defconfig" ]]; then
         print_error "SeedSigner configuration file not found: /build/configs/luckfox_pico_defconfig"
         exit 1

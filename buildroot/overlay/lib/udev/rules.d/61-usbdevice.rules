@@ -1,0 +1,2 @@
+SUBSYSTEM=="usb", ACTION=="add", RUN+="/usr/bin/usbdevice"
+SUBSYSTEM=="block", ACTION=="add", RUN+="/usr/bin/sd-cards-auto-mount"

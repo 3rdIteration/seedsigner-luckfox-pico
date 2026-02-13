@@ -117,6 +117,7 @@ run_build() {
     # Ensure output directory exists
     mkdir -p "$output_dir"
     local abs_output_dir=$(realpath "$output_dir")
+    local workspace_root=$(realpath "$SCRIPT_DIR/..")
     
     # Create or use existing Docker volume for repositories
     local volume_name="seedsigner-repos"
@@ -140,6 +141,7 @@ run_build() {
                        --rm
                        -v $volume_name:/build/repos
                        -v $abs_output_dir:/build/output
+                       -v $workspace_root:/workspace
                        $env_args"
     
     case "$mode" in

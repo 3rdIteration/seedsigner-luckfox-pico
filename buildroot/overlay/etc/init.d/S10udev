@@ -1,0 +1,24 @@
+#!/bin/sh
+# Start udev daemon early
+case "$1" in
+  start)
+    echo "Starting udev..."
+    [ -d /run ] || mkdir -p /run
+    udevd --daemon
+    udevadm trigger --action=add
+    udevadm settle
+    ;;
+  stop)
+    echo "Stopping udev..."
+    killall udevd 2>/dev/null || true
+    ;;
+  restart)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac
+exit 0
