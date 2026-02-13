@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
       matrix:
         profile: [mini, max]
-        medium: [sd, nand]
+        medium: [nand, sd]
 
     steps:
       - name: Checkout repository
@@ -96,6 +96,10 @@ jobs:
             echo "repo=$GITHUB_WORKSPACE"
             git rev-parse HEAD || true
             git status --porcelain || true
+            echo ""
+            echo "git-lfs:"
+            git lfs version || true
+            git lfs ls-files || true
           } > "$VARIANT_DIR/actions.git.txt"
 
       - name: Locate NAND rootfs image
