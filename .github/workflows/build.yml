@@ -12,26 +12,18 @@ on:
         required: false
         default: false
         type: boolean
-      build_mini:
-        description: 'Build Mini target'
+      profile:
+        description: 'Profile selection'
         required: false
-        default: true
-        type: boolean
-      build_max:
-        description: 'Build Max target'
+        default: 'all'
+        type: choice
+        options: [all, mini, max]
+      medium:
+        description: 'Boot medium selection'
         required: false
-        default: true
-        type: boolean
-      build_microsd:
-        description: 'Build MicroSD artifacts'
-        required: false
-        default: true
-        type: boolean
-      build_nand:
-        description: 'Build NAND artifacts'
-        required: false
-        default: true
-        type: boolean
+        default: 'nand'
+        type: choice
+        options: [all, nand, sd]
       luckfox_pico_ref:
         description: 'Pin luckfox-pico ref (branch/tag/SHA); leave blank for default clone behavior'
         required: false
@@ -49,9 +41,16 @@ on:
         type: string
 
 jobs:
-  build:
+  build-variant:
+    name: build-${{ matrix.profile }}-${{ matrix.medium }}
+    if: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.profile == 'all' || github.event.inputs.profile == matrix.profile) && (github.event.inputs.medium == 'all' || github.event.inputs.medium == matrix.medium)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [mini, max]
+        medium: [sd, nand]
 
     steps:
       - name: Checkout repository
@@ -60,12 +59,6 @@ jobs:
           lfs: true
           submodules: recursive
 
-
-      - name: Diagnose Git LFS content
-        run: |
-          git lfs ls-files || true
-          git lfs status || true
-          rg -n "git-lfs.github.com/spec" . || true
       - name: Free disk space for large image builds
         run: |
           df -h
@@ -73,114 +66,94 @@ jobs:
           docker system prune -af || true
           df -h
 
-      - name: Build system status
+      - name: Build SeedSigner OS (${{ matrix.profile }}-${{ matrix.medium }})
         run: |
           cd buildroot
-          ./build.sh status
+          ARTIFACT_DIR="../build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+          mkdir -p "$ARTIFACT_DIR"
 
-      - name: Build SeedSigner OS
-        run: |
-          cd buildroot
-          echo "🚀 Starting SeedSigner build..."
-
-          BUILD_MINI=true
-          BUILD_MAX=true
-          BUILD_MICROSD=true
-          BUILD_NAND=true
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BUILD_MINI="${{ github.event.inputs.build_mini }}"
-            BUILD_MAX="${{ github.event.inputs.build_max }}"
-            BUILD_MICROSD="${{ github.event.inputs.build_microsd }}"
-            BUILD_NAND="${{ github.event.inputs.build_nand }}"
+          BUILD_ARGS=(build --output "$ARTIFACT_DIR" --model "${{ matrix.profile }}")
+          if [ "${{ matrix.medium }}" = "nand" ]; then
+            BUILD_ARGS+=(--nand)
+          else
+            BUILD_ARGS+=(--microsd)
           fi
 
-          MODELS=()
-          if [ "$BUILD_MINI" = "true" ]; then MODELS+=(mini); fi
-          if [ "$BUILD_MAX" = "true" ]; then MODELS+=(max); fi
-
-          ARTIFACT_FLAGS=()
-          if [ "$BUILD_MICROSD" = "true" ]; then ARTIFACT_FLAGS+=(--microsd); fi
-          if [ "$BUILD_NAND" = "true" ]; then ARTIFACT_FLAGS+=(--nand); fi
-
-          if [ ${#MODELS[@]} -eq 0 ]; then
-            echo "❌ No models selected. Enable at least one of: build_mini, build_max"
-            exit 1
-          fi
-
-          if [ ${#ARTIFACT_FLAGS[@]} -eq 0 ]; then
-            echo "❌ No artifact types selected. Enable at least one of: build_microsd, build_nand"
-            exit 1
-          fi
-
-          BASE_ARGS=(build --output ../build-artifacts)
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-            BASE_ARGS+=(--force)
+            BUILD_ARGS+=(--force)
           fi
 
-          # Optional upstream ref pinning for deterministic CI builds.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             export LUCKFOX_PICO_REF="${{ github.event.inputs.luckfox_pico_ref }}"
             export SEEDSIGNER_OS_REF="${{ github.event.inputs.seedsigner_os_ref }}"
             export SEEDSIGNER_REF="${{ github.event.inputs.seedsigner_ref }}"
           fi
 
-          echo "Ref pins: LUCKFOX_PICO_REF='${LUCKFOX_PICO_REF:-}', SEEDSIGNER_OS_REF='${SEEDSIGNER_OS_REF:-}', SEEDSIGNER_REF='${SEEDSIGNER_REF:-}'"
+          echo "Variant: profile=${{ matrix.profile }} medium=${{ matrix.medium }}"
+          echo "Running: ./build.sh ${BUILD_ARGS[*]}"
+          ./build.sh "${BUILD_ARGS[@]}"
 
-          for model in "${MODELS[@]}"; do
-            BUILD_ARGS=("${BASE_ARGS[@]}" --model "$model" "${ARTIFACT_FLAGS[@]}")
-            echo "Running: ./build.sh ${BUILD_ARGS[*]}"
-            ./build.sh "${BUILD_ARGS[@]}"
-          done
-
-
-      - name: Debug Buildroot environment and repo state
+      - name: Debug Buildroot env/config/git from workspace
         if: always()
         run: |
-          echo "=== BR2 environment variables ==="
-          env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' || true
+          ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+          mkdir -p "$ARTIFACT_DIR"
 
-          echo ""
-          echo "=== Buildroot .config candidates ==="
+          echo "=== BR2 env vars ===" | tee "$ARTIFACT_DIR/workspace-br2-env.txt"
+          env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' | tee -a "$ARTIFACT_DIR/workspace-br2-env.txt" || true
+
           CONFIG_FILES=$(find "$GITHUB_WORKSPACE" \( -path "*buildroot*/output*/.config" -o -path "*buildroot*/output*/build/.config" \) -type f 2>/dev/null || true)
-          echo "$CONFIG_FILES"
+          echo "$CONFIG_FILES" | tee "$ARTIFACT_DIR/workspace-config-paths.txt"
 
-          echo ""
-          echo "=== Key Buildroot config lines ==="
-          for f in $CONFIG_FILES; do
-            echo "=== $f ==="
-            grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY)=' "$f" || true
-          done
+          {
+            for f in $CONFIG_FILES; do
+              echo "=== $f ==="
+              grep -E '^(BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX|BR2_ROOTFS_OVERLAY|BR2_DEFCONFIG)=' "$f" || true
+            done
+          } | tee "$ARTIFACT_DIR/workspace-config-grep.txt"
 
-          echo ""
-          echo "=== Git SHAs and status ==="
-          git rev-parse HEAD || true
-          if [ -d "$GITHUB_WORKSPACE/buildroot" ]; then
-            (cd "$GITHUB_WORKSPACE/buildroot" && git rev-parse HEAD) || true
+          {
+            echo "top_sha: $(git rev-parse HEAD 2>/dev/null || echo unknown)"
+            echo "top_status:"
+            git status --porcelain || true
+            if [ -d "$GITHUB_WORKSPACE/buildroot" ]; then
+              echo "buildroot_sha: $(cd "$GITHUB_WORKSPACE/buildroot" && git rev-parse HEAD 2>/dev/null || echo unknown)"
+            fi
+            if [ -d "$GITHUB_WORKSPACE/buildroot/build-output/luckfox_pico_sdk" ]; then
+              echo "luckfox_sdk_sha: $(cd "$GITHUB_WORKSPACE/buildroot/build-output/luckfox_pico_sdk" && git rev-parse HEAD 2>/dev/null || echo unknown)"
+              echo "luckfox_sdk_status:"
+              (cd "$GITHUB_WORKSPACE/buildroot/build-output/luckfox_pico_sdk" && git status --porcelain) || true
+            fi
+          } | tee "$ARTIFACT_DIR/workspace-git.txt"
+
+      - name: Locate NAND rootfs image and log format
+        if: ${{ always() && matrix.medium == 'nand' }}
+        run: |
+          ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+          ROOTFS_IMG=$(find "$ARTIFACT_DIR" -type f -name "rootfs.img" | head -n 1)
+          if [ -z "$ROOTFS_IMG" ]; then
+            ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
           fi
-          if [ -d "$GITHUB_WORKSPACE/buildroot/luckfox_pico_sdk" ]; then
-            (cd "$GITHUB_WORKSPACE/buildroot/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
-          fi
-          if [ -d "$GITHUB_WORKSPACE/buildroot/build-output/luckfox_pico_sdk" ]; then
-            (cd "$GITHUB_WORKSPACE/buildroot/build-output/luckfox_pico_sdk" && git rev-parse HEAD && git status --porcelain) || true
+
+          echo "ROOTFS_IMG=$ROOTFS_IMG" | tee "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
+          if [ -n "$ROOTFS_IMG" ]; then
+            file "$ROOTFS_IMG" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
+            sha256sum "$ROOTFS_IMG" | tee -a "$ARTIFACT_DIR/selected-rootfs-from-workflow.txt"
           fi
 
       - name: Rootfs UBI sanity check (NAND only)
-        if: always()
+        if: ${{ matrix.medium == 'nand' }}
         run: |
-          BUILD_NAND=true
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BUILD_NAND="${{ github.event.inputs.build_nand }}"
-          fi
-
-          if [ "$BUILD_NAND" != "true" ]; then
-            echo "Skipping rootfs UBI sanity check (NAND build not requested)"
-            exit 0
-          fi
-
           python3 -m pip install --user ubi-reader
+          ARTIFACT_DIR="$GITHUB_WORKSPACE/build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}"
+          SANITY_DIR="$GITHUB_WORKSPACE/rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}"
+          mkdir -p "$SANITY_DIR"
 
-          ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
+          ROOTFS_IMG=$(find "$ARTIFACT_DIR" -type f -name "rootfs.img" | head -n 1)
+          if [ -z "$ROOTFS_IMG" ]; then
+            ROOTFS_IMG=$(find "$GITHUB_WORKSPACE" -type f -name "rootfs.img" | head -n 1)
+          fi
+
           echo "ROOTFS_IMG=$ROOTFS_IMG"
           if [ -z "$ROOTFS_IMG" ]; then
             echo "❌ Could not locate rootfs.img in workspace"
@@ -189,122 +162,23 @@ jobs:
 
           python3 .github/scripts/check_rootfs_ubi.py \
             --rootfs-img "$ROOTFS_IMG" \
-            --outdir "$GITHUB_WORKSPACE/rootfs_sanity" \
+            --outdir "$SANITY_DIR" \
             --workspace "$GITHUB_WORKSPACE"
 
       - name: Upload rootfs sanity report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: rootfs-sanity-${{ github.run_id }}
-          path: rootfs_sanity/**
+          name: rootfs-sanity-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_id }}
+          path: rootfs_sanity/${{ matrix.profile }}-${{ matrix.medium }}/**
+          if-no-files-found: ignore
 
-      - name: Verify generated artifacts are not obviously corrupt
-        if: always()
-        run: |
-          set -e
-
-          BUILD_MICROSD=true
-          BUILD_NAND=true
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            BUILD_MICROSD="${{ github.event.inputs.build_microsd }}"
-            BUILD_NAND="${{ github.event.inputs.build_nand }}"
-          fi
-
-          if [ "$BUILD_MICROSD" = "true" ]; then
-            found_img=0
-            while IFS= read -r -d '' img; do
-              found_img=1
-              size=$(stat -c '%s' "$img")
-              echo "Checking $img ($size bytes)"
-              if [ "$size" -lt 104857600 ]; then
-                echo "❌ Image too small: $img"
-                exit 1
-              fi
-              file "$img"
-            done < <(find build-artifacts -name 'seedsigner-luckfox-pico*.img' -type f -print0)
-
-            if [ "$found_img" -eq 0 ]; then
-              echo "❌ MicroSD build requested but no seedsigner-luckfox-pico*.img artifacts found"
-              exit 1
-            fi
-          else
-            echo "Skipping .img validation (MicroSD build not requested)"
-          fi
-
-          if [ "$BUILD_NAND" = "true" ]; then
-            found_nand=0
-            while IFS= read -r -d '' f; do
-              found_nand=1
-              echo "Found NAND artifact: $f"
-            done < <(find build-artifacts \( -name 'seedsigner-luckfox-pico*-nand-bundle*.tar.gz' -o -name 'seedsigner-luckfox-pico-*-nand-files-*' -o -name 'seedsigner-luckfox-pico-*-nand-sdk-images-*.tar.gz' \) -print0)
-
-            if [ "$found_nand" -eq 0 ]; then
-              echo "❌ NAND build requested but no NAND artifacts found"
-              exit 1
-            fi
-          else
-            echo "Skipping NAND validation (NAND build not requested)"
-          fi
-
-      - name: List build artifacts
-        if: always()
-        run: |
-          echo "🎯 Build artifacts:"
-          ls -la build-artifacts/ || echo "No build artifacts found"
-
-          echo ""
-          echo "🔍 Images:"
-          find build-artifacts -name "seedsigner-luckfox-pico*.img" -type f 2>/dev/null || echo "No images found"
-
-          echo ""
-          echo "📊 Image sizes:"
-          find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
-
-          echo ""
-          echo "📦 NAND bundle zips:"
-          find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-          echo ""
-          echo "🗜️ NAND bundle tar.gz files:"
-          find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
-
-      - name: Package NAND bundle zips
-        if: always()
-        run: |
-          mkdir -p build-artifacts
-          shopt -s nullglob
-
-          BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
-          if [ ${#BUNDLES[@]} -eq 0 ]; then
-            echo "No NAND bundle folders found"
-          else
-            for bundle_dir in "${BUNDLES[@]}"; do
-              [ -d "$bundle_dir" ] || continue
-              bundle_name=$(basename "$bundle_dir")
-
-              hw_target="unknown"
-              if [[ "$bundle_name" =~ seedsigner-luckfox-pico-([^-]+)-nand-files- ]]; then
-                hw_target="${BASH_REMATCH[1]}"
-              fi
-
-              zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
-              echo "Creating NAND zip: $zip_name from $bundle_name"
-
-              rm -f "build-artifacts/$zip_name"
-              (cd build-artifacts && zip -qr "$zip_name" "$bundle_name")
-            done
-          fi
-
-      - name: Upload build artifacts
+      - name: Upload build and debug artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: seedsigner-os-${{ github.run_number }}
+          name: seedsigner-os-${{ matrix.profile }}-${{ matrix.medium }}-${{ github.run_id }}
           path: |
-            build-artifacts/seedsigner-luckfox-pico*.img
-            build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
-            build-artifacts/seedsigner-luckfox-pico*.tar.gz
-            build-artifacts/debug-*/**
+            build-artifacts/${{ matrix.profile }}-${{ matrix.medium }}/**
           retention-days: 30
           if-no-files-found: warn

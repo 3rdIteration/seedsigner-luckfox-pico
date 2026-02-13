@@ -524,13 +524,25 @@ emit_build_debug_artifacts() {
         cp -v "$profile_report_src" "$debug_dir/profile_context.txt"
     fi
 
+    local br_config="$BUILDROOT_DIR/.config"
+    if [[ -f "$br_config" ]]; then
+        cp -v "$br_config" "$OUTPUT_DIR/buildroot.config"
+        cp -v "$br_config" "$debug_dir/buildroot.config"
+        grep -E '^(BR2_DEFCONFIG|BR2_EXTERNAL|BR2_ROOTFS_OVERLAY|BR2_PACKAGE_EUDEV|BR2_PACKAGE_KMOD|BR2_PACKAGE_UTIL_LINUX|BR2_PACKAGE_UTIL_LINUX_LIBBLKID|BR2_PACKAGE_BUSYBOX)=' "$br_config" > "$OUTPUT_DIR/buildroot.config.grep.txt" || true
+        cp -v "$OUTPUT_DIR/buildroot.config.grep.txt" "$debug_dir/buildroot.config.grep.txt" || true
+    fi
+
+    env | sort | grep -E '^(BR2_EXTERNAL|BR2_)' > "$OUTPUT_DIR/env.txt" || true
+    cp -v "$OUTPUT_DIR/env.txt" "$debug_dir/env.txt" || true
+
     local target_dir="$BUILDROOT_DIR/output/target"
     if [[ -d "$target_dir" ]]; then
         print_step "Capturing rootfs manifest (${board_profile}/${boot_medium})"
         (
             cd "$target_dir"
             find . -type f -printf "%s %p\n" | sort -n
-        ) > "$debug_dir/rootfs_filelist.txt"
+        ) > "$OUTPUT_DIR/target.manifest.txt"
+        cp -v "$OUTPUT_DIR/target.manifest.txt" "$debug_dir/target.manifest.txt"
 
         (
             cd "$target_dir"
@@ -542,20 +554,41 @@ emit_build_debug_artifacts() {
             du -h --max-depth=3 . | sort -h
         ) > "$debug_dir/rootfs_du.txt"
     else
-        echo "target directory missing: $target_dir" > "$debug_dir/rootfs_filelist.txt"
+        echo "target directory missing: $target_dir" > "$debug_dir/target.manifest.txt"
     fi
 
     local image_dir="$LUCKFOX_SDK_DIR/output/image"
     if [[ -d "$image_dir" ]]; then
-        print_step "Capturing image hashes (${board_profile}/${boot_medium})"
+        print_step "Capturing image metadata (${board_profile}/${boot_medium})"
         (
             cd "$image_dir"
-            local files=(idblock.img uboot.img trust.img boot.img rootfs.img update.img env.img oem.img userdata.img)
+            local files=(rootfs.img boot.img idblock.img uboot.img trust.img update.img env.img oem.img userdata.img)
             for f in "${files[@]}"; do
                 [[ -f "$f" ]] || continue
+                echo "=== $f ==="
+                ls -l "$f"
+                file "$f" || true
                 sha256sum "$f"
+                echo
             done
-        ) > "$debug_dir/sha256sums.txt"
+        ) > "$OUTPUT_DIR/images.report.txt"
+        cp -v "$OUTPUT_DIR/images.report.txt" "$debug_dir/images.report.txt"
+
+        local selected_rootfs=""
+        if [[ "$boot_medium" == "nand" ]]; then
+            selected_rootfs=$(find "$image_dir" -name rootfs.img -type f -print0 | xargs -0 file 2>/dev/null | grep -i 'UBI image' | head -n 1 | cut -d: -f1)
+        fi
+        if [[ -z "$selected_rootfs" && -f "$image_dir/rootfs.img" ]]; then
+            selected_rootfs="$image_dir/rootfs.img"
+        fi
+
+        {
+            echo "selected_rootfs_path=${selected_rootfs:-missing}"
+            if [[ -n "$selected_rootfs" ]]; then
+                file "$selected_rootfs" || true
+            fi
+        } > "$OUTPUT_DIR/selected-rootfs.txt"
+        cp -v "$OUTPUT_DIR/selected-rootfs.txt" "$debug_dir/selected-rootfs.txt"
 
         (
             cd "$image_dir"
@@ -565,14 +598,26 @@ emit_build_debug_artifacts() {
 
     if command -v git >/dev/null 2>&1; then
         {
-            git -C "$LUCKFOX_SDK_DIR" status --short || true
-            git -C "$SEEDSIGNER_OS_DIR" status --short || true
-            git -C "$SEEDSIGNER_CODE_DIR" status --short || true
-        } > "$debug_dir/git_status.txt"
+            echo "top_repo_sha: $(git -C /build rev-parse HEAD 2>/dev/null || echo unknown)"
+            echo "luckfox_sdk_sha: $(git -C "$LUCKFOX_SDK_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+            echo "seedsigner_os_sha: $(git -C "$SEEDSIGNER_OS_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+            echo "seedsigner_sha: $(git -C "$SEEDSIGNER_CODE_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+            echo ""
+            echo "luckfox_sdk_status:"
+            git -C "$LUCKFOX_SDK_DIR" status --porcelain || true
+            echo ""
+            echo "seedsigner_os_status:"
+            git -C "$SEEDSIGNER_OS_DIR" status --porcelain || true
+            echo ""
+            echo "seedsigner_status:"
+            git -C "$SEEDSIGNER_CODE_DIR" status --porcelain || true
+        } > "$OUTPUT_DIR/git.txt"
+        cp -v "$OUTPUT_DIR/git.txt" "$debug_dir/git.txt" || true
     fi
 
     print_success "Debug artifacts captured under: $debug_dir"
 }
+
 
 ensure_buildroot_tree() {
     if [[ -d "$BUILDROOT_DIR" ]]; then
