@@ -37,11 +37,20 @@ fi
 make "$DEFCONFIG_NAME"
 
 cp "$FRAGMENT_SRC" "$BR_DIR/seedsigner_required.fragment"
-if [[ -n "$UDEV_SYMBOL" && "$UDEV_SYMBOL" != "BR2_PACKAGE_EUDEV" ]]; then
-  sed -i '/^BR2_PACKAGE_EUDEV=/d' "$BR_DIR/seedsigner_required.fragment"
-  echo "$UDEV_SYMBOL=y" >> "$BR_DIR/seedsigner_required.fragment"
-fi
+
 # Force dynamic device management to eudev so udev userspace actually lands in rootfs.
+# Remove any existing device creation and eudev lines to avoid duplicates/conflicts
+sed -i \
+  -e '/^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=/d' \
+  -e '/^# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV is not set/d' \
+  -e '/^BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV=/d' \
+  -e '/^# BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV is not set/d' \
+  -e '/^BR2_PACKAGE_EUDEV=/d' \
+  "$BR_DIR/seedsigner_required.fragment"
+
+# Always ensure BR2_PACKAGE_EUDEV is set (required for DYNAMIC_EUDEV device creation)
+echo "BR2_PACKAGE_EUDEV=y" >> "$BR_DIR/seedsigner_required.fragment"
+
 cat >> "$BR_DIR/seedsigner_required.fragment" <<'FRAG'
 BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
 # BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_MDEV is not set
@@ -72,12 +81,8 @@ echo "BR2_ROOTFS_OVERLAY=\"$BR_DIR/seedsigner_overlay\"" >> "$BR_DIR/.config"
 
 make olddefconfig
 
-if [[ -n "$UDEV_SYMBOL" ]]; then
-  grep -q "^${UDEV_SYMBOL}=y" "$BR_DIR/.config" || { echo "${UDEV_SYMBOL} not enabled"; exit 101; }
-else
-  echo "Unable to determine udev symbol in Buildroot tree"
-  exit 106
-fi
+# Verify that eudev is enabled (required for BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV)
+grep -q '^BR2_PACKAGE_EUDEV=y' "$BR_DIR/.config" || { echo "BR2_PACKAGE_EUDEV not enabled"; exit 101; }
 grep -q '^BR2_PACKAGE_KMOD=y' "$BR_DIR/.config" || { echo "KMOD not enabled"; exit 102; }
 grep -q '^BR2_PACKAGE_UTIL_LINUX=y' "$BR_DIR/.config" || { echo "util-linux not enabled"; exit 103; }
 grep -q '^BR2_PACKAGE_UTIL_LINUX_LIBBLKID=y' "$BR_DIR/.config" || { echo "libblkid not enabled"; exit 104; }
