@@ -45,7 +45,7 @@ docker run --rm \
   -e ARTIFACT_DIR="$ARTIFACT_DIR" \
   -e PROFILE="$PROFILE" \
   -e MEDIUM="$MEDIUM" \
-  "$IMAGE_NAME" /bin/bash -lc '
+  "$IMAGE_NAME" -lc '
 set -euo pipefail
 SDK_ROOT=/build/repos/luckfox-pico
 mkdir -p "$ARTIFACT_DIR"
