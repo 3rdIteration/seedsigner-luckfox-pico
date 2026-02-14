@@ -33,9 +33,58 @@ The workflow automatically:
 
 The Docker build is fully self-contained and handles all repository cloning and setup automatically. This is the easiest local build option.
 
-### Simple Docker Build
+### Quick Start with build.sh
 
-From the `buildroot/` directory, run:
+From the `buildroot/` directory, simply run:
+
+```bash
+cd buildroot/
+./build.sh build --microsd
+```
+
+Build artifacts will be automatically available in `buildroot/build-output/` when the build completes.
+
+**Common Build Commands:**
+```bash
+# Build SD card images for both Mini and Max
+./build.sh build --microsd
+
+# Build NAND flash bundles
+./build.sh build --nand
+
+# Build both SD and NAND artifacts
+./build.sh build --microsd --nand
+
+# Build only Mini hardware
+./build.sh build --microsd --model mini
+
+# Build only Max hardware
+./build.sh build --microsd --model max
+
+# Use 8 parallel jobs for faster builds
+./build.sh build --microsd --jobs 8
+
+# Interactive mode for debugging
+./build.sh interactive
+
+# Check build system status
+./build.sh status
+```
+
+**Key Features:**
+- Automatically builds Docker image if needed
+- Uses persistent Docker volume for repository caching (faster subsequent builds)
+- First build: 30-90 minutes (clones repos)
+- Later builds: 15-45 minutes (reuses cached repos)
+- Artifacts automatically exported to `build-output/` directory
+
+**Output Location:**
+- Default: `buildroot/build-output/`
+- Custom: `./build.sh build --microsd --output /path/to/output`
+
+### Alternative: Direct Docker Commands
+
+If you prefer to use Docker commands directly:
 
 ```bash
 cd buildroot/
@@ -50,15 +99,7 @@ docker run --rm -v $(pwd)/output:/build/output foxbuilder:latest auto
 docker run --rm -v $(pwd)/output:/build/output foxbuilder:latest auto-nand
 ```
 
-The build artifacts will be available in `buildroot/output/` on your host machine.
-
-**Build Options:**
-- `auto` - Build SD card images for Mini and Max (default)
-- `auto-nand` - Build SD card images + NAND flash bundles
-- `interactive` - Clone repos and drop into interactive shell
-- `shell` - Drop directly into shell without setup
-
-**Customize the Build:**
+**Customize with environment variables:**
 ```bash
 # Build only Mini hardware
 docker run --rm -v $(pwd)/output:/build/output -e BUILD_MODEL=mini foxbuilder:latest auto

@@ -48,15 +48,22 @@ The GitHub Actions workflow:
 - Provides detailed build summaries and flashing instructions
 
 ### Build Locally with Docker (Simple Method)
-For users who want to build locally, a simple Docker-based build is available. From the `buildroot/` directory:
+For users who want to build locally, a simple build script is available:
 
 ```bash
 cd buildroot/
-docker build -t foxbuilder:latest .
-docker run --rm -v $(pwd)/output:/build/output foxbuilder:latest auto
+./build.sh build --microsd
 ```
 
-Build artifacts will be available in `buildroot/output/`. For more options and advanced build methods (including builds without Docker), see [OS-build-instructions.md](docs/OS-build-instructions.md).
+Build artifacts will be automatically available in `buildroot/build-output/`. The script handles Docker image building, repository caching, and artifact export automatically.
+
+**Additional options:**
+- `--nand` - Build NAND flash bundles
+- `--model mini` or `--model max` - Build specific hardware only
+- `--jobs N` - Use N parallel jobs
+- See `./build.sh --help` for all options
+
+For more details and advanced build methods (including builds without Docker), see [OS-build-instructions.md](docs/OS-build-instructions.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
