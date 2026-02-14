@@ -139,24 +139,24 @@ jobs:
     - name: List build artifacts
       if: always()
       run: |
-        echo "🎯 Build artifacts:"
+        echo "🎯 Build artifacts for ${{ matrix.model }}:"
         ls -la build-artifacts/ || echo "No build artifacts found"
         
         echo ""
-        echo "🔍 Searching for SeedSigner images:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.img" -type f 2>/dev/null || echo "No seedsigner-luckfox-pico images found"
+        echo "🔍 Searching for ${{ matrix.model }} SeedSigner images:"
+        find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-*.img" -type f 2>/dev/null || echo "No seedsigner-luckfox-pico images found"
         
         echo ""
         echo "📊 Image sizes:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
+        find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
 
         echo ""
         echo "📦 NAND bundle zips:"
-        find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
+        find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
 
         echo ""
         echo "🗜️ NAND bundle tar.gz files:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
+        find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
     
 
     - name: Package NAND bundle zips
@@ -165,9 +165,10 @@ jobs:
         mkdir -p build-artifacts
         shopt -s nullglob
 
-        BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
+        # Only package NAND bundles for the current model
+        BUNDLES=(build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-files-*)
         if [ ${#BUNDLES[@]} -eq 0 ]; then
-          echo "No NAND bundle folders found"
+          echo "No NAND bundle folders found for ${{ matrix.model }}"
         else
           for bundle_dir in "${BUNDLES[@]}"; do
             [ -d "$bundle_dir" ] || continue
@@ -192,9 +193,9 @@ jobs:
       with:
         name: seedsigner-os-${{ matrix.model }}-${{ matrix.medium }}-${{ github.run_number }}
         path: |
-          build-artifacts/seedsigner-luckfox-pico*.img
-          build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
-          build-artifacts/seedsigner-luckfox-pico*.tar.gz
+          build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-*.img
+          build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle.zip
+          build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz
         retention-days: 30
         if-no-files-found: warn
     
@@ -208,8 +209,8 @@ jobs:
         echo "- **Run Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
         
-        # Find and highlight seedsigner-luckfox-pico .img files specifically
-        IMG_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.img" 2>/dev/null || true)
+        # Find and highlight seedsigner-luckfox-pico .img files for this model
+        IMG_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-*.img" 2>/dev/null || true)
         if [ -n "$IMG_FILES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🎯 Ready to Flash:" >> $GITHUB_STEP_SUMMARY
@@ -232,7 +233,7 @@ jobs:
           echo "$IMG_FILES" | xargs -I {} du -sh {} >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-          ZIP_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" 2>/dev/null || true)
+          ZIP_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle.zip" 2>/dev/null || true)
           if [ -n "$ZIP_FILES" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
@@ -241,7 +242,7 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-          TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" 2>/dev/null || true)
+          TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz" 2>/dev/null || true)
           if [ -n "$TAR_FILES" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
