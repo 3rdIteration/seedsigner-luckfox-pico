@@ -29,19 +29,23 @@ These example builds can build a device for around $60.
 ## OS Image Build with Buildroot
 
 ### Build with GitHub Actions (Recommended for Most Users)
-The easiest way to build the SeedSigner OS image is using GitHub Actions:
+The easiest way to build the SeedSigner OS image is using GitHub Actions. This method builds directly on GitHub's infrastructure without requiring Docker:
 
 1. Fork this repository to your GitHub account
 2. Navigate to the "Actions" tab in your fork
 3. Select the "Build SeedSigner OS" workflow
-4. Click "Run workflow" and configure:
-   - **Hardware Target**: Choose `mini`, `max`, or `both` (default: `both`)
-   - **Build Artifacts**: Choose `sd-only`, `nand-only`, or `sd-and-nand` (default: `sd-and-nand`)
-   - **Force rebuild**: Optionally force a complete Docker image rebuild
-5. Wait for the build to complete (typically 30-90 minutes for first build, faster for subsequent builds)
-6. Download the artifacts from the workflow run
+4. The workflow runs automatically on pushes to `main`, `develop`, or `master` branches
+5. Builds are created for both LuckFox Pico Mini (RV1103) and Pro Max (RV1106) hardware
+6. Wait for the build to complete (typically 60-120 minutes)
+7. Download the artifacts from the workflow run
 
-**Automatic Builds**: The workflow also runs automatically on every push to `main`, `develop`, or `master` branches, building both hardware targets with both SD and NAND artifacts.
+The GitHub Actions workflow:
+- Installs all required dependencies on Ubuntu 22.04
+- Clones the LuckFox Pico SDK (customized fork), SeedSigner code, and SeedSigner OS packages
+- Configures buildroot with SeedSigner-specific packages
+- Builds the complete OS image
+- Creates flashable SD card images
+- Provides detailed build summaries and flashing instructions
 
 ### Build Locally with Docker
 The OS image can also be built locally using Buildroot in a Docker container. The complete build instructions, package requirements, and troubleshooting process are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).

@@ -7,29 +7,22 @@ on:
     branches: [ main, develop, master ]
   workflow_dispatch:
     inputs:
-      hardware_target:
-        description: 'Hardware Target'
+      hardware_type:
+        description: 'Hardware Type'
         required: true
         type: choice
         options:
-          - both
-          - mini
-          - max
-        default: 'both'
-      build_artifacts:
-        description: 'Build Artifacts'
+          - RV1103_Luckfox_Pico_Mini
+          - RV1106_Luckfox_Pico_Pro_Max
+        default: 'RV1103_Luckfox_Pico_Mini'
+      boot_medium:
+        description: 'Boot Medium'
         required: true
         type: choice
         options:
-          - sd-and-nand
-          - sd-only
-          - nand-only
-        default: 'sd-and-nand'
-      force_rebuild:
-        description: 'Force rebuild Docker image'
-        required: false
-        default: false
-        type: boolean
+          - SD_CARD
+          - SPI_NAND
+        default: 'SD_CARD'
 
 jobs:
   build:
@@ -37,103 +30,209 @@ jobs:
     timeout-minutes: 180  # 3 hours max
     permissions:
       contents: read
+    strategy:
+      matrix:
+        include:
+          - hardware: RV1103_Luckfox_Pico_Mini
+            boot: SD_CARD
+          - hardware: RV1106_Luckfox_Pico_Pro_Max
+            boot: SD_CARD
     
     steps:
-    - name: Checkout repository
+    - name: Checkout seedsigner-luckfox-pico repository
       uses: actions/checkout@v4
+      with:
+        path: seedsigner-luckfox-pico
 
     - name: Free up disk space
       run: |
-        # Remove unnecessary packages to free up space
         sudo apt-get clean
         sudo rm -rf /usr/share/dotnet
         sudo rm -rf /opt/ghc
         sudo rm -rf /usr/local/share/boost
         df -h
 
-    - name: Set build parameters
-      id: build-params
+    - name: Install dependencies
       run: |
-        # Determine hardware target
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          HARDWARE_TARGET="${{ github.event.inputs.hardware_target }}"
-          BUILD_TYPE="${{ github.event.inputs.build_artifacts }}"
-          FORCE_REBUILD="${{ github.event.inputs.force_rebuild }}"
-        else
-          # Default for push/PR events
-          HARDWARE_TARGET="both"
-          BUILD_TYPE="sd-and-nand"
-          FORCE_REBUILD="false"
-        fi
-        
-        echo "hardware_target=${HARDWARE_TARGET}" >> $GITHUB_OUTPUT
-        echo "build_type=${BUILD_TYPE}" >> $GITHUB_OUTPUT
-        echo "force_rebuild=${FORCE_REBUILD}" >> $GITHUB_OUTPUT
-        
-        echo "::notice::Hardware Target: ${HARDWARE_TARGET}"
-        echo "::notice::Build Type: ${BUILD_TYPE}"
-        echo "::notice::Force Rebuild: ${FORCE_REBUILD}"
+        sudo apt-get update
+        sudo apt-get install -y git ssh make gcc gcc-multilib g++-multilib module-assistant expect g++ gawk texinfo libssl-dev bison flex fakeroot cmake unzip gperf autoconf device-tree-compiler libncurses5-dev pkg-config bc python-is-python3 passwd openssl openssh-server openssh-client vim file cpio rsync
 
-    - name: Build SeedSigner OS
+    - name: Clone required repositories
       run: |
-        cd buildroot
+        # Clone LuckFox Pico SDK (forked version with SeedSigner modifications)
+        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
         
-        echo "🚀 Starting SeedSigner build..."
-        echo "   Hardware: ${{ steps.build-params.outputs.hardware_target }}"
-        echo "   Artifacts: ${{ steps.build-params.outputs.build_type }}"
-        echo "   Force rebuild: ${{ steps.build-params.outputs.force_rebuild }}"
+        # Clone SeedSigner OS packages
+        git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
         
-        # Set build options
-        BUILD_ARGS=""
-        if [ "${{ steps.build-params.outputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="$BUILD_ARGS --force"
+        # Clone SeedSigner code (luckfox-dev branch)
+        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b luckfox-dev --single-branch
+
+    - name: Set up build environment
+      run: |
+        cd luckfox-pico
+        
+        # Source the toolchain environment
+        cd tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
+        source env_install_toolchain.sh
+        cd ../../../..
+
+    - name: Configure board
+      run: |
+        cd luckfox-pico
+        
+        HARDWARE="${{ matrix.hardware }}"
+        BOOT_MEDIUM="${{ matrix.boot }}"
+        
+        # Determine the board config file
+        BOARD_CONFIG="project/cfg/BoardConfig_IPC/BoardConfig-${BOOT_MEDIUM}-Buildroot-${HARDWARE}-IPC.mk"
+        
+        if [ ! -f "$BOARD_CONFIG" ]; then
+          echo "Error: Board config file not found: $BOARD_CONFIG"
+          echo "Available configs:"
+          ls -1 project/cfg/BoardConfig_IPC/
+          exit 1
         fi
         
-        BUILD_ARGS="$BUILD_ARGS --model ${{ steps.build-params.outputs.hardware_target }}"
-        BUILD_ARGS="$BUILD_ARGS --output ../build-artifacts"
+        echo "Using board config: $BOARD_CONFIG"
         
-        # Determine which artifacts to build
-        case "${{ steps.build-params.outputs.build_type }}" in
-          sd-and-nand)
-            BUILD_ARGS="$BUILD_ARGS --microsd --nand"
-            ;;
-          sd-only)
-            BUILD_ARGS="$BUILD_ARGS --microsd"
-            ;;
-          nand-only)
-            BUILD_ARGS="$BUILD_ARGS --nand"
-            ;;
-        esac
+        # Create symbolic link to board config at root level
+        ln -rfs "$BOARD_CONFIG" .BoardConfig.mk
+
+    - name: Prepare buildroot source tree
+      run: |
+        cd luckfox-pico
+        make buildroot_create -C sysdrv
+
+    - name: Install SeedSigner packages
+      run: |
+        cd luckfox-pico
         
-        # Run the build
-        ./build.sh build $BUILD_ARGS
-    
+        BUILDROOT_DIR="sysdrv/source/buildroot/buildroot-2023.02.6"
+        PACKAGE_DIR="${BUILDROOT_DIR}/package"
+        
+        # Copy SeedSigner packages from seedsigner-os
+        cp -rv ../seedsigner-os/opt/external-packages/* "$PACKAGE_DIR/"
+        
+        # Update pyzbar patch
+        PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
+        if [ -f "$PYZBAR_PATCH" ]; then
+          sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
+        fi
+        
+        # Add SeedSigner menu to buildroot Config.in
+        CONFIG_IN="${PACKAGE_DIR}/Config.in"
+        if ! grep -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
+          cat >> "$CONFIG_IN" << 'EOF'
+        menu "SeedSigner"
+                source "package/python-urtypes/Config.in"
+                source "package/python-pyzbar/Config.in"
+                source "package/python-mock/Config.in"
+                source "package/python-embit/Config.in"
+                source "package/python-pillow/Config.in"
+                source "package/libcamera/Config.in"
+                source "package/libcamera-apps/Config.in"
+                source "package/zbar/Config.in"
+                source "package/jpeg-turbo/Config.in.options"
+                source "package/jpeg/Config.in"
+                source "package/python-qrcode/Config.in"
+                source "package/python-pyqrcode/Config.in"
+        endmenu
+        EOF
+        fi
+
+    - name: Apply SeedSigner buildroot configuration
+      run: |
+        cd luckfox-pico
+        
+        BUILDROOT_DIR="sysdrv/source/buildroot/buildroot-2023.02.6"
+        
+        # Copy SeedSigner defconfig
+        cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/.config"
+
+    - name: Build system
+      run: |
+        cd luckfox-pico
+        
+        ./build.sh uboot
+        ./build.sh kernel
+        ./build.sh rootfs
+        ./build.sh media
+        ./build.sh app
+
+    - name: Install SeedSigner application
+      run: |
+        cd luckfox-pico
+        
+        # Find rootfs directory
+        ROOTFS_DIR=$(find output/out -maxdepth 1 -type d -name "rootfs_uclibc_*" | head -1)
+        
+        if [ -z "$ROOTFS_DIR" ]; then
+          echo "Error: Could not find rootfs directory"
+          exit 1
+        fi
+        
+        echo "Using rootfs directory: $ROOTFS_DIR"
+        
+        # Copy SeedSigner code
+        cp -rv ../seedsigner/src/ "$ROOTFS_DIR/seedsigner"
+        
+        # Copy configuration files
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/luckfox.cfg "$ROOTFS_DIR/etc/luckfox.cfg"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/nv12_converter "$ROOTFS_DIR/"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
+
+    - name: Package firmware
+      run: |
+        cd luckfox-pico
+        ./build.sh firmware
+
+    - name: Create flashable SD image
+      run: |
+        cd luckfox-pico/output/image
+        
+        HARDWARE="${{ matrix.hardware }}"
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        
+        # Determine board label (mini or max)
+        if [[ "$HARDWARE" == *"Mini"* ]]; then
+          BOARD_LABEL="mini"
+        elif [[ "$HARDWARE" == *"Max"* ]]; then
+          BOARD_LABEL="max"
+        else
+          BOARD_LABEL="unknown"
+        fi
+        
+        IMAGE_NAME="seedsigner-luckfox-pico-${BOARD_LABEL}-sd-${TIMESTAMP}.img"
+        
+        # Use blkenvflash to create the SD image
+        ../../../seedsigner-luckfox-pico/buildroot/blkenvflash "$IMAGE_NAME"
+        
+        # Create artifacts directory and copy image
+        mkdir -p ../../../build-artifacts
+        cp -v "$IMAGE_NAME" ../../../build-artifacts/
+
     - name: List build artifacts
       if: always()
       run: |
         echo "🎯 Build artifacts:"
         ls -lah build-artifacts/ 2>/dev/null || echo "No build artifacts directory found"
         
-        echo ""
-        echo "🔍 SD Card Images:"
-        find build-artifacts -name "seedsigner-luckfox-pico*-sd-*.img" -type f 2>/dev/null | while IFS= read -r f; do
-          echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
-        done || echo "  No SD images found"
-        
-        echo ""
-        echo "📦 NAND Bundle Archives:"
-        find build-artifacts -name "seedsigner-luckfox-pico*-nand-bundle-*.tar.gz" -type f 2>/dev/null | while IFS= read -r f; do
-          echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
-        done || echo "  No NAND bundles found"
+        if [ -d build-artifacts ]; then
+          find build-artifacts -name "*.img" -type f 2>/dev/null | while IFS= read -r f; do
+            echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
+          done
+        fi
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: seedsigner-luckfox-pico-${{ steps.build-params.outputs.hardware_target }}-${{ github.run_number }}
+        name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}
         path: |
-          build-artifacts/seedsigner-luckfox-pico*.img
-          build-artifacts/seedsigner-luckfox-pico*.tar.gz
+          build-artifacts/*.img
         retention-days: 30
         if-no-files-found: warn
     
@@ -143,13 +242,13 @@ jobs:
         echo "## 🎯 SeedSigner Build Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Hardware Target**: ${{ steps.build-params.outputs.hardware_target }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Build Type**: ${{ steps.build-params.outputs.build_type }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Hardware**: ${{ matrix.hardware }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Boot Medium**: ${{ matrix.boot }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Run Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
         
         # Find SD card images
-        SD_IMAGES=$(find build-artifacts -name "seedsigner-luckfox-pico*-sd-*.img" -type f 2>/dev/null || true)
+        SD_IMAGES=$(find build-artifacts -name "*.img" -type f 2>/dev/null || true)
         if [ -n "$SD_IMAGES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 💾 SD Card Images (Ready to Flash)" >> $GITHUB_STEP_SUMMARY
@@ -167,28 +266,7 @@ jobs:
           echo "   - Raspberry Pi Imager (easiest)" >> $GITHUB_STEP_SUMMARY
           echo "   - \`dd\` command: \`sudo dd bs=4M status=progress if=seedsigner-luckfox-pico-*.img of=/dev/sdX\`" >> $GITHUB_STEP_SUMMARY
           echo "4. Insert SD card into LuckFox Pico device and boot!" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        # Find NAND bundles
-        NAND_BUNDLES=$(find build-artifacts -name "seedsigner-luckfox-pico*-nand-bundle-*.tar.gz" -type f 2>/dev/null || true)
-        if [ -n "$NAND_BUNDLES" ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 NAND Flash Bundles" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$NAND_BUNDLES" | while IFS= read -r f; do
-            echo "$(basename "$f") - $(du -sh "$f" | cut -f1)"
-          done >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**How to Flash NAND:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Download and extract the NAND bundle" >> $GITHUB_STEP_SUMMARY
-          echo "2. Use official LuckFox/Rockchip upgrade tools with \`update.img\`, or" >> $GITHUB_STEP_SUMMARY
-          echo "3. Use U-Boot workflows with \`sd_update.txt\` or \`tftp_update.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. See [LuckFox Official Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico/Linux-MacOS-Burn-Image/)" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        if [ -z "$SD_IMAGES" ] && [ -z "$NAND_BUNDLES" ]; then
+        else
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **No build artifacts found**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
