@@ -146,12 +146,15 @@ jobs:
           exit 1
         fi
         
-        echo "Configuring board: Hardware index=$HW_INDEX, Boot index=$BOOT_INDEX"
-        echo "This corresponds to: $HARDWARE with $BOOT_MEDIUM"
+        # System version index: 0 = Buildroot (the only supported option for this build)
+        SYSTEM_INDEX=0
+        
+        echo "Configuring board: Hardware index=$HW_INDEX, Boot index=$BOOT_INDEX, System index=$SYSTEM_INDEX"
+        echo "This corresponds to: $HARDWARE with $BOOT_MEDIUM using Buildroot"
         
         # Run the SDK's board configuration (lunch menu)
-        # Automatically select: hardware type, boot medium, buildroot (option 0)
-        printf "%s\n%s\n0\n" "$HW_INDEX" "$BOOT_INDEX" | ./build.sh lunch
+        # Automatically select: hardware type, boot medium, system version (buildroot)
+        printf "%s\n%s\n%s\n" "$HW_INDEX" "$BOOT_INDEX" "$SYSTEM_INDEX" | ./build.sh lunch
         
         # Verify the board config was created
         if [ ! -f ".BoardConfig.mk" ]; then
@@ -162,6 +165,11 @@ jobs:
         echo "Board configuration completed successfully"
         echo "Current board config:"
         ls -la .BoardConfig.mk
+        
+        # Export the board config path for later steps
+        BOARD_CONFIG_PATH="project/cfg/BoardConfig_IPC/BoardConfig-${BOOT_MEDIUM}-Buildroot-${HARDWARE}-IPC.mk"
+        echo "BOARD_CONFIG_PATH=$BOARD_CONFIG_PATH" >> $GITHUB_ENV
+        echo "Board config source file: $BOARD_CONFIG_PATH"
 
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
@@ -172,9 +180,8 @@ jobs:
         
         echo "Applying CMA configuration for Mini hardware: ${CMA_SIZE}"
         
-        # Find and update all Mini board config files
-        CFG_DIR="project/cfg/BoardConfig_IPC"
-        BOARD_CONFIG="${CFG_DIR}/BoardConfig-${{ matrix.boot }}-Buildroot-${{ matrix.hardware }}-IPC.mk"
+        # Use the board config path exported from Configure board step
+        BOARD_CONFIG="$BOARD_CONFIG_PATH"
         
         if [ -f "$BOARD_CONFIG" ]; then
           # Check if RK_BOOTARGS_CMA_SIZE exists and update it, or add it
