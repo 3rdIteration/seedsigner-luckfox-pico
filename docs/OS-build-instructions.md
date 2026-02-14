@@ -86,8 +86,6 @@ Build artifacts will be automatically available in `buildroot/build-output/` whe
 If you prefer to use Docker commands directly (note: uses different output directory than build.sh):
 
 ```bash
-cd buildroot/
-
 # Build the Docker image
 docker build -t foxbuilder:latest .
 
