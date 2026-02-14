@@ -34,6 +34,8 @@ on:
 jobs:
   setup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -87,6 +89,9 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 120  # 2 hours max per build
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
