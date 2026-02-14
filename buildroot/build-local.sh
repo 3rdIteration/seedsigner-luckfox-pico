@@ -247,6 +247,7 @@ configure_board() {
 
 apply_mini_cma_config() {
     local hardware="$1"
+    local boot_medium="$2"
     
     if [ "$hardware" != "mini" ]; then
         return 0
@@ -256,20 +257,58 @@ apply_mini_cma_config() {
     
     cd "$WORK_DIR/luckfox-pico"
     
-    local board_config=$(find project/cfg/BoardConfig_IPC -name "BoardConfig-*-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk" | head -n 1)
+    # Map hardware and boot medium to SDK naming convention (matching GitHub Actions)
+    local sdk_hardware
+    case "$hardware" in
+        mini)
+            sdk_hardware="RV1103_Luckfox_Pico_Mini"
+            ;;
+        max)
+            sdk_hardware="RV1106_Luckfox_Pico_Pro_Max"
+            ;;
+        *)
+            print_error "Unknown hardware type: $hardware"
+            exit 1
+            ;;
+    esac
     
-    if [ -z "$board_config" ]; then
-        print_error "Board config file not found"
+    local sdk_boot_medium
+    case "$boot_medium" in
+        sd)
+            sdk_boot_medium="SD_CARD"
+            ;;
+        nand)
+            sdk_boot_medium="SPI_NAND"
+            ;;
+        *)
+            print_error "Unknown boot medium: $boot_medium"
+            exit 1
+            ;;
+    esac
+    
+    # Construct board config path matching GitHub Actions workflow
+    local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found: $board_config"
         exit 1
     fi
+    
+    print_info "Using board config: $board_config"
     
     local cma_size="1M"
     
     if grep -q '^export RK_BOOTARGS_CMA_SIZE=' "$board_config"; then
         sed -i "s|^export RK_BOOTARGS_CMA_SIZE=.*|export RK_BOOTARGS_CMA_SIZE=\"${cma_size}\"|" "$board_config"
+        print_info "Updated existing CMA size in: $board_config"
     else
         echo "export RK_BOOTARGS_CMA_SIZE=\"${cma_size}\"" >> "$board_config"
+        print_info "Added CMA size to: $board_config"
     fi
+    
+    # Verify the change
+    print_info "Current CMA configuration:"
+    grep 'RK_BOOTARGS_CMA_SIZE' "$board_config" || print_warning "No CMA configuration found (will use default)"
     
     print_success "CMA size set to $cma_size"
 }
@@ -642,7 +681,7 @@ main() {
     # Full build process
     setup_toolchain
     configure_board "$hardware" "$boot_medium"
-    apply_mini_cma_config "$hardware"
+    apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages
     apply_seedsigner_config
