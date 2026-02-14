@@ -344,8 +344,16 @@ apply_seedsigner_config() {
     # Update pyzbar patch
     local pyzbar_patch="${buildroot_dir}/package/python-pyzbar/0001-PATH-fixed-by-hand.patch"
     if [ -f "$pyzbar_patch" ] && [ -f "$buildroot_dir/.config" ]; then
-        local python_ver=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$buildroot_dir/.config" 2>/dev/null || echo "$DEFAULT_PYTHON_VERSION")
-        sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${python_ver}/site-packages/zbar.so\"|" "$pyzbar_patch"
+        local python_ver=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$buildroot_dir/.config" 2>/dev/null || echo "")
+        
+        if [ -z "$python_ver" ]; then
+            python_ver="$DEFAULT_PYTHON_VERSION"
+            print_warning "Could not detect Python version from buildroot config, using default: $DEFAULT_PYTHON_VERSION"
+        else
+            print_info "Detected Python version from buildroot config: $python_ver"
+        fi
+        
+        sed -i "s|path = \"/usr/lib/python.*/site-packages/zbar.so\"|path = \"/usr/lib/python${python_ver}/site-packages/zbar.so\"|" "$pyzbar_patch"
         print_info "Updated pyzbar patch for Python $python_ver"
     fi
     
@@ -408,11 +416,16 @@ install_seedsigner_app() {
     # Fix pyzbar library path
     local python_version=$(ls "$rootfs_dir/usr/lib/" | grep -E '^python3\.[0-9]+$' | head -n 1)
     if [ -n "$python_version" ]; then
+        print_info "Detected Python version in rootfs: $python_version"
         local site_packages="$rootfs_dir/usr/lib/$python_version/site-packages"
         if [ -f "$site_packages/zbar.so" ]; then
             print_info "Creating zbar.so symlink..."
             ln -sf "$python_version/site-packages/zbar.so" "$rootfs_dir/usr/lib/zbar.so"
+        else
+            print_warning "zbar.so not found at $site_packages/zbar.so"
         fi
+    else
+        print_warning "Could not detect Python version in rootfs at $rootfs_dir/usr/lib/"
     fi
     
     # Copy configuration files
