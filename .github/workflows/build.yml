@@ -145,15 +145,13 @@ jobs:
       run: |
         cd luckfox-pico
         
-        HARDWARE="${{ matrix.hardware }}"
-        BOOT_MEDIUM="${{ matrix.boot }}"
         CMA_SIZE="1M"
         
         echo "Applying CMA configuration for Mini hardware: ${CMA_SIZE}"
         
         # Find and update all Mini board config files
         CFG_DIR="project/cfg/BoardConfig_IPC"
-        BOARD_CONFIG="${CFG_DIR}/BoardConfig-${BOOT_MEDIUM}-Buildroot-${HARDWARE}-IPC.mk"
+        BOARD_CONFIG="${CFG_DIR}/BoardConfig-${{ matrix.boot }}-Buildroot-${{ matrix.hardware }}-IPC.mk"
         
         if [ -f "$BOARD_CONFIG" ]; then
           # Check if RK_BOOTARGS_CMA_SIZE exists and update it, or add it
