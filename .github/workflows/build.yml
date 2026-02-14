@@ -245,7 +245,6 @@ jobs:
         cd luckfox-pico/output/image
         
         HARDWARE="${{ matrix.hardware }}"
-        BOOT_MEDIUM="${{ matrix.boot }}"
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         
         # Determine board label (mini or max)
@@ -272,7 +271,6 @@ jobs:
         cd luckfox-pico/output/image
         
         HARDWARE="${{ matrix.hardware }}"
-        BOOT_MEDIUM="${{ matrix.boot }}"
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         
         # Determine board label (mini or max)
@@ -329,7 +327,7 @@ jobs:
           fi
         fi
         
-        # Create README for NAND bundle
+        # Create README for NAND bundle (using heredoc with no indentation)
         cat > "$NAND_BUNDLE_DIR/README.txt" << 'EOF'
         SeedSigner Luckfox NAND Flash Bundle
         
@@ -398,7 +396,7 @@ jobs:
         
         # Find SD card images
         SD_IMAGES=$(find build-artifacts -name "*.img" -type f 2>/dev/null || true)
-        NAND_BUNDLES=$(find build-artifacts -name "*.tar.gz" -type f 2>/dev/null || true)
+        NAND_BUNDLES=$(find build-artifacts -name "*-nand-bundle-*.tar.gz" -type f 2>/dev/null || true)
         
         if [ -n "$SD_IMAGES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
