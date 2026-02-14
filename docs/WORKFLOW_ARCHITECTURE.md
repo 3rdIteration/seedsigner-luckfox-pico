@@ -75,13 +75,9 @@ Jobs: 2 (parallel)
 Time: ~30-90 minutes (parallel)
 Artifacts: 
   - seedsigner-os-mini-nand-{run_number}
-    Contains:
-      - seedsigner-luckfox-pico-mini-nand-bundle.zip
-      - seedsigner-luckfox-pico-mini-nand-bundle-{timestamp}.tar.gz
+    Contains: seedsigner-luckfox-pico-mini-nand-bundle.zip
   - seedsigner-os-max-nand-{run_number}
-    Contains:
-      - seedsigner-luckfox-pico-max-nand-bundle.zip
-      - seedsigner-luckfox-pico-max-nand-bundle-{timestamp}.tar.gz
+    Contains: seedsigner-luckfox-pico-max-nand-bundle.zip
 ```
 
 ### Scenario 3: Build Everything (Default)
@@ -146,7 +142,6 @@ Each parallel build job produces and uploads artifacts ONLY for its specific mod
    path: |
      build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-*.img
      build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle.zip
-     build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz
    ```
 
 3. **Result**: Each artifact contains only files for that model
@@ -154,14 +149,12 @@ Each parallel build job produces and uploads artifacts ONLY for its specific mod
    - `max-microsd` artifact → only max microSD files
    - No cross-contamination between jobs
 
-### NAND Bundle Formats
+### NAND Bundle Format
 
-NAND builds produce bundles in two formats for user convenience:
-- `.tar.gz` - Created by build script (Linux-friendly)
-- `.zip` - Created by workflow (Windows-friendly)
+NAND builds produce bundles in .zip format for cross-platform compatibility.
 
-Both contain identical NAND flash files:
+Bundle contents:
 - update.img
 - download.bin
 - partition images (boot.img, rootfs.img, etc.)
-- U-Boot update scripts
+- U-Boot update scripts (sd_update.txt, tftp_update.txt)

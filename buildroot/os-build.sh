@@ -345,10 +345,7 @@ Flash guidance:
 - Use sd_update.txt / tftp_update.txt with U-Boot workflows.
 EOF
 
-    local nand_bundle="seedsigner-luckfox-pico-${board_profile}-nand-bundle-${ts}.tar.gz"
-    tar -czf "$OUTPUT_DIR/$nand_bundle" -C "$OUTPUT_DIR" "$(basename "$nand_bundle_dir")"
     print_success "NAND bundle folder created: $nand_bundle_dir"
-    print_success "NAND bundle archive created: $OUTPUT_DIR/$nand_bundle"
 }
 
 
@@ -379,28 +376,6 @@ validate_nand_oriented_output() {
 }
 
 
-export_official_nand_image_dir() {
-    local board_profile="$1"
-    local ts="$2"
-    local image_root="$LUCKFOX_SDK_DIR/IMAGE"
-
-    if [[ ! -d "$image_root" ]]; then
-        print_info "No SDK IMAGE directory found at: $image_root"
-        return 0
-    fi
-
-    local latest_dir
-    latest_dir=$(find "$image_root" -maxdepth 1 -type d -name 'IPC_SPI_NAND_BUILDROOT_*' | sort | tail -n 1)
-
-    if [[ -z "$latest_dir" ]]; then
-        print_info "No SPI_NAND IMAGE export directory found under: $image_root"
-        return 0
-    fi
-
-    local bundle_name="seedsigner-luckfox-pico-${board_profile}-nand-sdk-images-${ts}.tar.gz"
-    tar -czf "$OUTPUT_DIR/$bundle_name" -C "$image_root" "$(basename "$latest_dir")"
-    print_success "Exported official SDK NAND image directory: $OUTPUT_DIR/$bundle_name"
-}
 
 ensure_buildroot_tree() {
     if [[ -d "$BUILDROOT_DIR" ]]; then
@@ -534,7 +509,6 @@ CONFIGMENU
     if [[ "$include_nand" == "true" ]]; then
         print_step "Packaging NAND artifacts (${board_profile})"
         create_nand_image_artifacts "$board_profile" "$ts" "$boot_medium"
-        export_official_nand_image_dir "$board_profile" "$ts"
     fi
 
     cd "$LUCKFOX_SDK_DIR"

@@ -153,10 +153,6 @@ jobs:
         echo ""
         echo "📦 NAND bundle zips:"
         find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-        echo ""
-        echo "🗜️ NAND bundle tar.gz files:"
-        find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
     
 
     - name: Package NAND bundle zips
@@ -195,7 +191,6 @@ jobs:
         path: |
           build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-*.img
           build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle.zip
-          build-artifacts/seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz
         retention-days: 30
         if-no-files-found: warn
     
@@ -239,15 +234,6 @@ jobs:
             echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             echo "$ZIP_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
-          TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-${{ matrix.model }}-nand-bundle-*.tar.gz" 2>/dev/null || true)
-          if [ -n "$TAR_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$TAR_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
         else
