@@ -38,7 +38,6 @@ The Docker build is fully self-contained and handles all repository cloning and 
 From the `buildroot/` directory, simply run:
 
 ```bash
-cd buildroot/
 ./build.sh build --microsd
 ```
 
@@ -84,7 +83,7 @@ Build artifacts will be automatically available in `buildroot/build-output/` whe
 
 ### Alternative: Direct Docker Commands
 
-If you prefer to use Docker commands directly:
+If you prefer to use Docker commands directly (note: uses different output directory than build.sh):
 
 ```bash
 cd buildroot/
@@ -93,6 +92,7 @@ cd buildroot/
 docker build -t foxbuilder:latest .
 
 # Run the automated build (creates SD card images for both Mini and Max)
+# Note: Artifacts will be in buildroot/output/ (not build-output/)
 docker run --rm -v $(pwd)/output:/build/output foxbuilder:latest auto
 
 # Or with NAND flash bundles included
