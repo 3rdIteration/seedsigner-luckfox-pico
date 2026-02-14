@@ -164,13 +164,10 @@ jobs:
         cp -rv ../seedsigner-os/opt/external-packages/* "$PACKAGE_DIR/"
         
         # Update pyzbar patch
-        # Note: Python version will be detected after .config is created in next step
+        # Note: Will be updated with actual Python version after .config is created in next step
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
         if [ -f "$PYZBAR_PATCH" ]; then
-          # Use default Python 3.11 for now, will be updated if needed after config is applied
-          PYTHON_VER="3.11"
-          sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
-          echo "Updated pyzbar patch for Python ${PYTHON_VER} (default)"
+          echo "pyzbar patch found, will be updated after buildroot config is applied"
         fi
         
         # Add SeedSigner menu to buildroot Config.in
