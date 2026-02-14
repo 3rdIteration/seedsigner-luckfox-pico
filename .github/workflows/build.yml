@@ -125,20 +125,43 @@ jobs:
         HARDWARE="${{ matrix.hardware }}"
         BOOT_MEDIUM="${{ matrix.boot }}"
         
-        # Determine the board config file
-        BOARD_CONFIG="project/cfg/BoardConfig_IPC/BoardConfig-${BOOT_MEDIUM}-Buildroot-${HARDWARE}-IPC.mk"
-        
-        if [ ! -f "$BOARD_CONFIG" ]; then
-          echo "Error: Board config file not found: $BOARD_CONFIG"
-          echo "Available configs:"
-          ls -1 project/cfg/BoardConfig_IPC/
+        # Map hardware type to SDK lunch menu index
+        # Based on os-build.sh select_board_profile() function
+        if [[ "$HARDWARE" == "RV1103_Luckfox_Pico_Mini" ]]; then
+          HW_INDEX=1
+        elif [[ "$HARDWARE" == "RV1106_Luckfox_Pico_Pro_Max" ]]; then
+          HW_INDEX=4
+        else
+          echo "Error: Unknown hardware type: $HARDWARE"
           exit 1
         fi
         
-        echo "Using board config: $BOARD_CONFIG"
+        # Map boot medium to SDK lunch menu index
+        if [[ "$BOOT_MEDIUM" == "SD_CARD" ]]; then
+          BOOT_INDEX=0
+        elif [[ "$BOOT_MEDIUM" == "SPI_NAND" ]]; then
+          BOOT_INDEX=1
+        else
+          echo "Error: Unknown boot medium: $BOOT_MEDIUM"
+          exit 1
+        fi
         
-        # Create symbolic link to board config at root level
-        ln -rfs "$BOARD_CONFIG" .BoardConfig.mk
+        echo "Configuring board: Hardware index=$HW_INDEX, Boot index=$BOOT_INDEX"
+        echo "This corresponds to: $HARDWARE with $BOOT_MEDIUM"
+        
+        # Run the SDK's board configuration (lunch menu)
+        # Automatically select: hardware type, boot medium, buildroot (option 0)
+        printf "%s\n%s\n0\n" "$HW_INDEX" "$BOOT_INDEX" | ./build.sh lunch
+        
+        # Verify the board config was created
+        if [ ! -f ".BoardConfig.mk" ]; then
+          echo "Error: Board config file .BoardConfig.mk was not created"
+          exit 1
+        fi
+        
+        echo "Board configuration completed successfully"
+        echo "Current board config:"
+        ls -la .BoardConfig.mk
 
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
