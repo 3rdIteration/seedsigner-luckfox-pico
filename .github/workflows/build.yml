@@ -55,18 +55,41 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y git ssh make gcc gcc-multilib g++-multilib module-assistant expect g++ gawk texinfo libssl-dev bison flex fakeroot cmake unzip gperf autoconf device-tree-compiler libncurses5-dev pkg-config bc python-is-python3 passwd openssl openssh-server openssh-client vim file cpio rsync
+        sudo apt-get install -y \
+          git ssh make gcc gcc-multilib g++-multilib \
+          module-assistant expect g++ gawk texinfo \
+          libssl-dev bison flex fakeroot cmake unzip \
+          gperf autoconf device-tree-compiler \
+          libncurses5-dev pkg-config bc python-is-python3 \
+          passwd openssl openssh-server openssh-client \
+          vim file cpio rsync
 
     - name: Clone required repositories
       run: |
         # Clone LuckFox Pico SDK (forked version with SeedSigner modifications)
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        # This fork includes hardware customizations like CMA memory settings, pull-up resistors, etc.
+        echo "Cloning luckfox-pico SDK..."
+        if ! git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch; then
+          echo "ERROR: Failed to clone luckfox-pico SDK"
+          exit 1
+        fi
         
-        # Clone SeedSigner OS packages
-        git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
+        # Clone SeedSigner OS packages (buildroot package definitions)
+        echo "Cloning seedsigner-os packages..."
+        if ! git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch; then
+          echo "ERROR: Failed to clone seedsigner-os packages"
+          exit 1
+        fi
         
-        # Clone SeedSigner code (luckfox-dev branch)
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b luckfox-dev --single-branch
+        # Clone SeedSigner code (luckfox-dev branch contains LuckFox-specific adaptations)
+        echo "Cloning seedsigner application code..."
+        if ! git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b luckfox-dev --single-branch; then
+          echo "ERROR: Failed to clone seedsigner code (branch: luckfox-dev)"
+          echo "This branch may have been renamed or removed"
+          exit 1
+        fi
+        
+        echo "All repositories cloned successfully"
 
     - name: Set up build environment
       run: |
@@ -115,9 +138,13 @@ jobs:
         cp -rv ../seedsigner-os/opt/external-packages/* "$PACKAGE_DIR/"
         
         # Update pyzbar patch
+        # Note: Python version path should match buildroot configuration
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
         if [ -f "$PYZBAR_PATCH" ]; then
-          sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
+          # Determine Python version from buildroot if possible, otherwise use 3.11
+          PYTHON_VER=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || echo "3.11")
+          sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
+          echo "Updated pyzbar patch for Python ${PYTHON_VER}"
         fi
         
         # Add SeedSigner menu to buildroot Config.in
@@ -166,13 +193,18 @@ jobs:
         cd luckfox-pico
         
         # Find rootfs directory
-        ROOTFS_DIR=$(find output/out -maxdepth 1 -type d -name "rootfs_uclibc_*" | head -1)
+        ROOTFS_DIRS=($(find output/out -maxdepth 1 -type d -name "rootfs_uclibc_*"))
         
-        if [ -z "$ROOTFS_DIR" ]; then
-          echo "Error: Could not find rootfs directory"
+        if [ ${#ROOTFS_DIRS[@]} -eq 0 ]; then
+          echo "ERROR: Could not find rootfs directory"
           exit 1
+        elif [ ${#ROOTFS_DIRS[@]} -gt 1 ]; then
+          echo "WARNING: Multiple rootfs directories found:"
+          printf '  %s\n' "${ROOTFS_DIRS[@]}"
+          echo "Using first match: ${ROOTFS_DIRS[0]}"
         fi
         
+        ROOTFS_DIR="${ROOTFS_DIRS[0]}"
         echo "Using rootfs directory: $ROOTFS_DIR"
         
         # Copy SeedSigner code
@@ -264,7 +296,8 @@ jobs:
           echo "2. Extract the .img file" >> $GITHUB_STEP_SUMMARY
           echo "3. Flash to SD card using one of these methods:" >> $GITHUB_STEP_SUMMARY
           echo "   - Raspberry Pi Imager (easiest)" >> $GITHUB_STEP_SUMMARY
-          echo "   - \`dd\` command: \`sudo dd bs=4M status=progress if=seedsigner-luckfox-pico-*.img of=/dev/sdX\`" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`dd\` command: \`sudo dd bs=4M status=progress if=<downloaded-image.img> of=/dev/sdX\`" >> $GITHUB_STEP_SUMMARY
+          echo "     (Replace \`<downloaded-image.img>\` with actual filename and \`/dev/sdX\` with your SD card device)" >> $GITHUB_STEP_SUMMARY
           echo "4. Insert SD card into LuckFox Pico device and boot!" >> $GITHUB_STEP_SUMMARY
         else
           echo "" >> $GITHUB_STEP_SUMMARY
