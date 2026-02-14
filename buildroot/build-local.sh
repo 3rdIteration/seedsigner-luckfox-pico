@@ -113,7 +113,8 @@ check_and_install_dependencies() {
     local missing_packages=()
     
     for pkg in "${packages[@]}"; do
-        if ! dpkg -l | grep -q "^ii  $pkg "; then
+        # Use dpkg-query for reliable package detection
+        if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
             missing_packages+=("$pkg")
         fi
     done
