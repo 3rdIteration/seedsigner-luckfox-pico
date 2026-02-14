@@ -1,5 +1,43 @@
 # OS Build Instructions
 
+## Build with GitHub Actions (Easiest Method)
+
+For most users, building with GitHub Actions is the easiest and most reliable method:
+
+### Using GitHub Actions
+1. Fork this repository to your GitHub account
+2. Go to the "Actions" tab in your fork
+3. Select the "Build SeedSigner OS" workflow
+4. Click "Run workflow" button
+5. Configure the build options:
+   - **Hardware Target**: 
+     - `both` (default) - Builds for both LuckFox Pico Mini and Pro Max
+     - `mini` - Builds only for LuckFox Pico Mini (RV1103)
+     - `max` - Builds only for LuckFox Pico Pro Max (RV1106)
+   - **Build Artifacts**:
+     - `sd-and-nand` (default) - Builds both SD card images and NAND flash bundles
+     - `sd-only` - Builds only SD card images
+     - `nand-only` - Builds only NAND flash bundles
+   - **Force rebuild**: Check to force a complete Docker image rebuild
+6. Click "Run workflow" to start the build
+7. Wait for the build to complete (30-90 minutes for first build)
+8. Download the artifacts from the completed workflow run
+
+The workflow automatically:
+- Clones all required repositories (luckfox-pico SDK, seedsigner code, seedsigner-os packages)
+- Builds the Docker environment
+- Compiles the complete OS image
+- Packages the artifacts for easy download
+- Provides detailed instructions for flashing
+
+**Automatic Builds**: The workflow also runs automatically on every push to `main`, `develop`, or `master` branches.
+
+---
+
+## Build Locally with Docker (Advanced Users)
+
+For advanced users who want to build locally, follow these instructions:
+
 ## Setup the Docker build environment
 Run these commands from `buildroot` directory.
 
