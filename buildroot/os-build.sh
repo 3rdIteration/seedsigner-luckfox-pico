@@ -91,7 +91,7 @@ clone_repositories() {
     # Clone SeedSigner code (specific branch)
     if [[ ! -d "seedsigner" ]]; then
         print_info "Cloning seedsigner code (branch: $SEEDSIGNER_BRANCH)..."
-        git clone "$SEEDSIGNER_REPO_URL" --depth=1 -b "$SEEDSIGNER_BRANCH" --single-branch seedsigner
+        git clone "$SEEDSIGNER_REPO_URL" --depth=1 -b "$SEEDSIGNER_BRANCH" --single-branch --recurse-submodules seedsigner
         print_success "seedsigner cloned"
     else
         print_info "seedsigner already exists"

@@ -164,7 +164,7 @@ setup_repositories() {
     
     if [ ! -d "seedsigner" ]; then
         print_header "Cloning seedsigner (luckfox-dev branch)..."
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch
+        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
     else
         print_success "seedsigner already exists"
     fi
