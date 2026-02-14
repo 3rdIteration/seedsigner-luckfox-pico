@@ -163,7 +163,7 @@ clone_repositories() {
     # Clone SeedSigner application code
     if [ ! -d "seedsigner" ]; then
         print_info "Cloning seedsigner application..."
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch
+        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
         print_success "seedsigner cloned"
     else
         print_info "seedsigner already exists"

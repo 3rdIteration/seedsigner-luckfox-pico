@@ -149,7 +149,7 @@ jobs:
         
         # Clone SeedSigner code (upstream-luckfox-staging-1 branch contains LuckFox-specific adaptations)
         echo "Cloning seedsigner application code..."
-        if ! git clone "$SEEDSIGNER_REPO" --depth=1 -b "$SEEDSIGNER_BRANCH" --single-branch seedsigner; then
+        if ! git clone "$SEEDSIGNER_REPO" --depth=1 -b "$SEEDSIGNER_BRANCH" --single-branch --recurse-submodules seedsigner; then
           echo "ERROR: Failed to clone seedsigner code from $SEEDSIGNER_REPO (branch: $SEEDSIGNER_BRANCH)"
           echo "This branch may have been renamed or removed"
           exit 1

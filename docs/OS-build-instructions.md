@@ -176,7 +176,7 @@ git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-
 git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
 
 # Clone SeedSigner application code
-git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch
+git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
 
 # Clone this repository (if not already)
 git clone https://github.com/3rdIteration/seedsigner-luckfox-pico.git --depth=1 --single-branch
@@ -415,7 +415,7 @@ git clone https://github.com/seedsigner/seedsigner-os.git \
 Clone the Seedsigner repo:
 ```bash
 git clone https://github.com/lightningspore/seedsigner.git \
-    --depth=1 -b upstream-luckfox-staging-1 --single-branch
+    --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
 ```
 
 
