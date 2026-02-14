@@ -22,8 +22,8 @@ The workflow automatically:
 - Builds for both hardware targets:
   - LuckFox Pico Mini (RV1103)
   - LuckFox Pico Pro Max (RV1106)
-- Creates flashable SD card images
-- Provides detailed instructions for flashing
+- Creates flashable SD card images and NAND flash bundles (for SD_CARD and SPI_NAND boot media)
+- Provides detailed instructions for flashing both SD card images and NAND flash bundles
 
 **Note**: The GitHub Actions workflow does NOT use Docker - it builds directly on the runner, following the same approach as the stock LuckFox Pico SDK.
 

@@ -33,14 +33,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - hardware: RV1103_Luckfox_Pico_Mini
-            boot: SD_CARD
-          - hardware: RV1103_Luckfox_Pico_Mini
-            boot: SPI_NAND
-          - hardware: RV1106_Luckfox_Pico_Pro_Max
-            boot: SD_CARD
-          - hardware: RV1106_Luckfox_Pico_Pro_Max
-            boot: SPI_NAND
+          # When manually triggered via workflow_dispatch, use the selected inputs
+          # Otherwise, build all 4 combinations
+          ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('[{{"hardware":"{0}","boot":"{1}"}}]', github.event.inputs.hardware_type, github.event.inputs.boot_medium)) || fromJSON('[
+            {"hardware":"RV1103_Luckfox_Pico_Mini","boot":"SD_CARD"},
+            {"hardware":"RV1103_Luckfox_Pico_Mini","boot":"SPI_NAND"},
+            {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SD_CARD"},
+            {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SPI_NAND"}
+          ]') }}
     
     steps:
     - name: Checkout seedsigner-luckfox-pico repository
@@ -149,20 +149,28 @@ jobs:
       run: |
         cd luckfox-pico
         
-        BUILDROOT_DIR="sysdrv/source/buildroot/buildroot-2023.02.6"
+        # Auto-detect buildroot directory
+        BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
+        
+        if [ -z "$BUILDROOT_DIR" ] || [ ! -d "$BUILDROOT_DIR" ]; then
+          echo "ERROR: Could not locate buildroot directory under sysdrv/source/buildroot"
+          exit 1
+        fi
+        
+        echo "Using buildroot directory: $BUILDROOT_DIR"
         PACKAGE_DIR="${BUILDROOT_DIR}/package"
         
         # Copy SeedSigner packages from seedsigner-os
         cp -rv ../seedsigner-os/opt/external-packages/* "$PACKAGE_DIR/"
         
         # Update pyzbar patch
-        # Note: Python version path should match buildroot configuration
+        # Note: Python version will be detected after .config is created in next step
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
         if [ -f "$PYZBAR_PATCH" ]; then
-          # Determine Python version from buildroot if possible, otherwise use 3.11
-          PYTHON_VER=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || echo "3.11")
+          # Use default Python 3.11 for now, will be updated if needed after config is applied
+          PYTHON_VER="3.11"
           sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
-          echo "Updated pyzbar patch for Python ${PYTHON_VER}"
+          echo "Updated pyzbar patch for Python ${PYTHON_VER} (default)"
         fi
         
         # Add SeedSigner menu to buildroot Config.in
@@ -170,18 +178,18 @@ jobs:
         if ! grep -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
           cat >> "$CONFIG_IN" << 'EOF'
         menu "SeedSigner"
-                source "package/python-urtypes/Config.in"
-                source "package/python-pyzbar/Config.in"
-                source "package/python-mock/Config.in"
-                source "package/python-embit/Config.in"
-                source "package/python-pillow/Config.in"
-                source "package/libcamera/Config.in"
-                source "package/libcamera-apps/Config.in"
-                source "package/zbar/Config.in"
-                source "package/jpeg-turbo/Config.in.options"
-                source "package/jpeg/Config.in"
-                source "package/python-qrcode/Config.in"
-                source "package/python-pyqrcode/Config.in"
+        	source "package/python-urtypes/Config.in"
+        	source "package/python-pyzbar/Config.in"
+        	source "package/python-mock/Config.in"
+        	source "package/python-embit/Config.in"
+        	source "package/python-pillow/Config.in"
+        	source "package/libcamera/Config.in"
+        	source "package/libcamera-apps/Config.in"
+        	source "package/zbar/Config.in"
+        	source "package/jpeg-turbo/Config.in.options"
+        	source "package/jpeg/Config.in"
+        	source "package/python-qrcode/Config.in"
+        	source "package/python-pyqrcode/Config.in"
         endmenu
         EOF
         fi
@@ -190,11 +198,34 @@ jobs:
       run: |
         cd luckfox-pico
         
-        BUILDROOT_DIR="sysdrv/source/buildroot/buildroot-2023.02.6"
+        # Auto-detect buildroot directory
+        BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
+        
+        if [ -z "$BUILDROOT_DIR" ] || [ ! -d "$BUILDROOT_DIR" ]; then
+          echo "ERROR: Could not locate buildroot directory under sysdrv/source/buildroot"
+          exit 1
+        fi
+        
+        echo "Using buildroot directory: $BUILDROOT_DIR"
         
         # Copy SeedSigner defconfig
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/.config"
+        
+        # Now that .config exists, update pyzbar patch with actual Python version if available
+        PACKAGE_DIR="${BUILDROOT_DIR}/package"
+        PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
+        if [ -f "$PYZBAR_PATCH" ] && [ -f "$BUILDROOT_DIR/.config" ]; then
+          PYTHON_VER="3.11"
+          DETECTED_PYTHON_VER=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || true)
+          if [ -n "$DETECTED_PYTHON_VER" ]; then
+            PYTHON_VER="$DETECTED_PYTHON_VER"
+            sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
+            echo "Updated pyzbar patch for Python ${PYTHON_VER} (detected from config)"
+          else
+            echo "No Python version found in config; pyzbar patch already set to default Python ${PYTHON_VER}"
+          fi
+        fi
 
     - name: Build system
       run: |
@@ -327,7 +358,7 @@ jobs:
           fi
         fi
         
-        # Create README for NAND bundle (using heredoc with no indentation)
+        # Create README for NAND bundle
         cat > "$NAND_BUNDLE_DIR/README.txt" << 'EOF'
         SeedSigner Luckfox NAND Flash Bundle
         

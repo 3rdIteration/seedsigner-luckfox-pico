@@ -44,7 +44,7 @@ The GitHub Actions workflow:
 - Clones the LuckFox Pico SDK (customized fork), SeedSigner code, and SeedSigner OS packages
 - Configures buildroot with SeedSigner-specific packages
 - Builds the complete OS image
-- Creates flashable SD card images
+- Creates flashable SD card images and NAND flash bundles for SD_CARD and SPI_NAND boot media
 - Provides detailed build summaries and flashing instructions
 
 ### Build Locally with Docker
