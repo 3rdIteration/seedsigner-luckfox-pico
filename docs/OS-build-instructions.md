@@ -1,6 +1,37 @@
 # OS Build Instructions
 
-## Setup the Docker build environment
+## Build with GitHub Actions (Easiest Method)
+
+For most users, building with GitHub Actions is the easiest and most reliable method. This approach builds directly on GitHub's infrastructure without using Docker:
+
+### Using GitHub Actions
+1. Fork this repository to your GitHub account
+2. Go to the "Actions" tab in your fork
+3. Select the "Build SeedSigner OS" workflow
+4. The workflow runs automatically on every push to `main`, `develop`, or `master` branches
+5. Wait for the build to complete (60-120 minutes)
+6. Download the artifacts from the completed workflow run
+
+The workflow automatically:
+- Installs all required build dependencies on Ubuntu 22.04
+- Clones all required repositories:
+  - `luckfox-pico` SDK (customized fork with SeedSigner modifications)
+  - `seedsigner` code (upstream-luckfox-staging-1 branch)
+  - `seedsigner-os` packages
+- Configures buildroot with SeedSigner-specific packages
+- Builds for both hardware targets:
+  - LuckFox Pico Mini (RV1103)
+  - LuckFox Pico Pro Max (RV1106)
+- Creates flashable SD card images and NAND flash bundles (for SD_CARD and SPI_NAND boot media)
+- Provides detailed instructions for flashing both SD card images and NAND flash bundles
+
+**Note**: The GitHub Actions workflow does NOT use Docker - it builds directly on the runner, following the same approach as the stock LuckFox Pico SDK.
+
+---
+
+## Build Locally with Docker (Advanced Users)
+
+For advanced users who want to build locally, follow these instructions:
 Run these commands from `buildroot` directory.
 
 Build the builder image:
@@ -32,7 +63,7 @@ git clone https://github.com/seedsigner/seedsigner-os.git \
 Clone the Seedsigner repo:
 ```bash
 git clone https://github.com/lightningspore/seedsigner.git \
-    --depth=1 -b luckfox-dev --single-branch
+    --depth=1 -b upstream-luckfox-staging-1 --single-branch
 ```
 
 

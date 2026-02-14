@@ -112,7 +112,7 @@ check_repositories() {
     # Required repositories 
     local repos=(
         "$HOME/luckfox-pico:https://github.com/lightningspore/luckfox-pico.git"
-        "$HOME/seedsigner:https://github.com/lightningspore/seedsigner.git:-b luckfox-dev"
+        "$HOME/seedsigner:https://github.com/lightningspore/seedsigner.git:-b upstream-luckfox-staging-1"
         "$HOME/seedsigner-luckfox-pico:current repo"
         "$HOME/seedsigner-os:https://github.com/seedsigner/seedsigner-os.git"
     )
@@ -164,7 +164,7 @@ setup_repositories() {
     
     if [ ! -d "seedsigner" ]; then
         print_header "Cloning seedsigner (luckfox-dev branch)..."
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b luckfox-dev --single-branch
+        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch
     else
         print_success "seedsigner already exists"
     fi

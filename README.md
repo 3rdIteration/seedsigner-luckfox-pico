@@ -27,7 +27,28 @@ These example builds can build a device for around $60.
 
 
 ## OS Image Build with Buildroot
-The OS image is built using Buildroot in a Docker container. The complete build instructions, package requirements, and troubleshooting process are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).
+
+### Build with GitHub Actions (Recommended for Most Users)
+The easiest way to build the SeedSigner OS image is using GitHub Actions. This method builds directly on GitHub's infrastructure without requiring Docker:
+
+1. Fork this repository to your GitHub account
+2. Navigate to the "Actions" tab in your fork
+3. Select the "Build SeedSigner OS" workflow
+4. The workflow runs automatically on pushes to `main`, `develop`, or `master` branches
+5. Builds are created for both LuckFox Pico Mini (RV1103) and Pro Max (RV1106) hardware
+6. Wait for the build to complete (typically 60-120 minutes)
+7. Download the artifacts from the workflow run
+
+The GitHub Actions workflow:
+- Installs all required dependencies on Ubuntu 22.04
+- Clones the LuckFox Pico SDK (customized fork), SeedSigner code, and SeedSigner OS packages
+- Configures buildroot with SeedSigner-specific packages
+- Builds the complete OS image
+- Creates flashable SD card images and NAND flash bundles for SD_CARD and SPI_NAND boot media
+- Provides detailed build summaries and flashing instructions
+
+### Build Locally with Docker
+The OS image can also be built locally using Buildroot in a Docker container. The complete build instructions, package requirements, and troubleshooting process are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
@@ -93,6 +114,8 @@ We have forked the [LuckFox Pico SDK](https://github.com/lightningspore/luckfox-
 
 ### Camera Memory
 The LuckFox devotes some of its memory for camera-related algorithms, but we don't use this feature. Particularly on the LuckFox Pico Mini device, which only has 64MB of RAM, it is beneficial for us to reclaim a bit of this memory.
+
+**Note:** The GitHub Actions workflow automatically sets the CMA (Contiguous Memory Allocator) size to 1M for Mini builds, freeing up approximately 20MB of RAM. This is configured by modifying `RK_BOOTARGS_CMA_SIZE` in the board configuration file.
 
 Memory usage WITHOUT modification:
 ```bash
