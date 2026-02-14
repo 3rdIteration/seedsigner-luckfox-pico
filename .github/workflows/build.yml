@@ -140,6 +140,38 @@ jobs:
         # Create symbolic link to board config at root level
         ln -rfs "$BOARD_CONFIG" .BoardConfig.mk
 
+    - name: Apply CMA memory configuration for Mini
+      if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
+      run: |
+        cd luckfox-pico
+        
+        HARDWARE="${{ matrix.hardware }}"
+        BOOT_MEDIUM="${{ matrix.boot }}"
+        CMA_SIZE="1M"
+        
+        echo "Applying CMA configuration for Mini hardware: ${CMA_SIZE}"
+        
+        # Find and update all Mini board config files
+        CFG_DIR="project/cfg/BoardConfig_IPC"
+        BOARD_CONFIG="${CFG_DIR}/BoardConfig-${BOOT_MEDIUM}-Buildroot-${HARDWARE}-IPC.mk"
+        
+        if [ -f "$BOARD_CONFIG" ]; then
+          # Check if RK_BOOTARGS_CMA_SIZE exists and update it, or add it
+          if grep -q '^export RK_BOOTARGS_CMA_SIZE=' "$BOARD_CONFIG"; then
+            sed -i "s|^export RK_BOOTARGS_CMA_SIZE=.*|export RK_BOOTARGS_CMA_SIZE=\"${CMA_SIZE}\"|" "$BOARD_CONFIG"
+            echo "Updated existing CMA size in: $BOARD_CONFIG"
+          else
+            echo "export RK_BOOTARGS_CMA_SIZE=\"${CMA_SIZE}\"" >> "$BOARD_CONFIG"
+            echo "Added CMA size to: $BOARD_CONFIG"
+          fi
+          
+          # Verify the change
+          echo "Current CMA configuration:"
+          grep 'RK_BOOTARGS_CMA_SIZE' "$BOARD_CONFIG" || echo "No CMA configuration found (will use default)"
+        else
+          echo "Warning: Board config file not found: $BOARD_CONFIG"
+        fi
+
     - name: Prepare buildroot source tree
       run: |
         cd luckfox-pico

@@ -115,6 +115,8 @@ We have forked the [LuckFox Pico SDK](https://github.com/lightningspore/luckfox-
 ### Camera Memory
 The LuckFox devotes some of its memory for camera-related algorithms, but we don't use this feature. Particularly on the LuckFox Pico Mini device, which only has 64MB of RAM, it is beneficial for us to reclaim a bit of this memory.
 
+**Note:** The GitHub Actions workflow automatically sets the CMA (Contiguous Memory Allocator) size to 1M for Mini builds, freeing up approximately 20MB of RAM. This is configured by modifying `RK_BOOTARGS_CMA_SIZE` in the board configuration file.
+
 Memory usage WITHOUT modification:
 ```bash
 [root@luckfox ]# free -h
