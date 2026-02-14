@@ -116,13 +116,13 @@ jobs:
         
         echo ""
         echo "🔍 SD Card Images:"
-        find build-artifacts -name "seedsigner-luckfox-pico*-sd-*.img" -type f 2>/dev/null | while read f; do
+        find build-artifacts -name "seedsigner-luckfox-pico*-sd-*.img" -type f 2>/dev/null | while IFS= read -r f; do
           echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
         done || echo "  No SD images found"
         
         echo ""
         echo "📦 NAND Bundle Archives:"
-        find build-artifacts -name "seedsigner-luckfox-pico*-nand-bundle-*.tar.gz" -type f 2>/dev/null | while read f; do
+        find build-artifacts -name "seedsigner-luckfox-pico*-nand-bundle-*.tar.gz" -type f 2>/dev/null | while IFS= read -r f; do
           echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
         done || echo "  No NAND bundles found"
 
@@ -154,7 +154,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 💾 SD Card Images (Ready to Flash)" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$SD_IMAGES" | while read f; do
+          echo "$SD_IMAGES" | while IFS= read -r f; do
             echo "$(basename "$f") - $(du -sh "$f" | cut -f1)"
           done >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -175,7 +175,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📦 NAND Flash Bundles" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$NAND_BUNDLES" | while read f; do
+          echo "$NAND_BUNDLES" | while IFS= read -r f; do
             echo "$(basename "$f") - $(du -sh "$f" | cut -f1)"
           done >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
