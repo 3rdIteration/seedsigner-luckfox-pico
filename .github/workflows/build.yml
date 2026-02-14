@@ -121,6 +121,7 @@ jobs:
         MODEL_FLAG="--model ${{ matrix.model }}"
         
         # Set medium-specific flag
+        MEDIUM_FLAG=""
         if [ "${{ matrix.medium }}" = "microsd" ]; then
           MEDIUM_FLAG="--microsd"
         elif [ "${{ matrix.medium }}" = "nand" ]; then
@@ -128,7 +129,7 @@ jobs:
         fi
         
         # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS $MODEL_FLAG $MEDIUM_FLAG --output ../build-artifacts
+        ./build.sh build "$BUILD_ARGS" "$MODEL_FLAG" "$MEDIUM_FLAG" --output ../build-artifacts
     
     - name: List build artifacts
       if: always()
