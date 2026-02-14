@@ -399,6 +399,7 @@ jobs:
         fi
         
         # Fix pyzbar library path - symlink zbar.so from site-packages to /usr/lib
+        # This fix is applied to ALL build types (Mini and Max, SD and NAND)
         PYTHON_VERSION=$(ls "$ROOTFS_DIR/usr/lib/" | grep -E '^python3\.[0-9]+$' | head -n 1)
         if [ -n "$PYTHON_VERSION" ]; then
           echo "Setting up zbar.so for pyzbar (Python $PYTHON_VERSION)..."
