@@ -398,26 +398,18 @@ jobs:
           echo "Max hardware detected - keeping default FOX_40 configuration"
         fi
         
-        # Fix pyzbar library path issue
-        # Create symlink from dist-packages to site-packages for zbar.so
+        # Verify pyzbar library (zbar.so) is present
         PYTHON_VERSION=$(ls "$ROOTFS_DIR/usr/lib/" | grep -E '^python3\.[0-9]+$' | head -n 1)
         if [ -n "$PYTHON_VERSION" ]; then
-          echo "Found Python version: $PYTHON_VERSION"
-          DIST_PACKAGES="$ROOTFS_DIR/usr/lib/$PYTHON_VERSION/dist-packages"
+          echo "Checking for zbar.so library for Python $PYTHON_VERSION..."
           SITE_PACKAGES="$ROOTFS_DIR/usr/lib/$PYTHON_VERSION/site-packages"
           
-          # Check if zbar.so exists in dist-packages
-          if [ -f "$DIST_PACKAGES/zbar.so" ]; then
-            echo "Found zbar.so in dist-packages, creating site-packages symlink..."
-            mkdir -p "$SITE_PACKAGES"
-            ln -sf "$DIST_PACKAGES/zbar.so" "$SITE_PACKAGES/zbar.so"
-            echo "Created symlink: $SITE_PACKAGES/zbar.so -> $DIST_PACKAGES/zbar.so"
-          elif [ -f "$SITE_PACKAGES/zbar.so" ]; then
-            echo "zbar.so already exists in site-packages"
+          if [ -f "$SITE_PACKAGES/zbar.so" ]; then
+            echo "✓ zbar.so found in site-packages"
           else
-            echo "Warning: zbar.so not found in either dist-packages or site-packages"
+            echo "WARNING: zbar.so not found in $SITE_PACKAGES"
             echo "Searching for zbar.so in rootfs..."
-            find "$ROOTFS_DIR" -name "zbar.so" || echo "zbar.so not found anywhere in rootfs"
+            find "$ROOTFS_DIR" -name "zbar.so" 2>/dev/null || echo "zbar.so not found anywhere in rootfs"
           fi
         else
           echo "Warning: Could not detect Python version in rootfs"
