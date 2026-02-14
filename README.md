@@ -47,8 +47,16 @@ The GitHub Actions workflow:
 - Creates flashable SD card images and NAND flash bundles for SD_CARD and SPI_NAND boot media
 - Provides detailed build summaries and flashing instructions
 
-### Build Locally with Docker
-The OS image can also be built locally using Buildroot in a Docker container. The complete build instructions, package requirements, and troubleshooting process are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).
+### Build Locally with Docker (Simple Method)
+For users who want to build locally, a simple Docker-based build is available. From the `buildroot/` directory:
+
+```bash
+cd buildroot/
+docker build -t foxbuilder:latest .
+docker run --rm -v $(pwd)/output:/build/output foxbuilder:latest auto
+```
+
+Build artifacts will be available in `buildroot/output/`. For more options and advanced build methods (including builds without Docker), see [OS-build-instructions.md](docs/OS-build-instructions.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
