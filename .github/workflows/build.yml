@@ -122,9 +122,6 @@ jobs:
           BUILD_ARGS="--force"
         fi
         
-        # Set model-specific flag
-        MODEL_FLAG="--model ${{ matrix.model }}"
-        
         # Set medium-specific flag
         MEDIUM_FLAG=""
         if [ "${{ matrix.medium }}" = "microsd" ]; then
@@ -134,7 +131,8 @@ jobs:
         fi
         
         # Run the build with artifact output to workspace
-        ./build.sh build "$BUILD_ARGS" "$MODEL_FLAG" "$MEDIUM_FLAG" --output ../build-artifacts
+        # Pass flags without quotes to allow proper word splitting
+        ./build.sh build $BUILD_ARGS --model ${{ matrix.model }} $MEDIUM_FLAG --output ../build-artifacts
     
     - name: List build artifacts
       if: always()
