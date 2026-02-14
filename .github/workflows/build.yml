@@ -131,7 +131,9 @@ jobs:
         fi
         
         # Run the build with artifact output to workspace
-        # Pass flags without quotes to allow proper word splitting
+        # Note: Variables are intentionally unquoted to allow proper word splitting
+        # BUILD_ARGS may be empty or "--force"
+        # MEDIUM_FLAG may be empty, "--microsd", or "--nand"
         ./build.sh build $BUILD_ARGS --model ${{ matrix.model }} $MEDIUM_FLAG --output ../build-artifacts
     
     - name: List build artifacts
