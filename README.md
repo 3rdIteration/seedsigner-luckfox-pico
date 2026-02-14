@@ -63,7 +63,21 @@ Build artifacts will be automatically available in `buildroot/build-output/`. Th
 - `--jobs N` - Use N parallel jobs
 - See `./build.sh --help` for all options
 
-For more details and advanced build methods (including builds without Docker), see [OS-build-instructions.md](docs/OS-build-instructions.md).
+### Build Locally Without Docker (Advanced Users)
+For development or if you prefer not to use Docker, an automated local build script is available (Ubuntu 22.04):
+
+```bash
+cd buildroot/
+./build-local.sh --check-deps  # Install dependencies (first time)
+./build-local.sh               # Build for Mini with SD card
+```
+
+**Additional options:**
+- `--hardware mini|max` - Choose hardware type
+- `--boot sd|nand` - Choose boot medium
+- See `./build-local.sh --help` for all options
+
+For more details and manual step-by-step instructions, see [OS-build-instructions.md](docs/OS-build-instructions.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 

@@ -115,6 +115,40 @@ docker run --rm -v $(pwd)/output:/build/output -e MINI_CMA_SIZE=2M foxbuilder:la
 
 This method builds directly on your host system, mirroring the GitHub Actions workflow. **Tested with Ubuntu 22.04.**
 
+### Quick Start with build-local.sh
+
+For the easiest non-Docker build experience, use the automated build script:
+
+```bash
+cd buildroot/
+
+# Install dependencies (first time only)
+./build-local.sh --check-deps
+
+# Build for Mini with SD card (default)
+./build-local.sh
+
+# Build for Max with SD card
+./build-local.sh --hardware max --boot sd
+
+# Build for Mini with NAND
+./build-local.sh --hardware mini --boot nand
+
+# Just clone repositories
+./build-local.sh --clone-only
+
+# Clean build artifacts
+./build-local.sh --clean
+```
+
+The script automates all the manual steps below and produces flashable images in `luckfox-pico/output/image/`.
+
+**Build time:** 60-120 minutes for first build, 30-60 minutes for subsequent builds.
+
+### Manual Build Process (Step-by-Step)
+
+If you prefer to run each step manually or need more control, follow these detailed instructions:
+
 ### Prerequisites
 
 Install required dependencies:
