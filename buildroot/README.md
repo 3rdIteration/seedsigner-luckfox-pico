@@ -55,6 +55,33 @@ Build artifacts are **automatically available** in `./build-output/`:
 
 Repository caching uses Docker volume `seedsigner-repos` which persists between builds.
 
+## GitHub Actions Integration
+
+The build system is optimized for GitHub Actions with parallel build support:
+
+### Workflow Features
+- **Parallel builds**: Uses matrix strategy to build multiple configurations simultaneously
+- **User-selectable options**: Choose hardware model (mini/max) and boot medium (microsd/nand)
+- **Automatic artifact uploads**: Each build variant uploaded as separate artifact
+- **Smart matrix generation**: Dynamically creates build jobs based on user selections
+
+### Build Performance
+- **Sequential (old)**: 3+ hours for all combinations
+- **Parallel (new)**: ~1-2 hours for all combinations (4 jobs running simultaneously)
+- **Single build**: ~30-90 minutes per configuration
+
+### Usage in GitHub Actions
+The workflow automatically:
+1. Sets up a dynamic build matrix based on user selections
+2. Runs builds in parallel for maximum efficiency  
+3. Uploads artifacts with clear naming: `seedsigner-os-{model}-{medium}-{run_number}`
+4. Provides detailed build summaries for each variant
+
+Example workflow_dispatch inputs:
+- `hardware_model: both` + `boot_medium: both` = 4 parallel jobs
+- `hardware_model: mini` + `boot_medium: microsd` = 1 job
+- `hardware_model: max` + `boot_medium: both` = 2 parallel jobs (max-microsd, max-nand)
+
 ## CI/CD Integration
 
 Perfect for automated builds:

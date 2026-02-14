@@ -26,6 +26,44 @@ Check out the shopping list for a parts list of various LuckFox-based hardware c
 These example builds can build a device for around $60.
 
 
+## GitHub Actions CI/CD Builds
+
+This repository includes automated builds via GitHub Actions that can build OS images for all hardware configurations in parallel.
+
+### Automated Builds
+- **Push/Pull Request**: Automatically builds all combinations (mini + max, microSD + NAND) in parallel
+- **Manual Workflow**: Use the "Actions" tab to manually trigger builds with custom options
+
+### Manual Build Options
+When running the workflow manually (via workflow_dispatch), you can select:
+
+1. **Hardware Model**:
+   - `mini` - Build only for LuckFox Pico Mini
+   - `max` - Build only for LuckFox Pico Max  
+   - `both` - Build for both models (default)
+
+2. **Boot Medium**:
+   - `microsd` - Build MicroSD card images only
+   - `nand` - Build NAND flash images only
+   - `both` - Build for both media types (default)
+
+3. **Force Rebuild**: Optionally force rebuild of Docker image
+
+### Build Parallelization
+The workflow uses a matrix strategy to run builds in parallel:
+- **Full build (both/both)**: 4 parallel jobs (mini-microsd, mini-nand, max-microsd, max-nand)
+- **Single selection**: 1 job  
+- **Model or medium selection**: 2 parallel jobs
+
+This can reduce total build time from 3+ hours (sequential) to ~1-2 hours (parallel).
+
+### Artifacts
+Each build produces separate artifacts named:
+- `seedsigner-os-{model}-{medium}-{run_number}`
+
+Download artifacts from the workflow run page to get your specific image.
+
+
 ## OS Image Build with Buildroot
 The OS image is built using Buildroot in a Docker container. The complete build instructions, package requirements, and troubleshooting process are documented in [OS-build-instructions.md](docs/OS-build-instructions.md).
 
