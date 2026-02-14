@@ -85,10 +85,10 @@ jobs:
           exit 1
         fi
         
-        # Clone SeedSigner code (luckfox-dev branch contains LuckFox-specific adaptations)
+        # Clone SeedSigner code (upstream-luckfox-staging-1 branch contains LuckFox-specific adaptations)
         echo "Cloning seedsigner application code..."
-        if ! git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b luckfox-dev --single-branch; then
-          echo "ERROR: Failed to clone seedsigner code (branch: luckfox-dev)"
+        if ! git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch; then
+          echo "ERROR: Failed to clone seedsigner code (branch: upstream-luckfox-staging-1)"
           echo "This branch may have been renamed or removed"
           exit 1
         fi
