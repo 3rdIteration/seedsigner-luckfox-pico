@@ -7,6 +7,24 @@ on:
     branches: [ main, develop, master ]
   workflow_dispatch:
     inputs:
+      hardware_target:
+        description: 'Hardware Target'
+        required: true
+        type: choice
+        options:
+          - both
+          - mini
+          - max
+        default: 'both'
+      build_artifacts:
+        description: 'Build Artifacts'
+        required: true
+        type: choice
+        options:
+          - sd-and-nand
+          - sd-only
+          - nand-only
+        default: 'sd-and-nand'
       force_rebuild:
         description: 'Force rebuild Docker image'
         required: false
@@ -15,93 +33,106 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 180  # 3 hours max
+    permissions:
+      contents: read
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-
-    - name: Build system status
+    - name: Free up disk space
       run: |
-        cd buildroot
-        ./build.sh status
-    
+        # Remove unnecessary packages to free up space
+        sudo apt-get clean
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        df -h
+
+    - name: Set build parameters
+      id: build-params
+      run: |
+        # Determine hardware target
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          HARDWARE_TARGET="${{ github.event.inputs.hardware_target }}"
+          BUILD_TYPE="${{ github.event.inputs.build_artifacts }}"
+          FORCE_REBUILD="${{ github.event.inputs.force_rebuild }}"
+        else
+          # Default for push/PR events
+          HARDWARE_TARGET="both"
+          BUILD_TYPE="sd-and-nand"
+          FORCE_REBUILD="false"
+        fi
+        
+        echo "hardware_target=${HARDWARE_TARGET}" >> $GITHUB_OUTPUT
+        echo "build_type=${BUILD_TYPE}" >> $GITHUB_OUTPUT
+        echo "force_rebuild=${FORCE_REBUILD}" >> $GITHUB_OUTPUT
+        
+        echo "::notice::Hardware Target: ${HARDWARE_TARGET}"
+        echo "::notice::Build Type: ${BUILD_TYPE}"
+        echo "::notice::Force Rebuild: ${FORCE_REBUILD}"
+
     - name: Build SeedSigner OS
       run: |
         cd buildroot
+        
         echo "🚀 Starting SeedSigner build..."
+        echo "   Hardware: ${{ steps.build-params.outputs.hardware_target }}"
+        echo "   Artifacts: ${{ steps.build-params.outputs.build_type }}"
+        echo "   Force rebuild: ${{ steps.build-params.outputs.force_rebuild }}"
         
         # Set build options
         BUILD_ARGS=""
-        if [ "${{ github.event.inputs.force_rebuild }}" = "true" ]; then
-          BUILD_ARGS="--force"
+        if [ "${{ steps.build-params.outputs.force_rebuild }}" = "true" ]; then
+          BUILD_ARGS="$BUILD_ARGS --force"
         fi
         
-        # Run the build with artifact output to workspace
-        ./build.sh build $BUILD_ARGS --microsd --nand --output ../build-artifacts
+        BUILD_ARGS="$BUILD_ARGS --model ${{ steps.build-params.outputs.hardware_target }}"
+        BUILD_ARGS="$BUILD_ARGS --output ../build-artifacts"
+        
+        # Determine which artifacts to build
+        case "${{ steps.build-params.outputs.build_type }}" in
+          sd-and-nand)
+            BUILD_ARGS="$BUILD_ARGS --microsd --nand"
+            ;;
+          sd-only)
+            BUILD_ARGS="$BUILD_ARGS --microsd"
+            ;;
+          nand-only)
+            BUILD_ARGS="$BUILD_ARGS --nand"
+            ;;
+        esac
+        
+        # Run the build
+        ./build.sh build $BUILD_ARGS
     
     - name: List build artifacts
       if: always()
       run: |
         echo "🎯 Build artifacts:"
-        ls -la build-artifacts/ || echo "No build artifacts found"
+        ls -lah build-artifacts/ 2>/dev/null || echo "No build artifacts directory found"
         
         echo ""
-        echo "🔍 Searching for SeedSigner images:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.img" -type f 2>/dev/null || echo "No seedsigner-luckfox-pico images found"
+        echo "🔍 SD Card Images:"
+        find build-artifacts -name "seedsigner-luckfox-pico*-sd-*.img" -type f 2>/dev/null | while read f; do
+          echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
+        done || echo "  No SD images found"
         
         echo ""
-        echo "📊 Image sizes:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.img" -exec du -sh {} \; 2>/dev/null || echo "No images to measure"
-
-        echo ""
-        echo "📦 NAND bundle zips:"
-        find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" -type f 2>/dev/null || echo "No NAND bundle zips found"
-
-        echo ""
-        echo "🗜️ NAND bundle tar.gz files:"
-        find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" -type f 2>/dev/null || echo "No NAND bundle tar.gz files found"
-    
-
-    - name: Package NAND bundle zips
-      if: always()
-      run: |
-        mkdir -p build-artifacts
-        shopt -s nullglob
-
-        BUNDLES=(build-artifacts/seedsigner-luckfox-pico-*-nand-files-*)
-        if [ ${#BUNDLES[@]} -eq 0 ]; then
-          echo "No NAND bundle folders found"
-        else
-          for bundle_dir in "${BUNDLES[@]}"; do
-            [ -d "$bundle_dir" ] || continue
-            bundle_name=$(basename "$bundle_dir")
-
-            hw_target="unknown"
-            if [[ "$bundle_name" =~ seedsigner-luckfox-pico-([^-]+)-nand-files- ]]; then
-              hw_target="${BASH_REMATCH[1]}"
-            fi
-
-            zip_name="seedsigner-luckfox-pico-${hw_target}-nand-bundle.zip"
-            echo "Creating NAND zip: $zip_name from $bundle_name"
-
-            rm -f "build-artifacts/$zip_name"
-            (cd build-artifacts && zip -qr "$zip_name" "$bundle_name")
-          done
-        fi
+        echo "📦 NAND Bundle Archives:"
+        find build-artifacts -name "seedsigner-luckfox-pico*-nand-bundle-*.tar.gz" -type f 2>/dev/null | while read f; do
+          echo "  $(basename "$f") - $(du -sh "$f" | cut -f1)"
+        done || echo "  No NAND bundles found"
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
-      if: always()
+      if: success()
       with:
-        name: seedsigner-os-${{ github.run_number }}
+        name: seedsigner-luckfox-pico-${{ steps.build-params.outputs.hardware_target }}-${{ github.run_number }}
         path: |
           build-artifacts/seedsigner-luckfox-pico*.img
-          build-artifacts/seedsigner-luckfox-pico-*-nand-bundle.zip
           build-artifacts/seedsigner-luckfox-pico*.tar.gz
         retention-days: 30
         if-no-files-found: warn
@@ -110,51 +141,56 @@ jobs:
       if: always()
       run: |
         echo "## 🎯 SeedSigner Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Hardware Target**: ${{ steps.build-params.outputs.hardware_target }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build Type**: ${{ steps.build-params.outputs.build_type }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Run Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
         
-        # Find and highlight seedsigner-luckfox-pico .img files specifically
-        IMG_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.img" 2>/dev/null || true)
-        if [ -n "$IMG_FILES" ]; then
+        # Find SD card images
+        SD_IMAGES=$(find build-artifacts -name "seedsigner-luckfox-pico*-sd-*.img" -type f 2>/dev/null || true)
+        if [ -n "$SD_IMAGES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🎯 Ready to Flash:" >> $GITHUB_STEP_SUMMARY
+          echo "### 💾 SD Card Images (Ready to Flash)" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$IMG_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
+          echo "$SD_IMAGES" | while read f; do
+            echo "$(basename "$f") - $(du -sh "$f" | cut -f1)"
+          done >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           
-          # Add flashing instructions
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 💾 How to Use:" >> $GITHUB_STEP_SUMMARY
+          echo "**How to Flash SD Card:**" >> $GITHUB_STEP_SUMMARY
           echo "1. Download the artifact from this build" >> $GITHUB_STEP_SUMMARY
           echo "2. Extract the .img file" >> $GITHUB_STEP_SUMMARY
-          echo "3. Flash to SD card using Raspberry Pi Imager or dd" >> $GITHUB_STEP_SUMMARY
-          echo "4. Insert SD card into device and boot!" >> $GITHUB_STEP_SUMMARY
-          
-          # Show file size
+          echo "3. Flash to SD card using one of these methods:" >> $GITHUB_STEP_SUMMARY
+          echo "   - Raspberry Pi Imager (easiest)" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`dd\` command: \`sudo dd bs=4M status=progress if=seedsigner-luckfox-pico-*.img of=/dev/sdX\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Insert SD card into LuckFox Pico device and boot!" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Find NAND bundles
+        NAND_BUNDLES=$(find build-artifacts -name "seedsigner-luckfox-pico*-nand-bundle-*.tar.gz" -type f 2>/dev/null || true)
+        if [ -n "$NAND_BUNDLES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📊 Image Size:" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 NAND Flash Bundles" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "$IMG_FILES" | xargs -I {} du -sh {} >> $GITHUB_STEP_SUMMARY
+          echo "$NAND_BUNDLES" | while read f; do
+            echo "$(basename "$f") - $(du -sh "$f" | cut -f1)"
+          done >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-
-          ZIP_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico-*-nand-bundle.zip" 2>/dev/null || true)
-          if [ -n "$ZIP_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 📦 NAND Bundle Zips:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$ZIP_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
-          TAR_FILES=$(find build-artifacts -name "seedsigner-luckfox-pico*.tar.gz" 2>/dev/null || true)
-          if [ -n "$TAR_FILES" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 🗜️ NAND Bundle Tarballs:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "$TAR_FILES" | xargs -I {} basename {} >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-        else
-          echo "- **Image**: ❌ No seedsigner-luckfox-pico image found" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**How to Flash NAND:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download and extract the NAND bundle" >> $GITHUB_STEP_SUMMARY
+          echo "2. Use official LuckFox/Rockchip upgrade tools with \`update.img\`, or" >> $GITHUB_STEP_SUMMARY
+          echo "3. Use U-Boot workflows with \`sd_update.txt\` or \`tftp_update.txt\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. See [LuckFox Official Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico/Linux-MacOS-Burn-Image/)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -z "$SD_IMAGES" ] && [ -z "$NAND_BUNDLES" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "❌ **No build artifacts found**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The build may have failed. Check the build logs above." >> $GITHUB_STEP_SUMMARY
         fi
