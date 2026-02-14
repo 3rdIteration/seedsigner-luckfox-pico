@@ -23,6 +23,26 @@ on:
           - SD_CARD
           - SPI_NAND
         default: 'SD_CARD'
+      luckfox_repo_url:
+        description: 'LuckFox Pico SDK Repository URL'
+        required: false
+        type: string
+        default: 'https://github.com/lightningspore/luckfox-pico.git'
+      seedsigner_repo_url:
+        description: 'SeedSigner Repository URL'
+        required: false
+        type: string
+        default: 'https://github.com/lightningspore/seedsigner.git'
+      seedsigner_branch:
+        description: 'SeedSigner Branch'
+        required: false
+        type: string
+        default: 'upstream-luckfox-staging-1'
+      seedsigner_os_repo_url:
+        description: 'SeedSigner OS Repository URL'
+        required: false
+        type: string
+        default: 'https://github.com/seedsigner/seedsigner-os.git'
 
 jobs:
   build:
@@ -70,25 +90,38 @@ jobs:
 
     - name: Clone required repositories
       run: |
+        # Set repository URLs with fallbacks
+        # Use workflow_dispatch inputs if available, otherwise use defaults
+        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/lightningspore/luckfox-pico.git' }}"
+        SEEDSIGNER_REPO="${{ github.event.inputs.seedsigner_repo_url || 'https://github.com/lightningspore/seedsigner.git' }}"
+        SEEDSIGNER_BRANCH="${{ github.event.inputs.seedsigner_branch || 'upstream-luckfox-staging-1' }}"
+        SEEDSIGNER_OS_REPO="${{ github.event.inputs.seedsigner_os_repo_url || 'https://github.com/seedsigner/seedsigner-os.git' }}"
+        
+        echo "Repository Configuration:"
+        echo "  LuckFox SDK:     $LUCKFOX_REPO"
+        echo "  SeedSigner OS:   $SEEDSIGNER_OS_REPO"
+        echo "  SeedSigner Code: $SEEDSIGNER_REPO @ $SEEDSIGNER_BRANCH"
+        echo ""
+        
         # Clone LuckFox Pico SDK (forked version with SeedSigner modifications)
         # This fork includes hardware customizations like CMA memory settings, pull-up resistors, etc.
         echo "Cloning luckfox-pico SDK..."
-        if ! git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch; then
-          echo "ERROR: Failed to clone luckfox-pico SDK"
+        if ! git clone "$LUCKFOX_REPO" --depth=1 --single-branch luckfox-pico; then
+          echo "ERROR: Failed to clone luckfox-pico SDK from $LUCKFOX_REPO"
           exit 1
         fi
         
         # Clone SeedSigner OS packages (buildroot package definitions)
         echo "Cloning seedsigner-os packages..."
-        if ! git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch; then
-          echo "ERROR: Failed to clone seedsigner-os packages"
+        if ! git clone "$SEEDSIGNER_OS_REPO" --depth=1 --single-branch seedsigner-os; then
+          echo "ERROR: Failed to clone seedsigner-os packages from $SEEDSIGNER_OS_REPO"
           exit 1
         fi
         
         # Clone SeedSigner code (upstream-luckfox-staging-1 branch contains LuckFox-specific adaptations)
         echo "Cloning seedsigner application code..."
-        if ! git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch; then
-          echo "ERROR: Failed to clone seedsigner code (branch: upstream-luckfox-staging-1)"
+        if ! git clone "$SEEDSIGNER_REPO" --depth=1 -b "$SEEDSIGNER_BRANCH" --single-branch seedsigner; then
+          echo "ERROR: Failed to clone seedsigner code from $SEEDSIGNER_REPO (branch: $SEEDSIGNER_BRANCH)"
           echo "This branch may have been renamed or removed"
           exit 1
         fi
