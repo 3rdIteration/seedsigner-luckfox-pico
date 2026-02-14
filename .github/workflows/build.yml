@@ -398,14 +398,24 @@ jobs:
           echo "Max hardware detected - keeping default FOX_40 configuration"
         fi
         
-        # Verify pyzbar library (zbar.so) is present
+        # Fix pyzbar library path - symlink zbar.so from site-packages to /usr/lib
         PYTHON_VERSION=$(ls "$ROOTFS_DIR/usr/lib/" | grep -E '^python3\.[0-9]+$' | head -n 1)
         if [ -n "$PYTHON_VERSION" ]; then
-          echo "Checking for zbar.so library for Python $PYTHON_VERSION..."
+          echo "Setting up zbar.so for pyzbar (Python $PYTHON_VERSION)..."
           SITE_PACKAGES="$ROOTFS_DIR/usr/lib/$PYTHON_VERSION/site-packages"
           
           if [ -f "$SITE_PACKAGES/zbar.so" ]; then
             echo "✓ zbar.so found in site-packages"
+            
+            # Create symlink in /usr/lib for pyzbar to find
+            USR_LIB="$ROOTFS_DIR/usr/lib"
+            if [ ! -e "$USR_LIB/zbar.so" ]; then
+              echo "Creating symlink: /usr/lib/zbar.so -> $PYTHON_VERSION/site-packages/zbar.so"
+              ln -sf "$PYTHON_VERSION/site-packages/zbar.so" "$USR_LIB/zbar.so"
+              echo "✓ Symlink created successfully"
+            else
+              echo "✓ zbar.so already exists in /usr/lib"
+            fi
           else
             echo "WARNING: zbar.so not found in $SITE_PACKAGES"
             echo "Searching for zbar.so in rootfs..."
