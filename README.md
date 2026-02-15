@@ -171,6 +171,32 @@ While it is possible to send SPI data in chunks, you can increase the SPI buffer
 ### PWM Output
 In order to control the LCD screen backlight and support true dimming of the display (instead of just changing the background color of the QR code, for example), we had to enable a PWM on a specific output pin.
 
+## Smartcard Support
+
+This build now includes comprehensive smartcard functionality based on the [3rdIteration/seedsigner-os](https://github.com/3rdIteration/seedsigner-os) project. This enables hardware-backed seed storage and secure transaction signing using smartcards.
+
+### Supported Hardware
+- **USB CCID smartcard readers** - Any PC/SC-compatible USB reader
+- **SEC1210 serial reader** - Dual-slot reader via UART
+- **NFC/PN532 readers** - Contactless NFC via I2C (PN532 chip)
+
+### Supported Smartcards
+- **Satochip** - Bitcoin hardware wallet on smartcard
+- **Seedkeeper** - Secure seed backup storage
+- **Satodime** - Bearer bond smartcard
+- **Standard PC/SC cards** - ISO 7816-compatible smartcards
+
+### Features
+- PC/SC daemon (pcscd) with automatic startup
+- CCID drivers for USB and serial readers
+- NFC support via libnfc and PN532 I2C
+- Python libraries: pyscard and pysatochip
+- GnuPG2 integration for cryptographic operations
+- Multiple reader interface support (USB, Serial, NFC)
+
+### Documentation
+For detailed setup, hardware connections, usage instructions, and troubleshooting, see [docs/SMARTCARD.md](docs/SMARTCARD.md).
+
 ## Support the Developer
 If you find this project helpful and would like to support its development, you can buy me a coffee! Your support helps keep this project going and funds future improvements. Help decentralize Bitcoin hardware!
 
