@@ -179,21 +179,42 @@ jobs:
 
         # Some SDK make targets expect arm-buildroot-linux-gnueabihf-* even when
         # env_install_toolchain.sh exports a different CROSS_COMPILE prefix.
-        # Provide compatibility aliases when needed.
-        if ! command -v arm-buildroot-linux-gnueabihf-gcc >/dev/null 2>&1; then
+        # Also, an existing arm-buildroot binary can be the wrong compiler.
+        EXPECTED_CC="arm-buildroot-linux-gnueabihf-gcc"
+        EXPECTED_OK=0
+        if command -v "$EXPECTED_CC" >/dev/null 2>&1 && "$EXPECTED_CC" -mabi=aapcs-linux -x c -E /dev/null >/dev/null 2>&1; then
+          EXPECTED_OK=1
+          echo "Using existing $EXPECTED_CC"
+        fi
+
+        if [ "$EXPECTED_OK" -ne 1 ]; then
           ACTUAL_CC="${CROSS_COMPILE}gcc"
-          if command -v "$ACTUAL_CC" >/dev/null 2>&1; then
-            TOOL_ALIAS_DIR="$PWD/.toolchain-alias-bin"
-            mkdir -p "$TOOL_ALIAS_DIR"
-            ACTUAL_PREFIX="${ACTUAL_CC%gcc}"
-            for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
-              if command -v "${ACTUAL_PREFIX}${tool}" >/dev/null 2>&1; then
-                ln -sf "$(command -v "${ACTUAL_PREFIX}${tool}")" "$TOOL_ALIAS_DIR/arm-buildroot-linux-gnueabihf-${tool}"
+          if ! command -v "$ACTUAL_CC" >/dev/null 2>&1 || ! "$ACTUAL_CC" -mabi=aapcs-linux -x c -E /dev/null >/dev/null 2>&1; then
+            ACTUAL_CC=$(find "$PWD/bin" -maxdepth 1 -type f -name '*gcc' | while read -r cc; do
+              if "$cc" -dumpmachine 2>/dev/null | grep -q '^arm.*gnueabihf'; then
+                if "$cc" -mabi=aapcs-linux -x c -E /dev/null >/dev/null 2>&1; then
+                  echo "$cc"
+                  break
+                fi
               fi
-            done
-            export PATH="$TOOL_ALIAS_DIR:$PATH"
-            echo "Added arm-buildroot-linux-gnueabihf-* tool aliases from prefix: $ACTUAL_PREFIX"
+            done)
           fi
+
+          if [ -z "$ACTUAL_CC" ] || ! command -v "$ACTUAL_CC" >/dev/null 2>&1; then
+            echo "ERROR: Could not locate a working ARM gnueabihf gcc in SDK toolchain"
+            exit 1
+          fi
+
+          TOOL_ALIAS_DIR="$PWD/.toolchain-alias-bin"
+          mkdir -p "$TOOL_ALIAS_DIR"
+          ACTUAL_PREFIX="${ACTUAL_CC%gcc}"
+          for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
+            if command -v "${ACTUAL_PREFIX}${tool}" >/dev/null 2>&1; then
+              ln -sf "$(command -v "${ACTUAL_PREFIX}${tool}")" "$TOOL_ALIAS_DIR/arm-buildroot-linux-gnueabihf-${tool}"
+            fi
+          done
+          export PATH="$TOOL_ALIAS_DIR:$PATH"
+          echo "Added arm-buildroot-linux-gnueabihf-* tool aliases from prefix: $ACTUAL_PREFIX"
         fi
         
         # Export PATH to GITHUB_ENV so it persists to next steps

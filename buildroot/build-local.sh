@@ -195,23 +195,42 @@ setup_toolchain() {
     source env_install_toolchain.sh
 
     # Some LuckFox SDK make targets look for arm-buildroot-linux-gnueabihf-*.
-    # If env_install_toolchain.sh exposes a different CROSS_COMPILE prefix,
-    # create compatibility aliases and prepend them to PATH.
-    if ! command -v arm-buildroot-linux-gnueabihf-gcc > /dev/null 2>&1; then
+    # Also verify any existing arm-buildroot binary is actually ARM-capable.
+    local expected_cc="arm-buildroot-linux-gnueabihf-gcc"
+    local expected_ok=0
+    if command -v "$expected_cc" >/dev/null 2>&1 && "$expected_cc" -mabi=aapcs-linux -x c -E /dev/null >/dev/null 2>&1; then
+        expected_ok=1
+    fi
+
+    if [ "$expected_ok" -ne 1 ]; then
         local actual_cc="${CROSS_COMPILE}gcc"
-        if command -v "$actual_cc" > /dev/null 2>&1; then
-            local alias_dir="$PWD/.toolchain-alias-bin"
-            mkdir -p "$alias_dir"
-            local actual_prefix="${actual_cc%gcc}"
-            local tool
-            for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
-                if command -v "${actual_prefix}${tool}" > /dev/null 2>&1; then
-                    ln -sf "$(command -v "${actual_prefix}${tool}")" "$alias_dir/arm-buildroot-linux-gnueabihf-${tool}"
+        if ! command -v "$actual_cc" >/dev/null 2>&1 || ! "$actual_cc" -mabi=aapcs-linux -x c -E /dev/null >/dev/null 2>&1; then
+            actual_cc=$(find "$PWD/bin" -maxdepth 1 -type f -name '*gcc' | while read -r cc; do
+                if "$cc" -dumpmachine 2>/dev/null | grep -q '^arm.*gnueabihf'; then
+                    if "$cc" -mabi=aapcs-linux -x c -E /dev/null >/dev/null 2>&1; then
+                        echo "$cc"
+                        break
+                    fi
                 fi
-            done
-            export PATH="$alias_dir:$PATH"
-            print_info "Added arm-buildroot-linux-gnueabihf-* compatibility aliases"
+            done)
         fi
+
+        if [ -z "$actual_cc" ] || ! command -v "$actual_cc" >/dev/null 2>&1; then
+            print_error "Could not locate a working ARM gnueabihf gcc in SDK toolchain"
+            exit 1
+        fi
+
+        local alias_dir="$PWD/.toolchain-alias-bin"
+        mkdir -p "$alias_dir"
+        local actual_prefix="${actual_cc%gcc}"
+        local tool
+        for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
+            if command -v "${actual_prefix}${tool}" > /dev/null 2>&1; then
+                ln -sf "$(command -v "${actual_prefix}${tool}")" "$alias_dir/arm-buildroot-linux-gnueabihf-${tool}"
+            fi
+        done
+        export PATH="$alias_dir:$PATH"
+        print_info "Added arm-buildroot-linux-gnueabihf-* compatibility aliases"
     fi
 
     cd "$WORK_DIR/luckfox-pico"
