@@ -276,9 +276,6 @@ jobs:
         EOF
         chmod +x /tmp/stub-toolchain/arm-rockchip830-linux-uclibcgnueabihf-gcc
         
-        # Add stub to PATH for the Makefile check
-        echo "/tmp/stub-toolchain" >> $GITHUB_PATH
-        
         # Verify the stubs work
         export PATH="/tmp/stub-toolchain:$PATH"
         which arm-buildroot-linux-gnueabihf-gcc
@@ -289,6 +286,8 @@ jobs:
     - name: Prepare buildroot source tree
       run: |
         cd luckfox-pico
+        # Add stub to PATH only for this step (Makefile check)
+        export PATH="/tmp/stub-toolchain:$PATH"
         make buildroot_create -C sysdrv
 
     - name: Install SeedSigner packages
