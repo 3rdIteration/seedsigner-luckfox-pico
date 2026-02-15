@@ -312,6 +312,11 @@ jobs:
         	source "package/jpeg/Config.in"
         	source "package/python-qrcode/Config.in"
         	source "package/python-pyqrcode/Config.in"
+        	source "package/python-shamir-mnemonic/Config.in"
+        	source "package/python-pyaes/Config.in"
+        	source "package/python-pgpy/Config.in"
+        	source "package/python-pycryptodomex/Config.in"
+        	source "package/python-smbus2/Config.in"
         endmenu
         EOF
         fi

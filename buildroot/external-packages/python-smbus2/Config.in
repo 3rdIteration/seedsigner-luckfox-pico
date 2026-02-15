@@ -1,0 +1,13 @@
+config BR2_PACKAGE_PYTHON_SMBUS2
+	bool "python-smbus2"
+	depends on !BR2_STATIC_LIBS # i2c-tools
+	help
+	  A drop-in replacement for smbus-cffi/smbus-python in pure Python.
+	  
+	  smbus2 is a pure Python implementation of the SMBus/I2C interface
+	  for communicating with I2C/SMBus devices.
+	  
+	  https://github.com/kplindegaard/smbus2
+
+comment "python-smbus2 needs a toolchain w/ dynamic library"
+	depends on BR2_STATIC_LIBS

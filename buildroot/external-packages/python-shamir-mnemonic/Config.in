@@ -1,0 +1,9 @@
+config BR2_PACKAGE_PYTHON_SHAMIR_MNEMONIC
+	bool "python-shamir-mnemonic"
+	help
+	  Reference implementation of SLIP-0039: Shamir's Secret-Sharing for Mnemonic Codes
+	  
+	  This is a Python implementation of the SLIP-0039 standard for splitting BIP-39
+	  mnemonics into multiple shares using Shamir's Secret Sharing scheme.
+	  
+	  https://github.com/trezor/python-shamir-mnemonic

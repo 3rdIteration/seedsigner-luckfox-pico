@@ -1,0 +1,6 @@
+config BR2_PACKAGE_PYTHON_PYAES
+	bool "python-pyaes"
+	help
+	  Pure-Python implementation of AES block-cipher and common modes of operation.
+	  
+	  https://github.com/ricmoo/pyaes
