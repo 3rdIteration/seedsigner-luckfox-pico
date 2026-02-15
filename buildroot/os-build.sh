@@ -518,6 +518,14 @@ CONFIGMENU
         exit 1
     fi
 
+    # Ensure ARCH is not empty for SDK sub-makes (kernel/uboot)
+    if [[ -f ".BoardConfig.mk" ]]; then
+        source .BoardConfig.mk >/dev/null 2>&1 || true
+    fi
+    local build_arch="${RK_ARCH:-arm}"
+    export ARCH="$build_arch"
+    print_info "Using ARCH=$ARCH"
+
     print_step "Building U-Boot"
     ./build.sh uboot
 

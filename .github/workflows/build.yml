@@ -397,7 +397,15 @@ jobs:
     - name: Build system
       run: |
         cd luckfox-pico
-        
+
+        # Ensure ARCH is not empty for SDK sub-makes (kernel/uboot)
+        if [ -f .BoardConfig.mk ]; then
+          source .BoardConfig.mk >/dev/null 2>&1 || true
+        fi
+        BUILD_ARCH="${RK_ARCH:-arm}"
+        export ARCH="$BUILD_ARCH"
+        echo "Using ARCH=$ARCH"
+
         ./build.sh uboot
         ./build.sh kernel
         ./build.sh rootfs

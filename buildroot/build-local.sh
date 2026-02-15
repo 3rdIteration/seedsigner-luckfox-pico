@@ -449,6 +449,14 @@ build_system() {
     print_header "Building System Components"
     
     cd "$WORK_DIR/luckfox-pico"
+
+    # Ensure ARCH is not empty for SDK sub-makes (kernel/uboot)
+    if [ -f .BoardConfig.mk ]; then
+        source .BoardConfig.mk >/dev/null 2>&1 || true
+    fi
+    local build_arch="${RK_ARCH:-arm}"
+    export ARCH="$build_arch"
+    print_info "Using ARCH=$ARCH"
     
     print_info "Building U-Boot..."
     ./build.sh uboot
