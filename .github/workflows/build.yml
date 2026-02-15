@@ -265,18 +265,7 @@ jobs:
     - name: Prepare buildroot source tree
       run: |
         cd luckfox-pico
-        
-        # Download buildroot 2024.11.1 (latest stable as of Feb 2026)
-        echo "Downloading buildroot 2024.11.1..."
-        wget -q https://buildroot.org/downloads/buildroot-2024.11.1.tar.gz
-        
-        # Extract to sysdrv/source/buildroot/
-        echo "Extracting buildroot..."
-        mkdir -p sysdrv/source/buildroot
-        tar -xzf buildroot-2024.11.1.tar.gz -C sysdrv/source/buildroot/
-        
-        echo "Buildroot 2024.11.1 extracted successfully"
-        ls -la sysdrv/source/buildroot/
+        make buildroot_create -C sysdrv
 
     - name: Install SeedSigner packages
       run: |
