@@ -193,6 +193,27 @@ setup_toolchain() {
     print_info "Sourcing toolchain environment..."
     cd "$toolchain_dir"
     source env_install_toolchain.sh
+
+    # Some LuckFox SDK make targets look for arm-buildroot-linux-gnueabihf-*.
+    # If env_install_toolchain.sh exposes a different CROSS_COMPILE prefix,
+    # create compatibility aliases and prepend them to PATH.
+    if ! command -v arm-buildroot-linux-gnueabihf-gcc > /dev/null 2>&1; then
+        local actual_cc="${CROSS_COMPILE}gcc"
+        if command -v "$actual_cc" > /dev/null 2>&1; then
+            local alias_dir="$PWD/.toolchain-alias-bin"
+            mkdir -p "$alias_dir"
+            local actual_prefix="${actual_cc%gcc}"
+            local tool
+            for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
+                if command -v "${actual_prefix}${tool}" > /dev/null 2>&1; then
+                    ln -sf "$(command -v "${actual_prefix}${tool}")" "$alias_dir/arm-buildroot-linux-gnueabihf-${tool}"
+                fi
+            done
+            export PATH="$alias_dir:$PATH"
+            print_info "Added arm-buildroot-linux-gnueabihf-* compatibility aliases"
+        fi
+    fi
+
     cd "$WORK_DIR/luckfox-pico"
     
     # Verify toolchain

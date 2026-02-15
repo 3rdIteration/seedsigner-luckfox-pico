@@ -181,6 +181,26 @@ setup_sdk_environment() {
         source env_install_toolchain.sh 2>/dev/null
         local source_result=$?
         set -e  # Re-enable exit on error
+
+        # Some SDK make targets expect arm-buildroot-linux-gnueabihf-* tools.
+        # If env_install_toolchain.sh points to a different compiler prefix,
+        # provide compatibility aliases.
+        if ! command -v arm-buildroot-linux-gnueabihf-gcc >/dev/null 2>&1; then
+            local actual_cc="${CROSS_COMPILE}gcc"
+            if command -v "$actual_cc" >/dev/null 2>&1; then
+                local alias_dir="$toolchain_dir/.toolchain-alias-bin"
+                mkdir -p "$alias_dir"
+                local actual_prefix="${actual_cc%gcc}"
+                local tool
+                for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
+                    if command -v "${actual_prefix}${tool}" >/dev/null 2>&1; then
+                        ln -sf "$(command -v "${actual_prefix}${tool}")" "$alias_dir/arm-buildroot-linux-gnueabihf-${tool}"
+                    fi
+                done
+                export PATH="$alias_dir:$PATH"
+                print_info "Added arm-buildroot-linux-gnueabihf-* compatibility aliases"
+            fi
+        fi
         
         cd "$LUCKFOX_SDK_DIR"
         print_success "Toolchain environment configured"

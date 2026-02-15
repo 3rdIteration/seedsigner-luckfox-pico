@@ -176,6 +176,25 @@ jobs:
 
         # Source the environment script
         source env_install_toolchain.sh
+
+        # Some SDK make targets expect arm-buildroot-linux-gnueabihf-* even when
+        # env_install_toolchain.sh exports a different CROSS_COMPILE prefix.
+        # Provide compatibility aliases when needed.
+        if ! command -v arm-buildroot-linux-gnueabihf-gcc >/dev/null 2>&1; then
+          ACTUAL_CC="${CROSS_COMPILE}gcc"
+          if command -v "$ACTUAL_CC" >/dev/null 2>&1; then
+            TOOL_ALIAS_DIR="$PWD/.toolchain-alias-bin"
+            mkdir -p "$TOOL_ALIAS_DIR"
+            ACTUAL_PREFIX="${ACTUAL_CC%gcc}"
+            for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
+              if command -v "${ACTUAL_PREFIX}${tool}" >/dev/null 2>&1; then
+                ln -sf "$(command -v "${ACTUAL_PREFIX}${tool}")" "$TOOL_ALIAS_DIR/arm-buildroot-linux-gnueabihf-${tool}"
+              fi
+            done
+            export PATH="$TOOL_ALIAS_DIR:$PATH"
+            echo "Added arm-buildroot-linux-gnueabihf-* tool aliases from prefix: $ACTUAL_PREFIX"
+          fi
+        fi
         
         # Export PATH to GITHUB_ENV so it persists to next steps
         echo "PATH=$PATH" >> $GITHUB_ENV
