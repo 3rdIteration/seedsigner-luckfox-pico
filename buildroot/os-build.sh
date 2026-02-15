@@ -10,7 +10,8 @@ export REPOS_DIR="/build/repos"
 export OUTPUT_DIR="/build/output"
 
 # Repository URLs for cloning
-export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
+export LUCKFOX_REPO_URL="https://github.com/3rdIteration/luckfox-pico.git"
+export LUCKFOX_REPO_BRANCH="copilot/enable-glibc-highest-version"
 export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
@@ -26,7 +27,7 @@ export BUILDROOT_DIR="${LUCKFOX_SDK_DIR}/sysdrv/source/buildroot/buildroot-2023.
 export PACKAGE_DIR="${BUILDROOT_DIR}/package"
 export CONFIG_IN="${PACKAGE_DIR}/Config.in"
 export PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
-export ROOTFS_DIR="${LUCKFOX_SDK_DIR}/output/out/rootfs_uclibc_rv1106"
+export ROOTFS_DIR="${LUCKFOX_SDK_DIR}/output/out/rootfs_glibc_rv1106"
 
 # Parallel build configuration
 export BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
@@ -73,7 +74,7 @@ clone_repositories() {
     # Clone luckfox-pico SDK
     if [[ ! -d "luckfox-pico" ]]; then
         print_info "Cloning luckfox-pico SDK..."
-        git clone "$LUCKFOX_REPO_URL" --depth=1 --single-branch luckfox-pico
+        git clone "$LUCKFOX_REPO_URL" --depth=1 -b "$LUCKFOX_REPO_BRANCH" --single-branch luckfox-pico
         print_success "luckfox-pico cloned"
     else
         print_info "luckfox-pico already exists"
@@ -168,7 +169,11 @@ setup_sdk_environment() {
     fi
     
     # Source the toolchain environment
-    local toolchain_dir="$LUCKFOX_SDK_DIR/tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf"
+    local toolchain_dir
+    toolchain_dir=$(find "$LUCKFOX_SDK_DIR/tools/linux/toolchain" -mindepth 1 -maxdepth 1 -type d \( -name '*glibc*' -o -name '*gnueabihf*' \) | head -n 1)
+    if [[ -z "$toolchain_dir" ]]; then
+        toolchain_dir=$(find "$LUCKFOX_SDK_DIR/tools/linux/toolchain" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+    fi
     if [[ -f "$toolchain_dir/env_install_toolchain.sh" ]]; then
         print_info "Sourcing toolchain environment..."
         cd "$toolchain_dir"
@@ -262,8 +267,13 @@ apply_mini_cma_profile() {
 }
 
 resolve_rootfs_dir() {
-    local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
+    local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_glibc_*"
     local matches=( $pattern )
+
+    if [[ ${#matches[@]} -eq 0 ]]; then
+        pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_*"
+        matches=( $pattern )
+    fi
 
     if [[ ${#matches[@]} -eq 0 ]]; then
         print_error "Could not find rootfs output directory matching: $pattern"

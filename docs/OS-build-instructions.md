@@ -188,12 +188,12 @@ git clone https://github.com/3rdIteration/seedsigner-luckfox-pico.git --depth=1 
 cd luckfox-pico
 
 # Source the toolchain environment
-cd tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
+cd tools/linux/toolchain/arm-rockchip830-linux-gnueabihf
 source env_install_toolchain.sh
 cd ../../../..
 
 # Verify toolchain is accessible
-which arm-rockchip830-linux-uclibcgnueabihf-gcc
+which arm-rockchip830-linux-gnueabihf-gcc
 ```
 
 ### Configure Board
@@ -298,7 +298,7 @@ fi
 
 ```bash
 # Find rootfs directory
-ROOTFS_DIR=$(find output/out -maxdepth 1 -type d -name "rootfs_uclibc_*" | head -n 1)
+ROOTFS_DIR=$(find output/out -maxdepth 1 -type d -name "rootfs_glibc_*" | head -n 1)
 
 # Copy SeedSigner code
 cp -rv ../seedsigner/src/ "$ROOTFS_DIR/seedsigner"
@@ -518,7 +518,7 @@ Start the image compilation process:
 Verify all of the .img files are there:
 ```bash
 $ ls /mnt/host/output/out/           
-S20linkmount  media_out  rootfs_uclibc_rv1106  sysdrv_out
+S20linkmount  media_out  rootfs_glibc_rv1106  sysdrv_out
 
 $ ls /mnt/host/output/image/
 boot.img  download.bin  idblock.img  uboot.img
@@ -527,10 +527,10 @@ boot.img  download.bin  idblock.img  uboot.img
 Copy over app code and pin configs
 ```bash
 # Pin configs
-cp /mnt/cfg/config/luckfox.cfg /mnt/host/output/out/rootfs_uclibc_rv1106/etc/luckfox.cfg
+cp /mnt/cfg/config/luckfox.cfg /mnt/host/output/out/rootfs_glibc_rv1106/etc/luckfox.cfg
 
 # Seedsigner code
-cp -r /mnt/ss/src/ /mnt/host/output/out/rootfs_uclibc_rv1106/seedsigner
+cp -r /mnt/ss/src/ /mnt/host/output/out/rootfs_glibc_rv1106/seedsigner
 ```
 
 Package:

@@ -26,12 +26,12 @@ on:
         description: 'LuckFox Pico SDK Repository URL'
         required: false
         type: string
-        default: 'https://github.com/lightningspore/luckfox-pico.git'
+        default: 'https://github.com/3rdIteration/luckfox-pico.git'
       luckfox_branch:
         description: 'LuckFox Pico SDK Branch (leave empty for default branch)'
         required: false
         type: string
-        default: ''
+        default: 'copilot/enable-glibc-highest-version'
       seedsigner_repo_url:
         description: 'SeedSigner Repository URL'
         required: false
@@ -101,8 +101,8 @@ jobs:
       run: |
         # Set repository URLs and branches with fallbacks
         # Use workflow_dispatch inputs if available, otherwise use defaults
-        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/lightningspore/luckfox-pico.git' }}"
-        LUCKFOX_BRANCH="${{ github.event.inputs.luckfox_branch || '' }}"
+        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/3rdIteration/luckfox-pico.git' }}"
+        LUCKFOX_BRANCH="${{ github.event.inputs.luckfox_branch || 'copilot/enable-glibc-highest-version' }}"
         SEEDSIGNER_REPO="${{ github.event.inputs.seedsigner_repo_url || 'https://github.com/lightningspore/seedsigner.git' }}"
         SEEDSIGNER_BRANCH="${{ github.event.inputs.seedsigner_branch || 'upstream-luckfox-staging-1' }}"
         SEEDSIGNER_OS_REPO="${{ github.event.inputs.seedsigner_os_repo_url || 'https://github.com/seedsigner/seedsigner-os.git' }}"
@@ -162,8 +162,18 @@ jobs:
         cd luckfox-pico
         
         # Source the toolchain environment and export to GITHUB_ENV
-        cd tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
-        
+        TOOLCHAIN_DIR=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d \( -name "*glibc*" -o -name "*gnueabihf*" \) | head -n 1)
+        if [ -z "$TOOLCHAIN_DIR" ]; then
+          TOOLCHAIN_DIR=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d | head -n 1)
+        fi
+
+        if [ -z "$TOOLCHAIN_DIR" ] || [ ! -f "$TOOLCHAIN_DIR/env_install_toolchain.sh" ]; then
+          echo "ERROR: Could not locate SDK toolchain env script"
+          exit 1
+        fi
+
+        cd "$TOOLCHAIN_DIR"
+
         # Source the environment script
         source env_install_toolchain.sh
         
@@ -178,7 +188,7 @@ jobs:
         cd ../../../..
         
         # Verify toolchain is accessible
-        which arm-rockchip830-linux-uclibcgnueabihf-gcc || echo "WARNING: Toolchain not in PATH yet, but will be in next step"
+        which "${CROSS_COMPILE}gcc" || echo "WARNING: Toolchain compiler not in PATH yet, but will be in next step"
 
     - name: Configure board
       run: |
@@ -359,7 +369,10 @@ jobs:
         cd luckfox-pico
         
         # Find rootfs directory
-        ROOTFS_DIRS=($(find output/out -maxdepth 1 -type d -name "rootfs_uclibc_*"))
+        ROOTFS_DIRS=($(find output/out -maxdepth 1 -type d -name "rootfs_glibc_*"))
+        if [ ${#ROOTFS_DIRS[@]} -eq 0 ]; then
+          ROOTFS_DIRS=($(find output/out -maxdepth 1 -type d -name "rootfs_*"))
+        fi
         
         if [ ${#ROOTFS_DIRS[@]} -eq 0 ]; then
           echo "ERROR: Could not find rootfs directory"

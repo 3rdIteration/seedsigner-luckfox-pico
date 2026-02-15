@@ -10,6 +10,8 @@ WORK_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Default Python version for buildroot (matches GitHub Actions workflow)
 DEFAULT_PYTHON_VERSION="3.11"
+DEFAULT_LUCKFOX_REPO_URL="https://github.com/3rdIteration/luckfox-pico.git"
+DEFAULT_LUCKFOX_REPO_BRANCH="copilot/enable-glibc-highest-version"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -145,7 +147,7 @@ clone_repositories() {
     # Clone luckfox-pico SDK
     if [ ! -d "luckfox-pico" ]; then
         print_info "Cloning luckfox-pico SDK..."
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        git clone "$DEFAULT_LUCKFOX_REPO_URL" --depth=1 -b "$DEFAULT_LUCKFOX_REPO_BRANCH" --single-branch
         print_success "luckfox-pico cloned"
     else
         print_info "luckfox-pico already exists"
@@ -177,7 +179,11 @@ setup_toolchain() {
     
     cd "$WORK_DIR/luckfox-pico"
     
-    local toolchain_dir="tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf"
+    local toolchain_dir
+    toolchain_dir=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d \( -name '*glibc*' -o -name '*gnueabihf*' \) | head -n 1)
+    if [ -z "$toolchain_dir" ]; then
+        toolchain_dir=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d | head -n 1)
+    fi
     
     if [ ! -f "$toolchain_dir/env_install_toolchain.sh" ]; then
         print_error "Toolchain environment script not found"
@@ -190,8 +196,9 @@ setup_toolchain() {
     cd "$WORK_DIR/luckfox-pico"
     
     # Verify toolchain
-    if ! which arm-rockchip830-linux-uclibcgnueabihf-gcc > /dev/null 2>&1; then
-        print_error "Toolchain not found in PATH"
+    local cc_bin="${CROSS_COMPILE}gcc"
+    if ! which "$cc_bin" > /dev/null 2>&1; then
+        print_error "Toolchain compiler not found in PATH: $cc_bin"
         exit 1
     fi
     
@@ -378,6 +385,20 @@ apply_seedsigner_config() {
     # Copy SeedSigner defconfig
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/configs/luckfox_pico_defconfig"
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/.config"
+
+    # Align defconfig with detected SDK toolchain directory/prefix
+    local toolchain_dir
+    toolchain_dir=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d \( -name '*glibc*' -o -name '*gnueabihf*' \) | head -n 1)
+    if [ -z "$toolchain_dir" ]; then
+        toolchain_dir=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d | head -n 1)
+    fi
+    local toolchain_name
+    toolchain_name=$(basename "$toolchain_dir")
+    if [ -n "$toolchain_name" ]; then
+        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_PATH=.*|BR2_TOOLCHAIN_EXTERNAL_PATH=\"../../../../tools/linux/toolchain/${toolchain_name}\"|" "$buildroot_dir/.config"
+        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_PREFIX=.*|BR2_TOOLCHAIN_EXTERNAL_PREFIX=\"${toolchain_name}\"|" "$buildroot_dir/.config"
+        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX=.*|BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX=\"${toolchain_name}\"|" "$buildroot_dir/.config"
+    fi
     
     # Update pyzbar patch
     local pyzbar_patch="${buildroot_dir}/package/python-pyzbar/0001-PATH-fixed-by-hand.patch"
@@ -429,7 +450,10 @@ install_seedsigner_app() {
     cd "$WORK_DIR/luckfox-pico"
     
     # Find rootfs directory
-    local rootfs_dir=$(find output/out -maxdepth 1 -type d -name "rootfs_uclibc_*" | head -n 1)
+    local rootfs_dir=$(find output/out -maxdepth 1 -type d -name "rootfs_glibc_*" | head -n 1)
+    if [ -z "$rootfs_dir" ]; then
+        rootfs_dir=$(find output/out -maxdepth 1 -type d -name "rootfs_*" | head -n 1)
+    fi
     
     if [ -z "$rootfs_dir" ]; then
         print_error "Rootfs directory not found"
