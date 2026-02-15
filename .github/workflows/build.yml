@@ -157,29 +157,6 @@ jobs:
         
         echo "All repositories cloned successfully"
 
-    - name: Set up build environment
-      run: |
-        cd luckfox-pico
-        
-        # Source the toolchain environment and export to GITHUB_ENV
-        cd tools/linux/toolchain/arm-rockchip830-linux-uclibcgnueabihf
-        
-        # Source the environment script
-        source env_install_toolchain.sh
-        
-        # Export PATH to GITHUB_ENV so it persists to next steps
-        echo "PATH=$PATH" >> $GITHUB_ENV
-        
-        # Also export the CROSS_COMPILE variable if it exists
-        if [ -n "$CROSS_COMPILE" ]; then
-          echo "CROSS_COMPILE=$CROSS_COMPILE" >> $GITHUB_ENV
-        fi
-        
-        cd ../../../..
-        
-        # Verify toolchain is accessible
-        which arm-rockchip830-linux-uclibcgnueabihf-gcc || echo "WARNING: Toolchain not in PATH yet, but will be in next step"
-
     - name: Configure board
       run: |
         cd luckfox-pico
