@@ -224,7 +224,7 @@ setup_toolchain() {
         mkdir -p "$alias_dir"
         local actual_prefix="${actual_cc%gcc}"
         local tool
-        for tool in gcc g++ ld ar as nm objcopy objdump ranlib strip; do
+        for tool in gcc g++ ld ld.bfd ar as nm objcopy objdump ranlib strip; do
             if command -v "${actual_prefix}${tool}" > /dev/null 2>&1; then
                 ln -sf "$(command -v "${actual_prefix}${tool}")" "$alias_dir/arm-buildroot-linux-gnueabihf-${tool}"
             fi
