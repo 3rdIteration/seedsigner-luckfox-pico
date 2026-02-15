@@ -386,20 +386,6 @@ apply_seedsigner_config() {
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/configs/luckfox_pico_defconfig"
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/.config"
 
-    # Align defconfig with detected SDK toolchain directory/prefix
-    local toolchain_dir
-    toolchain_dir=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d \( -name '*glibc*' -o -name '*gnueabihf*' \) | head -n 1)
-    if [ -z "$toolchain_dir" ]; then
-        toolchain_dir=$(find tools/linux/toolchain -mindepth 1 -maxdepth 1 -type d | head -n 1)
-    fi
-    local toolchain_name
-    toolchain_name=$(basename "$toolchain_dir")
-    if [ -n "$toolchain_name" ]; then
-        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_PATH=.*|BR2_TOOLCHAIN_EXTERNAL_PATH=\"../../../../tools/linux/toolchain/${toolchain_name}\"|" "$buildroot_dir/.config"
-        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_PREFIX=.*|BR2_TOOLCHAIN_EXTERNAL_PREFIX=\"${toolchain_name}\"|" "$buildroot_dir/.config"
-        sed -i "s|^BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX=.*|BR2_TOOLCHAIN_EXTERNAL_CUSTOM_PREFIX=\"${toolchain_name}\"|" "$buildroot_dir/.config"
-    fi
-    
     # Update pyzbar patch
     local pyzbar_patch="${buildroot_dir}/package/python-pyzbar/0001-PATH-fixed-by-hand.patch"
     if [ -f "$pyzbar_patch" ] && [ -f "$buildroot_dir/.config" ]; then
