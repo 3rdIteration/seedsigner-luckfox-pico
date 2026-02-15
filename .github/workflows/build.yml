@@ -377,9 +377,15 @@ jobs:
         # The stub passes validation, then buildroot uses its internal toolchain for compilation
         export PATH="/tmp/stub-toolchain:$PATH"
         
+        # Build rootfs FIRST - this creates buildroot's internal toolchain
+        ./build.sh rootfs
+        
+        # Now remove stub from PATH - buildroot's internal toolchain is available
+        export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "/tmp/stub-toolchain" | tr '\n' ':' | sed 's/:$//')
+        
+        # Build uboot and kernel using buildroot's internal toolchain
         ./build.sh uboot
         ./build.sh kernel
-        ./build.sh rootfs
         ./build.sh media
         ./build.sh app
 
