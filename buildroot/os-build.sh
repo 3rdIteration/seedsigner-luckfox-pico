@@ -13,7 +13,7 @@ export OUTPUT_DIR="/build/output"
 export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
 export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
-export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
+export SEEDSIGNER_OS_REPO_URL="https://github.com/3rdIteration/seedsigner-os.git"
 
 # Internal paths (after cloning)
 export LUCKFOX_SDK_DIR="$REPOS_DIR/luckfox-pico"

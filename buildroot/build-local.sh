@@ -154,7 +154,7 @@ clone_repositories() {
     # Clone SeedSigner OS packages
     if [ ! -d "seedsigner-os" ]; then
         print_info "Cloning seedsigner-os packages..."
-        git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/seedsigner-os.git --depth=1 --single-branch
         print_success "seedsigner-os cloned"
     else
         print_info "seedsigner-os already exists"

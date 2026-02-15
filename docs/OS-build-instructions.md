@@ -173,7 +173,7 @@ Clone all required repositories into your working directory:
 git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
 
 # Clone SeedSigner OS packages (buildroot package definitions)
-git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
+git clone https://github.com/3rdIteration/seedsigner-os.git --depth=1 --single-branch
 
 # Clone SeedSigner application code
 git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
@@ -406,7 +406,7 @@ git clone https://github.com/lightningspore/luckfox-pico.git \
 
 Clone the Seedsigner OS repo:
 ```bash
-git clone https://github.com/seedsigner/seedsigner-os.git \
+git clone https://github.com/3rdIteration/seedsigner-os.git \
     --depth=1 --single-branch
 ```
 
