@@ -208,7 +208,7 @@ jobs:
           TOOL_ALIAS_DIR="$PWD/.toolchain-alias-bin"
           mkdir -p "$TOOL_ALIAS_DIR"
           ACTUAL_PREFIX="${ACTUAL_CC%gcc}"
-          for tool in gcc g++ ld ld.bfd ar as nm objcopy objdump ranlib strip; do
+          for tool in gcc g++ ld ld.bfd ar as nm objcopy objdump ranlib strip readelf; do
             if command -v "${ACTUAL_PREFIX}${tool}" >/dev/null 2>&1; then
               ln -sf "$(command -v "${ACTUAL_PREFIX}${tool}")" "$TOOL_ALIAS_DIR/arm-buildroot-linux-gnueabihf-${tool}"
             fi
