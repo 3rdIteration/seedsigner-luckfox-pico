@@ -1,0 +1,9 @@
+config BR2_PACKAGE_OPENCT
+	bool "openct"
+	depends on BR2_PACKAGE_PCSC_LITE
+	select BR2_PACKAGE_PCSC_LITE
+	help
+	  OpenCT - Smartcard terminal middleware library.
+	  Provides drivers for various smartcard readers and tokens.
+
+	  https://github.com/3rdIteration/openct

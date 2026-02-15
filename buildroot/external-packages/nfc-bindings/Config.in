@@ -1,0 +1,13 @@
+config BR2_PACKAGE_NFC_BINDINGS
+	bool "nfc-bindings"
+	depends on BR2_PACKAGE_LIBNFC
+	depends on BR2_PACKAGE_LIBUSB
+	depends on BR2_PACKAGE_LIBUSB_COMPAT
+	select BR2_PACKAGE_LIBNFC
+	select BR2_PACKAGE_LIBUSB
+	select BR2_PACKAGE_LIBUSB_COMPAT
+	help
+	  Python bindings for libnfc - Near Field Communication library.
+	  Enables NFC operations from Python applications.
+
+	  https://github.com/3rdIteration/nfc-bindings

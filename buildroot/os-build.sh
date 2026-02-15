@@ -435,7 +435,14 @@ build_profile_artifacts() {
     ensure_buildroot_tree
 
     print_step "Installing SeedSigner Packages"
-    cp -rv "$SEEDSIGNER_OS_DIR/opt/external-packages/"* "$PACKAGE_DIR/"
+    # Copy SeedSigner OS external packages if available
+    if [[ -d "$SEEDSIGNER_OS_DIR/opt/external-packages" ]]; then
+        cp -rv "$SEEDSIGNER_OS_DIR/opt/external-packages/"* "$PACKAGE_DIR/" || true
+    fi
+    # Copy local external packages (for smartcard support)
+    if [[ -d "/build/external-packages" ]]; then
+        cp -rv "/build/external-packages/"* "$PACKAGE_DIR/"
+    fi
 
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
@@ -456,6 +463,15 @@ menu "SeedSigner"
         source "package/jpeg/Config.in"
         source "package/python-qrcode/Config.in"
         source "package/python-pyqrcode/Config.in"
+endmenu
+
+menu "SeedSigner Smartcard Support"
+        source "package/python-pysatochip/Config.in"
+        source "package/python-pyscard/Config.in"
+        source "package/ifdnfc/Config.in"
+        source "package/ccid-sec1210/Config.in"
+        source "package/nfc-bindings/Config.in"
+        source "package/openct/Config.in"
 endmenu
 CONFIGMENU
     fi
@@ -493,6 +509,12 @@ CONFIGMENU
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+
+    # Copy rootfs overlay for smartcard support if it exists
+    if [[ -d "/build/rootfs-overlay" ]]; then
+        print_step "Applying rootfs overlay for smartcard support"
+        cp -rv "/build/rootfs-overlay/"* "$ROOTFS_DIR/" || true
+    fi
 
     print_step "Packaging Firmware"
     ./build.sh firmware

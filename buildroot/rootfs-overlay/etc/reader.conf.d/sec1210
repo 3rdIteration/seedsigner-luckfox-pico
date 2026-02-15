@@ -1,0 +1,3 @@
+DEVICENAME        /dev/ttyAMA0:SEC1210URT
+FRIENDLYNAME      "SEC1210"
+LIBPATH           /usr/lib/pcsc/drivers/serial/libccidtwin.so
