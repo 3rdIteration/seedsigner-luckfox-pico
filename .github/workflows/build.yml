@@ -26,12 +26,12 @@ on:
         description: 'LuckFox Pico SDK Repository URL'
         required: false
         type: string
-        default: 'https://github.com/lightningspore/luckfox-pico.git'
+        default: 'https://github.com/3rdIteration/luckfox-pico.git'
       luckfox_branch:
         description: 'LuckFox Pico SDK Branch (leave empty for default branch)'
         required: false
         type: string
-        default: ''
+        default: 'copilot/enable-glibc-highest-version'
       seedsigner_repo_url:
         description: 'SeedSigner Repository URL'
         required: false
@@ -101,8 +101,8 @@ jobs:
       run: |
         # Set repository URLs and branches with fallbacks
         # Use workflow_dispatch inputs if available, otherwise use defaults
-        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/lightningspore/luckfox-pico.git' }}"
-        LUCKFOX_BRANCH="${{ github.event.inputs.luckfox_branch || '' }}"
+        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/3rdIteration/luckfox-pico.git' }}"
+        LUCKFOX_BRANCH="${{ github.event.inputs.luckfox_branch || 'copilot/enable-glibc-highest-version' }}"
         SEEDSIGNER_REPO="${{ github.event.inputs.seedsigner_repo_url || 'https://github.com/lightningspore/seedsigner.git' }}"
         SEEDSIGNER_BRANCH="${{ github.event.inputs.seedsigner_branch || 'upstream-luckfox-staging-1' }}"
         SEEDSIGNER_OS_REPO="${{ github.event.inputs.seedsigner_os_repo_url || 'https://github.com/seedsigner/seedsigner-os.git' }}"

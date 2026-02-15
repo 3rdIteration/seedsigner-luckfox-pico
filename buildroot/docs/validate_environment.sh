@@ -56,7 +56,7 @@ if [ ${#missing_dirs[@]} -ne 0 ] || [ ${#missing_files[@]} -ne 0 ]; then
     echo ""
     echo "Please ensure all required repositories are cloned and properly mounted:"
     echo "1. Clone required repositories in your HOME directory:"
-    echo "   git clone https://github.com/lightningspore/luckfox-pico.git"
+    echo "   git clone https://github.com/3rdIteration/luckfox-pico.git -b copilot/enable-glibc-highest-version"
     echo "   git clone https://github.com/seedsigner/seedsigner-os.git"
     echo "   git clone https://github.com/lightningspore/seedsigner.git -b upstream-luckfox-staging-1 --recurse-submodules"
     echo ""

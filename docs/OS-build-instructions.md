@@ -169,8 +169,8 @@ sudo apt-get install -y \
 Clone all required repositories into your working directory:
 
 ```bash
-# Clone the LuckFox Pico SDK (customized fork with SeedSigner modifications)
-git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+# Clone the LuckFox Pico SDK (customized fork with SeedSigner modifications and GCC 13 support)
+git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 -b copilot/enable-glibc-highest-version --single-branch
 
 # Clone SeedSigner OS packages (buildroot package definitions)
 git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
@@ -402,8 +402,8 @@ The `seedsigner-luckfox-pico` directory is this repo we are already in!
 
 Clone the Luckfox SDK repo:
 ```bash
-git clone https://github.com/lightningspore/luckfox-pico.git \
-    --depth=1 --single-branch
+git clone https://github.com/3rdIteration/luckfox-pico.git \
+    --depth=1 -b copilot/enable-glibc-highest-version --single-branch
 ```
 
 Clone the Seedsigner OS repo:

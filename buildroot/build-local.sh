@@ -145,7 +145,7 @@ clone_repositories() {
     # Clone luckfox-pico SDK
     if [ ! -d "luckfox-pico" ]; then
         print_info "Cloning luckfox-pico SDK..."
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 -b copilot/enable-glibc-highest-version --single-branch
         print_success "luckfox-pico cloned"
     else
         print_info "luckfox-pico already exists"

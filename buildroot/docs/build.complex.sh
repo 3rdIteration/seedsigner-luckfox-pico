@@ -111,7 +111,7 @@ check_repositories() {
     
     # Required repositories 
     local repos=(
-        "$HOME/luckfox-pico:https://github.com/lightningspore/luckfox-pico.git"
+        "$HOME/luckfox-pico:https://github.com/3rdIteration/luckfox-pico.git:-b copilot/enable-glibc-highest-version"
         "$HOME/seedsigner:https://github.com/lightningspore/seedsigner.git:-b upstream-luckfox-staging-1"
         "$HOME/seedsigner-luckfox-pico:current repo"
         "$HOME/seedsigner-os:https://github.com/seedsigner/seedsigner-os.git"
@@ -150,7 +150,7 @@ setup_repositories() {
     # Clone repositories if they don't exist
     if [ ! -d "luckfox-pico" ]; then
         print_header "Cloning luckfox-pico..."
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 -b copilot/enable-glibc-highest-version --single-branch
     else
         print_success "luckfox-pico already exists"
     fi

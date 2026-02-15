@@ -10,7 +10,8 @@ export REPOS_DIR="/build/repos"
 export OUTPUT_DIR="/build/output"
 
 # Repository URLs for cloning
-export LUCKFOX_REPO_URL="https://github.com/lightningspore/luckfox-pico.git"
+export LUCKFOX_REPO_URL="https://github.com/3rdIteration/luckfox-pico.git"
+export LUCKFOX_BRANCH="copilot/enable-glibc-highest-version"
 export SEEDSIGNER_REPO_URL="https://github.com/lightningspore/seedsigner.git"
 export SEEDSIGNER_BRANCH="upstream-luckfox-staging-1"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/seedsigner/seedsigner-os.git"
@@ -73,7 +74,7 @@ clone_repositories() {
     # Clone luckfox-pico SDK
     if [[ ! -d "luckfox-pico" ]]; then
         print_info "Cloning luckfox-pico SDK..."
-        git clone "$LUCKFOX_REPO_URL" --depth=1 --single-branch luckfox-pico
+        git clone "$LUCKFOX_REPO_URL" --depth=1 -b "$LUCKFOX_BRANCH" --single-branch luckfox-pico
         print_success "luckfox-pico cloned"
     else
         print_info "luckfox-pico already exists"

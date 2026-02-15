@@ -139,7 +139,7 @@ Replace `/dev/diskX` with your actual SD card device path.
 
 
 ## LuckFox Pico OS Modifications
-We have forked the [LuckFox Pico SDK](https://github.com/lightningspore/luckfox-pico) in order to enable various hardware features like pull-up resistors, adjust video RAM, and other things.
+We have forked the [LuckFox Pico SDK](https://github.com/3rdIteration/luckfox-pico/tree/copilot/enable-glibc-highest-version) in order to enable various hardware features like pull-up resistors, adjust video RAM, and support modern toolchains with GCC 13.
 
 ### Camera Memory
 The LuckFox devotes some of its memory for camera-related algorithms, but we don't use this feature. Particularly on the LuckFox Pico Mini device, which only has 64MB of RAM, it is beneficial for us to reclaim a bit of this memory.
