@@ -1,2 +1,2 @@
-# Hashes from https://pypi.org/project/PGPy/
-sha256  279c2e353f4c3a319f00bd9bd582456e420f8a3ac6de2b4e9731444746828383  PGPy-0.6.0.tar.gz
+# sha256 from https://github.com/SecurityInnovation/PGPy
+sha256 33028fc2c47718a9215311bb22d6fed042074afbc91bf4e9764fdf0df54fc2b3  PGPy-0.6.0.tar.gz
