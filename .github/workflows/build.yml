@@ -282,8 +282,13 @@ jobs:
         echo "Using buildroot directory: $BUILDROOT_DIR"
         PACKAGE_DIR="${BUILDROOT_DIR}/package"
         
-        # Copy SeedSigner packages from seedsigner-os
+        # Copy SeedSigner packages from seedsigner-os repository
+        echo "Copying packages from seedsigner-os..."
         cp -rv ../seedsigner-os/opt/external-packages/* "$PACKAGE_DIR/"
+        
+        # Copy additional smartcard/NFC packages from this repository
+        echo "Copying smartcard and NFC support packages..."
+        cp -rv ../seedsigner-luckfox-pico/buildroot/external-packages/* "$PACKAGE_DIR/"
         
         # Update pyzbar patch
         # Note: Will be updated with actual Python version after .config is created in next step
@@ -307,6 +312,20 @@ jobs:
         	source "package/jpeg/Config.in"
         	source "package/python-qrcode/Config.in"
         	source "package/python-pyqrcode/Config.in"
+        endmenu
+        EOF
+        fi
+        
+        # Add Smartcard/NFC menu to buildroot Config.in
+        if ! grep -q '^menu "Smartcard and NFC Support"$' "$CONFIG_IN"; then
+          cat >> "$CONFIG_IN" << 'EOF'
+        menu "Smartcard and NFC Support"
+        	source "package/ccid-sec1210/Config.in"
+        	source "package/openct/Config.in"
+        	source "package/ifdnfc/Config.in"
+        	source "package/nfc-bindings/Config.in"
+        	source "package/python-pyscard/Config.in"
+        	source "package/python-pysatochip/Config.in"
         endmenu
         EOF
         fi
