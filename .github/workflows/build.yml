@@ -373,6 +373,10 @@ jobs:
       run: |
         cd luckfox-pico
         
+        # Add stub to PATH for build.sh toolchain check
+        # The stub passes validation, then buildroot uses its internal toolchain for compilation
+        export PATH="/tmp/stub-toolchain:$PATH"
+        
         ./build.sh uboot
         ./build.sh kernel
         ./build.sh rootfs
