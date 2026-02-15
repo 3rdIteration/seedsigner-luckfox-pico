@@ -302,8 +302,6 @@ jobs:
         	source "package/python-mock/Config.in"
         	source "package/python-embit/Config.in"
         	source "package/python-pillow/Config.in"
-        	source "package/libcamera/Config.in"
-        	source "package/libcamera-apps/Config.in"
         	source "package/zbar/Config.in"
         	source "package/jpeg-turbo/Config.in.options"
         	source "package/jpeg/Config.in"

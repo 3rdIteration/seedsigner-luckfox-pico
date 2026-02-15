@@ -258,8 +258,6 @@ menu "SeedSigner"
 	source "package/python-mock/Config.in"
 	source "package/python-embit/Config.in"
 	source "package/python-pillow/Config.in"
-	source "package/libcamera/Config.in"
-	source "package/libcamera-apps/Config.in"
 	source "package/zbar/Config.in"
 	source "package/jpeg-turbo/Config.in.options"
 	source "package/jpeg/Config.in"
@@ -475,7 +473,6 @@ The configuration is saved at: `sysdrv/source/buildroot/buildroot-2023.02.6/.con
 
 You can sanity check your configuration to ensure the selected packages have been enabled like so:
 ```bash
-cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep "LIBCAMERA"
 cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep "ZBAR"
 cat sysdrv/source/buildroot/buildroot-2023.02.6/.config | grep "LIBJPEG"
 ...
