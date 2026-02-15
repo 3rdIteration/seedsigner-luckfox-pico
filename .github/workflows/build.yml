@@ -239,6 +239,33 @@ jobs:
           echo "Warning: Board config file not found: $BOARD_CONFIG"
         fi
 
+    - name: Create stub toolchain for Makefile check
+      run: |
+        # The SDK's Makefile.param checks for the external toolchain before buildroot creates its internal one
+        # Create a minimal stub that passes the check, then buildroot will use its own internal toolchain
+        mkdir -p /tmp/stub-toolchain
+        cat > /tmp/stub-toolchain/arm-rockchip830-linux-uclibcgnueabihf-gcc << 'EOF'
+        #!/bin/bash
+        # Stub GCC that passes SDK's Makefile check
+        # Buildroot will use its own internal toolchain during actual build
+        if [ "$1" = "--version" ] || [ "$1" = "-v" ]; then
+          echo "arm-rockchip830-linux-uclibcgnueabihf-gcc (stub for buildroot) 13.0.0"
+          exit 0
+        fi
+        # For actual compilation, this should not be called (buildroot uses its own toolchain)
+        echo "Warning: Stub toolchain called for compilation - buildroot should use internal toolchain" >&2
+        exit 1
+        EOF
+        chmod +x /tmp/stub-toolchain/arm-rockchip830-linux-uclibcgnueabihf-gcc
+        
+        # Add stub to PATH for the Makefile check
+        echo "/tmp/stub-toolchain" >> $GITHUB_PATH
+        
+        # Verify the stub works
+        export PATH="/tmp/stub-toolchain:$PATH"
+        which arm-rockchip830-linux-uclibcgnueabihf-gcc
+        arm-rockchip830-linux-uclibcgnueabihf-gcc --version
+
     - name: Prepare buildroot source tree
       run: |
         cd luckfox-pico
