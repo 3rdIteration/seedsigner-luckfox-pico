@@ -373,19 +373,20 @@ jobs:
       run: |
         cd luckfox-pico
         
-        # Add stub to PATH for build.sh toolchain check
-        # The stub passes validation, then buildroot uses its internal toolchain for compilation
+        # Add stub to PATH for SDK toolchain checks
         export PATH="/tmp/stub-toolchain:$PATH"
         
-        # Build rootfs FIRST - this creates buildroot's internal toolchain
-        ./build.sh rootfs
+        # Build buildroot FIRST - this creates the internal toolchain and runtime libraries
+        # Using 'make buildroot' instead of './build.sh rootfs' to properly build the toolchain
+        make buildroot -C sysdrv
         
         # Now remove stub from PATH - buildroot's internal toolchain is available
         export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "/tmp/stub-toolchain" | tr '\n' ':' | sed 's/:$//')
         
-        # Build uboot and kernel using buildroot's internal toolchain
+        # Build components using buildroot's internal toolchain
         ./build.sh uboot
         ./build.sh kernel
+        ./build.sh rootfs
         ./build.sh media
         ./build.sh app
 
