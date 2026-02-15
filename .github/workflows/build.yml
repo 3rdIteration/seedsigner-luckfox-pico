@@ -344,6 +344,15 @@ jobs:
           fi
         fi
 
+    - name: Copy rootfs overlay for smartcard support
+      run: |
+        # Copy rootfs overlay to the location expected by buildroot config
+        # The defconfig references /build/rootfs-overlay
+        sudo mkdir -p /build
+        sudo cp -rv seedsigner-luckfox-pico/buildroot/rootfs-overlay /build/
+        echo "Rootfs overlay copied to /build/rootfs-overlay"
+        ls -la /build/rootfs-overlay/
+
     - name: Build system
       run: |
         cd luckfox-pico
