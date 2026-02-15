@@ -265,7 +265,18 @@ jobs:
     - name: Prepare buildroot source tree
       run: |
         cd luckfox-pico
-        make buildroot_create -C sysdrv
+        
+        # Download buildroot 2024.11.1 (latest stable as of Feb 2026)
+        echo "Downloading buildroot 2024.11.1..."
+        wget -q https://buildroot.org/downloads/buildroot-2024.11.1.tar.gz
+        
+        # Extract to sysdrv/source/buildroot/
+        echo "Extracting buildroot..."
+        mkdir -p sysdrv/source/buildroot
+        tar -xzf buildroot-2024.11.1.tar.gz -C sysdrv/source/buildroot/
+        
+        echo "Buildroot 2024.11.1 extracted successfully"
+        ls -la sysdrv/source/buildroot/
 
     - name: Install SeedSigner packages
       run: |
@@ -352,7 +363,7 @@ jobs:
         PACKAGE_DIR="${BUILDROOT_DIR}/package"
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
         if [ -f "$PYZBAR_PATCH" ] && [ -f "$BUILDROOT_DIR/.config" ]; then
-          PYTHON_VER="3.11"
+          PYTHON_VER="3.12"
           DETECTED_PYTHON_VER=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || true)
           if [ -n "$DETECTED_PYTHON_VER" ]; then
             PYTHON_VER="$DETECTED_PYTHON_VER"
