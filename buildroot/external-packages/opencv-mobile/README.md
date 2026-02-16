@@ -24,16 +24,14 @@ opencv-mobile is a minimal build of the OpenCV library designed for mobile and e
 
 ### Option 1: Edit defconfig
 
-Uncomment the following lines in `buildroot/configs/luckfox_pico_defconfig`:
+Enable in `buildroot/configs/luckfox_pico_defconfig`:
 
 ```
+# Find these lines:
 # BR2_PACKAGE_OPENCV_MOBILE is not set
 # BR2_PACKAGE_OPENCV_MOBILE_PYTHON is not set
-```
 
-Change to:
-
-```
+# Replace with:
 BR2_PACKAGE_OPENCV_MOBILE=y
 BR2_PACKAGE_OPENCV_MOBILE_PYTHON=y
 ```
