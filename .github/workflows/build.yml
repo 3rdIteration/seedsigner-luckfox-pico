@@ -41,7 +41,7 @@ on:
         description: 'SeedSigner Branch'
         required: false
         type: string
-        default: 'claude/add-luckfox-pico-support-AO5ZX'
+        default: 'luckfox-staging-portability'
       seedsigner_os_repo_url:
         description: 'SeedSigner OS Repository URL'
         required: false
