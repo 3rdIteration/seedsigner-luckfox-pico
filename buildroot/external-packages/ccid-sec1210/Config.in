@@ -1,8 +1,5 @@
 config BR2_PACKAGE_CCID_SEC1210
 	bool "ccid-sec1210"
-	depends on BR2_PACKAGE_PCSC_LITE
-	depends on BR2_PACKAGE_LIBUSB
-	depends on BR2_PACKAGE_HOST_PKGCONF
 	select BR2_PACKAGE_PCSC_LITE
 	select BR2_PACKAGE_LIBUSB
 	help
