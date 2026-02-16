@@ -1,7 +1,5 @@
 config BR2_PACKAGE_IFDNFC
 	bool "ifdnfc"
-	depends on BR2_PACKAGE_PCSC_LITE
-	depends on BR2_PACKAGE_LIBNFC
 	select BR2_PACKAGE_PCSC_LITE
 	select BR2_PACKAGE_LIBNFC
 	help
