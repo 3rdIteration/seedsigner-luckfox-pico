@@ -13,7 +13,7 @@ export OUTPUT_DIR="/build/output"
 export LUCKFOX_REPO_URL="https://github.com/3rdIteration/luckfox-pico.git"
 export LUCKFOX_BRANCH="copilot/build-python-with-uclib-nh"
 export SEEDSIGNER_REPO_URL="https://github.com/3rdIteration/seedsigner.git"
-export SEEDSIGNER_BRANCH="luckfox-staging-portability"
+export SEEDSIGNER_BRANCH="claude/add-luckfox-pico-support-AO5ZX"
 export SEEDSIGNER_OS_REPO_URL="https://github.com/3rdIteration/seedsigner-os.git"
 
 # Internal paths (after cloning)
