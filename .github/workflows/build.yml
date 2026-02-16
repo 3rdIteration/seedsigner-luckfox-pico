@@ -290,20 +290,6 @@ jobs:
         echo "Copying smartcard and NFC support packages..."
         cp -rv ../seedsigner-luckfox-pico/buildroot/external-packages/* "$PACKAGE_DIR/"
         
-        # Copy patches for buildroot packages (e.g., numpy GCC version check bypass)
-        echo "Copying buildroot package patches..."
-        PATCHES_SRC_DIR="../seedsigner-luckfox-pico/buildroot/patches"
-        if [ -d "$PATCHES_SRC_DIR" ]; then
-          for patch_dir in "$PATCHES_SRC_DIR"/*; do
-            if [ -d "$patch_dir" ]; then
-              package_name=$(basename "$patch_dir")
-              echo "  Copying patches for $package_name..."
-              mkdir -p "$PACKAGE_DIR/$package_name"
-              cp -v "$patch_dir"/*.patch "$PACKAGE_DIR/$package_name/" 2>/dev/null || true
-            fi
-          done
-        fi
-        
         # Update pyzbar patch
         # Note: Will be updated with actual Python version after .config is created in next step
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
