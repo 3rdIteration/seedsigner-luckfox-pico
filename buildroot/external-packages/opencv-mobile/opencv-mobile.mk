@@ -4,9 +4,8 @@
 #
 ################################################################################
 
-OPENCV_MOBILE_VERSION = 4.13.0
-OPENCV_MOBILE_SITE = $(call github,nihui,opencv-mobile,v35)
-OPENCV_MOBILE_SOURCE = opencv-mobile-$(OPENCV_MOBILE_VERSION).zip
+OPENCV_MOBILE_VERSION = 35
+OPENCV_MOBILE_SITE = $(call github,nihui,opencv-mobile,v$(OPENCV_MOBILE_VERSION))
 OPENCV_MOBILE_INSTALL_STAGING = YES
 OPENCV_MOBILE_LICENSE = Apache-2.0
 OPENCV_MOBILE_LICENSE_FILES = LICENSE
@@ -113,9 +112,9 @@ ifeq ($(BR2_PACKAGE_OPENCV_MOBILE_PYTHON),y)
 OPENCV_MOBILE_DEPENDENCIES += python3 python-numpy host-python3
 OPENCV_MOBILE_CONF_OPTS += \
 	-DBUILD_opencv_python3=ON \
-	-DPYTHON3_EXECUTABLE=$(HOST_DIR)/bin/python3 \
-	-DPYTHON3_INCLUDE_DIR=$(STAGING_DIR)/usr/include/python$(PYTHON3_VERSION_MAJOR) \
-	-DPYTHON3_NUMPY_INCLUDE_DIRS=$(STAGING_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages/numpy/core/include
+	-DPYTHON3_EXECUTABLE=$(HOST_DIR)/usr/bin/python3 \
+	-DPYTHON3_INCLUDE_PATH=$(STAGING_DIR)/usr/include/python$(PYTHON3_VERSION_MAJOR) \
+	-DPYTHON3_PACKAGES_PATH=$(TARGET_DIR)/usr/lib/python$(PYTHON3_VERSION_MAJOR)/site-packages
 else
 OPENCV_MOBILE_CONF_OPTS += -DBUILD_opencv_python3=OFF
 endif

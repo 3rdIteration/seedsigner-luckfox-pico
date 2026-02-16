@@ -1,5 +1,5 @@
-# Hashes from https://github.com/nihui/opencv-mobile/releases/tag/v35
-sha256  9304482980b3e4ff1050a8527cdb5777fadf8c5dd9c1a8620170d23e252fb150  opencv-mobile-4.13.0.zip
+# Hashes from https://github.com/nihui/opencv-mobile/archive/refs/tags/v35.tar.gz
+sha256  4411be321a8b698f84a72c24757c17112e0b007080be6787a5f2a620c235d318  opencv-mobile-35.tar.gz
 
 # Locally computed
 sha256  cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30  LICENSE
