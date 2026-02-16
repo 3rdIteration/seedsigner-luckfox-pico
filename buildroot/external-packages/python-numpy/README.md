@@ -14,6 +14,7 @@ The standard buildroot python-numpy package (version 1.25.0) requires GCC >= 8.4
 - **GCC Requirement**: >= 8.0 (compatible with LuckFox GCC 8.3.0)
 - **Python**: 3.x
 - **Size**: ~10-15 MB
+- **BLAS/LAPACK**: Not included (uses pure Python fallbacks for simplicity)
 
 ## NumPy GCC Version Requirements
 
@@ -27,8 +28,6 @@ The standard buildroot python-numpy package (version 1.25.0) requires GCC >= 8.4
 ## Dependencies
 
 - BR2_PACKAGE_PYTHON3
-- BR2_PACKAGE_CLAPACK (for linear algebra)
-- BR2_TOOLCHAIN_HAS_FORTRAN
 - host-python-cython (build dependency)
 
 ## Usage
@@ -48,7 +47,7 @@ arr = np.array([1, 2, 3])
 
 ## Build Configuration
 
-The package configures NumPy to use CLAPACK for BLAS/LAPACK operations, providing optimized linear algebra support on the embedded platform.
+The package is built without BLAS/LAPACK libraries to simplify dependencies. NumPy will use pure Python fallbacks for linear algebra operations. This is sufficient for basic array operations needed by OpenCV and SeedSigner.
 
 ## Size Impact
 

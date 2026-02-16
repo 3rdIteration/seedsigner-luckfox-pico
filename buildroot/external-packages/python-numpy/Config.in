@@ -2,8 +2,6 @@ config BR2_PACKAGE_PYTHON_NUMPY
 	bool "python-numpy"
 	depends on BR2_PACKAGE_PYTHON3
 	depends on BR2_TOOLCHAIN_USES_GLIBC || BR2_TOOLCHAIN_USES_UCLIBC || BR2_TOOLCHAIN_USES_MUSL
-	depends on BR2_TOOLCHAIN_HAS_FORTRAN
-	select BR2_PACKAGE_CLAPACK
 	help
 	  NumPy is the fundamental package for scientific computing
 	  with Python.
@@ -15,8 +13,6 @@ config BR2_PACKAGE_PYTHON_NUMPY
 	  requires GCC >= 8.4, which is not available in the LuckFox
 	  toolchain.
 
-	  https://numpy.org/
+	  Built without BLAS/LAPACK for simplicity on embedded systems.
 
-comment "python-numpy needs toolchain with Fortran support"
-	depends on BR2_PACKAGE_PYTHON3
-	depends on !BR2_TOOLCHAIN_HAS_FORTRAN
+	  https://numpy.org/
