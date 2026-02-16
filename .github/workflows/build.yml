@@ -334,6 +334,15 @@ jobs:
         endmenu
         EOF
         fi
+        
+        # Add opencv-mobile menu to buildroot Config.in
+        if ! grep -q '^menu "Computer Vision"$' "$CONFIG_IN"; then
+          cat >> "$CONFIG_IN" << 'EOF'
+        menu "Computer Vision"
+        	source "package/opencv-mobile/Config.in"
+        endmenu
+        EOF
+        fi
 
     - name: Apply SeedSigner buildroot configuration
       run: |
