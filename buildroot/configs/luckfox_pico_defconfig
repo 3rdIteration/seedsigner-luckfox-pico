@@ -6,13 +6,13 @@ BR2_ARM_FPU_VFPV4D16=y
 
 # Build internal toolchain instead of using external LuckFox toolchain
 # This allows us to use GCC >= 8.4 which is required for NumPy 1.25.0
+# Using musl instead of uclibc because NumPy requires glibc or musl (not uclibc)
 BR2_TOOLCHAIN_BUILDROOT=y
-BR2_TOOLCHAIN_BUILDROOT_UCLIBC=y
+BR2_TOOLCHAIN_BUILDROOT_MUSL=y
 BR2_TOOLCHAIN_BUILDROOT_WCHAR=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
 BR2_GCC_VERSION_11_X=y
 BR2_KERNEL_HEADERS_5_10=y
-BR2_UCLIBC_VERSION_1_0_42=y
 
 # System
 BR2_TARGET_GENERIC_HOSTNAME="luckfox"
