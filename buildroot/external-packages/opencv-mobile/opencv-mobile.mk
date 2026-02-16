@@ -108,6 +108,7 @@ OPENCV_MOBILE_CONF_OPTS = \
 	-DBUILD_opencv_ml=OFF
 
 # Python bindings
+# Note: PYTHON3_VERSION_MAJOR in buildroot contains the full version (e.g., "3.12")
 ifeq ($(BR2_PACKAGE_OPENCV_MOBILE_PYTHON),y)
 OPENCV_MOBILE_DEPENDENCIES += python3 python-numpy host-python3
 OPENCV_MOBILE_CONF_OPTS += \

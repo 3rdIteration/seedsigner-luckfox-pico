@@ -139,7 +139,7 @@ The package uses opencv-mobile's minimal configuration:
 - Disabled: DNN, ML, objdetect, videoio, imgcodecs
 - Enabled: core, imgproc, features2d, photo, video
 - OpenMP: enabled for parallelization
-- Static libraries with shared Python module
+- Shared libraries for smaller memory footprint
 
 ### Toolchain
 

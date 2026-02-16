@@ -10,7 +10,7 @@ config BR2_PACKAGE_OPENCV_MOBILE
 	  minimal size and dependencies. Perfect for embedded systems.
 	  
 	  This package is optimized for LuckFox Pico (uclibc) and includes
-	  only essential modules: core and imgproc.
+	  essential modules: core, imgproc, features2d, photo, and video.
 	  
 	  https://github.com/nihui/opencv-mobile
 
