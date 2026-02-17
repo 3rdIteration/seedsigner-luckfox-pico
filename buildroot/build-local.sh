@@ -231,13 +231,13 @@ apply_sdk_patches() {
     echo ""
     
     # Check if patches actually modified the files
-    if echo "$MINI_PARTITION" | grep -q "0x6700000@0x1900000(rootfs)"; then
+    if echo "$MINI_PARTITION" | grep -q "103M(rootfs)"; then
         print_success "Mini partition optimization VERIFIED (rootfs = 103MB)"
     else
         print_warning "WARNING: Mini partition may not be optimized!"
     fi
     
-    if echo "$MAX_PARTITION" | grep -q "0x6700000@0x1900000(rootfs)"; then
+    if echo "$MAX_PARTITION" | grep -q "103M(rootfs)"; then
         print_success "Max partition optimization VERIFIED (rootfs = 103MB)"
     else
         print_warning "WARNING: Max partition may not be optimized!"
