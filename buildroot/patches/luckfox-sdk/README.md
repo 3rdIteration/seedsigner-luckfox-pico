@@ -11,17 +11,17 @@ This directory contains patches that are automatically applied to the LuckFox Pi
 **Purpose:** Optimize SPI-NAND partition layout for Mini hardware (128MB flash)
 
 **Changes:**
-- **OEM partition:** 30MB → 8MB (saves 22MB)
+- **OEM partition:** 30MB → 24MB (saves 6MB)
   - Default allocates 30MB for manufacturer-specific files
-  - SeedSigner only needs minimal space (~2MB)
+  - SeedSigner OEM usage is 16.4MB, provides 3.6MB headroom
   
 - **Userdata partition:** 6MB → Removed (saves 6MB)
   - Default allocates persistent user data storage
   - SeedSigner is air-gapped and stateless - no user data needed
   
-- **Rootfs partition:** 85MB → 115MB (adds 30MB)
+- **Rootfs partition:** 85MB → 99MB (adds 14MB)
   - Original allocation was too small for SeedSigner packages (~93MB needed)
-  - New size provides 22MB headroom for future growth
+  - New size provides ~4MB headroom for future growth
 
 **Result:**
 - Build succeeds (was failing with "max_leb_cnt too low" error)

@@ -185,8 +185,8 @@ GLOBAL_PARTITIONS:
   0x40000@0x40000(idblock),
   0x80000@0x80000(uboot),
   0x400000@0x100000(boot),
-  0x800000@0x500000(oem),         ← 8MB (was 30MB)
-  0x7340000@0xD00000(rootfs)      ← 115MB (was 85MB, userdata removed)
+  0x1800000@0x500000(oem),         ← 8MB (was 30MB)
+  0x6300000@0x1D00000(rootfs)      ← 115MB (was 85MB, userdata removed)
 ```
 
 ### Space Analysis

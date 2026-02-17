@@ -43,7 +43,7 @@ Instead of modifying the LuckFox SDK repository, we implemented an **automated p
 **Result:**
 - Rootfs has 115MB (was 85MB)
 - Packages need ~93MB
-- **22MB headroom** for future growth
+- **~4MB headroom** for future growth
 - Build succeeds ✅
 
 ---
@@ -248,7 +248,7 @@ export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x8000
 
 **After:**
 ```makefile
-export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x800000@0x500000(oem),0x7340000@0xD00000(rootfs)"
+export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x1800000@0x500000(oem),0x6300000@0x1D00000(rootfs)"
 ```
 
 ### UBIFS Parameters

@@ -277,7 +277,7 @@ Confirm which flash variant is actually being targeted:
 - Best achieved by removing development packages
 
 **For 64MB SPI-NAND:** Need to trim **~7MB** minimum  
-- Removing dev packages gives 22MB headroom
+- Removing dev packages gives ~4MB headroom
 
 **For 128MB SPI-NAND:** No trimming needed
 - Already fits comfortably

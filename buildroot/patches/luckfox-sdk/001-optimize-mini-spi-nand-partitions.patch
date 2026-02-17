@@ -9,11 +9,11 @@
 -export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@/oem@ubifs,userdata@/userdata@ubifs"
 +# Optimized partition table for SeedSigner (128MB SPI-NAND)
 +# Changes from default:
-+#   - OEM: 30MB -> 8MB (SeedSigner needs minimal space)
++#   - OEM: 30MB -> 24MB (current usage 16.4MB, provides 3.6MB headroom)
 +#   - Userdata: Removed (SeedSigner is stateless, no persistent user data)
-+#   - Rootfs: 85MB -> 115MB (expanded to fit packages, 22MB headroom)
-+# Total: env(256K) + idblock(256K) + uboot(512K) + boot(4M) + oem(8M) + rootfs(115M) = ~128MB
-+export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x800000@0x500000(oem),0x7340000@0xD00000(rootfs)"
++#   - Rootfs: 85MB -> 99MB (expanded to fit packages, ~4MB headroom)
++# Total: env(256K) + idblock(256K) + uboot(512K) + boot(4M) + oem(24M) + rootfs(99M) = ~128MB
++export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x1800000@0x500000(oem),0x6300000@0x1D00000(rootfs)"
 +export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@/oem@ubifs"
  
  export RK_ROOTFS_SYSTEM=buildroot
