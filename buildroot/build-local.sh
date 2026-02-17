@@ -177,38 +177,78 @@ apply_sdk_patches() {
     
     cd "$WORK_DIR/luckfox-pico"
     
-    # Check if patches already applied (idempotent)
-    if ! grep -q "Optimized partition table for SeedSigner" \
-         project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk 2>/dev/null; then
-        
-        print_info "Applying SPI-NAND partition optimization patches..."
-        
-        # Apply Mini SPI-NAND partition optimization
-        if patch -p1 < "$SCRIPT_DIR/patches/luckfox-sdk/001-optimize-mini-spi-nand-partitions.patch"; then
-            print_success "Mini SPI-NAND partition optimization applied"
-        else
-            print_error "Failed to apply Mini SPI-NAND patch"
-            return 1
-        fi
-        
-        # Apply Max SPI-NAND partition optimization
-        if patch -p1 < "$SCRIPT_DIR/patches/luckfox-sdk/002-optimize-max-spi-nand-partitions.patch"; then
-            print_success "Max SPI-NAND partition optimization applied"
-        else
-            print_error "Failed to apply Max SPI-NAND patch"
-            return 1
-        fi
-        
-        print_success "SDK patches applied"
-        echo ""
-        print_info "Partition layout optimized:"
-        echo "  - OEM: 30MB → 8MB (save 22MB)"
-        echo "  - Userdata: 6MB → Removed (save 6MB)"
-        echo "  - Rootfs: 85MB → 115MB (add 30MB)"
-        echo ""
+    # Show files before patching
+    print_info "Checking target files..."
+    if [ -f project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk ]; then
+        print_success "Mini BoardConfig found"
     else
-        print_success "SDK patches already applied"
+        print_error "Mini BoardConfig NOT FOUND!"
+        cd "$WORK_DIR"
+        return 1
     fi
+    
+    if [ -f project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk ]; then
+        print_success "Max BoardConfig found"
+    else
+        print_error "Max BoardConfig NOT FOUND!"
+        cd "$WORK_DIR"
+        return 1
+    fi
+    echo ""
+    
+    # Apply Mini SPI-NAND partition optimization
+    print_info "Applying Mini SPI-NAND partition optimization..."
+    if patch -p1 --verbose < "$SCRIPT_DIR/patches/luckfox-sdk/001-optimize-mini-spi-nand-partitions.patch"; then
+        print_success "Mini SPI-NAND patch applied successfully"
+    else
+        EXIT_CODE=$?
+        print_error "Failed to apply Mini SPI-NAND patch (exit code: $EXIT_CODE)"
+        print_error "This may be a fatal error for SPI-NAND builds"
+    fi
+    echo ""
+    
+    # Apply Max SPI-NAND partition optimization
+    print_info "Applying Max SPI-NAND partition optimization..."
+    if patch -p1 --verbose < "$SCRIPT_DIR/patches/luckfox-sdk/002-optimize-max-spi-nand-partitions.patch"; then
+        print_success "Max SPI-NAND patch applied successfully"
+    else
+        EXIT_CODE=$?
+        print_error "Failed to apply Max SPI-NAND patch (exit code: $EXIT_CODE)"
+        print_error "This may be a fatal error for SPI-NAND builds"
+    fi
+    echo ""
+    
+    # Verify patches were applied by checking partition sizes
+    print_info "Verifying patches..."
+    MINI_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk | head -1)
+    MAX_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk | head -1)
+    
+    echo "  Mini partition table:"
+    echo "    $MINI_PARTITION"
+    echo ""
+    echo "  Max partition table:"
+    echo "    $MAX_PARTITION"
+    echo ""
+    
+    # Check if patches actually modified the files
+    if echo "$MINI_PARTITION" | grep -q "0x6300000@0x1D00000(rootfs)"; then
+        print_success "Mini partition optimization VERIFIED (rootfs = 99MB)"
+    else
+        print_warning "WARNING: Mini partition may not be optimized!"
+    fi
+    
+    if echo "$MAX_PARTITION" | grep -q "0x6300000@0x1D00000(rootfs)"; then
+        print_success "Max partition optimization VERIFIED (rootfs = 99MB)"
+    else
+        print_warning "WARNING: Max partition may not be optimized!"
+    fi
+    echo ""
+    
+    print_success "Partition layout optimized:"
+    echo "  - OEM: 30MB → 24MB (save 6MB, provides headroom for 16.4MB usage)"
+    echo "  - Userdata: 6MB → Removed (save 6MB, SeedSigner is stateless)"
+    echo "  - Rootfs: 85MB → 99MB (add 14MB, total 28MB gained)"
+    echo ""
     
     cd "$WORK_DIR"
 }
