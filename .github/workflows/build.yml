@@ -301,6 +301,8 @@ jobs:
         	source "package/python-pyzbar/Config.in"
         	source "package/python-mock/Config.in"
         	source "package/python-embit/Config.in"
+        	source "package/python-mnemonic/Config.in"
+        	source "package/python-shamir-mnemonic/Config.in"
         	source "package/python-pillow/Config.in"
         	source "package/zbar/Config.in"
         	source "package/jpeg-turbo/Config.in.options"
