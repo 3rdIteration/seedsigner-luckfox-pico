@@ -145,7 +145,7 @@ clone_repositories() {
     # Clone luckfox-pico SDK
     if [ ! -d "luckfox-pico" ]; then
         print_info "Cloning luckfox-pico SDK..."
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 --single-branch
         print_success "luckfox-pico cloned"
     else
         print_info "luckfox-pico already exists"
@@ -154,7 +154,7 @@ clone_repositories() {
     # Clone SeedSigner OS packages
     if [ ! -d "seedsigner-os" ]; then
         print_info "Cloning seedsigner-os packages..."
-        git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/seedsigner-os.git --depth=1 --single-branch
         print_success "seedsigner-os cloned"
     else
         print_info "seedsigner-os already exists"
@@ -163,7 +163,7 @@ clone_repositories() {
     # Clone SeedSigner application code
     if [ ! -d "seedsigner" ]; then
         print_info "Cloning seedsigner application..."
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
+        git clone https://github.com/3rdIteration/seedsigner.git --depth=1 -b luckfox-staging-portability --single-branch --recurse-submodules
         print_success "seedsigner cloned"
     else
         print_info "seedsigner already exists"

@@ -71,7 +71,7 @@ After setup, your `$HOME` directory should contain:
 ```
 ~/
 ├── luckfox-pico/           # Luckfox SDK
-├── seedsigner/             # SeedSigner code (upstream-luckfox-staging-1 branch)
+├── seedsigner/             # SeedSigner code (luckfox-staging-portability branch)
 ├── seedsigner-os/          # SeedSigner OS packages
 └── seedsigner-luckfox-pico/ # This repository
 ```
