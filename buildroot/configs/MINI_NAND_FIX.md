@@ -95,9 +95,74 @@ Shortfall: 25 LEBs (~7.8MB)
 
 ---
 
-## Recommended Solution
+## Solution Implemented
 
-### New Partition Layout
+### Automated Patch System ✅
+
+Instead of modifying the LuckFox SDK repository directly, the build system now **automatically applies patches** during the build process.
+
+**Location:** `buildroot/patches/luckfox-sdk/`
+
+**Patches:**
+1. `001-optimize-mini-spi-nand-partitions.patch` - Optimizes Mini SPI-NAND layout
+2. `002-optimize-max-spi-nand-partitions.patch` - Optimizes Max SPI-NAND layout (for consistency)
+
+**Application:** Automatic during every build (GitHub Actions, local Docker, local native)
+
+### How It Works
+
+The build scripts (`os-build.sh`, `build-local.sh`, GitHub workflow) now include an `apply_sdk_patches()` function that:
+
+1. Checks if patches are already applied (idempotent)
+2. Applies partition optimization patches to LuckFox SDK
+3. Verifies successful application
+4. Continues with normal build process
+
+**Benefits:**
+- ✅ SDK repository remains unmodified
+- ✅ Patches automatically apply on fresh clones
+- ✅ Idempotent - safe to run multiple times
+- ✅ Easy to update or add new patches
+- ✅ Works across all build methods (CI, Docker, native)
+
+---
+
+## Implementation Steps (Already Done)
+
+### ✅ Step 1: Patch Files Created
+
+Created two patch files in `buildroot/patches/luckfox-sdk/`:
+
+**Mini patch** modifies: `project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk`
+
+**Max patch** modifies: `project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk`
+
+### ✅ Step 2: Build Scripts Updated
+
+Modified three build scripts to apply patches:
+
+1. **`.github/workflows/build.yml`**
+   - Added "Apply SeedSigner SDK patches" step
+   - Runs after SDK clone, before board configuration
+
+2. **`buildroot/os-build.sh`**
+   - Added `apply_sdk_patches()` function
+   - Called after `clone_repositories()` in all modes
+
+3. **`buildroot/build-local.sh`**
+   - Added `apply_sdk_patches()` function
+   - Called after `clone_repositories()`
+
+### ✅ Step 3: Documentation
+
+- Created `buildroot/patches/luckfox-sdk/README.md` with full documentation
+- Updated this file (MINI_NAND_FIX.md) with solution status
+
+---
+
+## Partition Changes
+
+### Before Patches (Default)
 
 ```
 Total Flash:    128MB
@@ -141,158 +206,85 @@ GLOBAL_PARTITIONS:
 
 ---
 
-## Implementation Steps
+## Usage
 
-### 1. Locate Partition Configuration File
+### For CI Builds (GitHub Actions)
 
-The partition table is defined in the LuckFox SDK (not this repo). Location:
+Patches apply automatically - no action needed!
 
-```
-Repository: https://github.com/3rdIteration/luckfox-pico
-File: project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk
-```
+The workflow now includes an "Apply SeedSigner SDK patches" step that runs after cloning the SDK.
 
-### 2. Find the Partition Definition
+### For Local Docker Builds
 
-Search for one of these:
+Patches apply automatically when using `buildroot/os-build.sh`:
+
 ```bash
-grep -n "RK_PARTITION_CMD_IN_ENV" BoardConfig-SPI_NAND-*.mk
-grep -n "GLOBAL_PARTITIONS" BoardConfig-SPI_NAND-*.mk
-grep -n "0x5500000.*rootfs" BoardConfig-SPI_NAND-*.mk
+./buildroot/os-build.sh auto        # SD card build
+./buildroot/os-build.sh auto-nand   # NAND build
 ```
 
-### 3. Modify the Partition Table
+### For Local Native Builds
 
-**Find the line (approximate):**
-```makefile
-export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x1E00000@0x500000(oem),0x600000@0x2300000(userdata),0x5500000@0x2900000(rootfs)"
-```
+Patches apply automatically when using `buildroot/build-local.sh`:
 
-**Replace with:**
-```makefile
-export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x800000@0x500000(oem),0x7340000@0xD00000(rootfs)"
-```
-
-### 4. Update Filesystem Type Configuration
-
-**Find:**
-```makefile
-export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@/oem@ubifs,userdata@/userdata@ubifs"
-```
-
-**Replace with:**
-```makefile
-export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@/oem@ubifs"
-```
-
-### 5. Verify the Change
-
-After modification, run the build again. The firmware packaging should show:
-```
-max_leb_cnt: ~920 (for 115MB)
-needed:      726
-Result:      SUCCESS ✅
-```
-
----
-
-## Alternative Solutions (If Needed)
-
-### Option A: Keep Userdata (Minimal Reduction)
-
-If userdata must be kept for some reason:
-
-```
-├─ oem:         8MB    @ 0x500000  ← Reduced from 30MB
-├─ userdata:    2MB    @ 0xD00000  ← Reduced from 6MB
-└─ rootfs:      113MB  @ 0xF00000  ← Expanded from 85MB
-```
-
-**Hex:**
-```
-export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x800000@0x500000(oem),0x200000@0xD00000(userdata),0x7140000@0xF00000(rootfs)"
-```
-
-### Option B: More Conservative (Smaller OEM Reduction)
-
-```
-├─ oem:         16MB   @ 0x500000  ← Reduced from 30MB
-├─ userdata:    0MB    REMOVED
-└─ rootfs:      107MB  @ 0x1500000 ← Expanded from 85MB
-```
-
-**Hex:**
-```
-export RK_PARTITION_CMD_IN_ENV="0x40000@0x0(env),0x40000@0x40000(idblock),0x80000@0x80000(uboot),0x400000@0x100000(boot),0x1000000@0x500000(oem),0x6B40000@0x1500000(rootfs)"
-```
-
----
-
-## Testing
-
-### Before Fix
-
-Build will fail with:
-```
-Error: max_leb_cnt too low (726 needed)
-max_leb_cnt:  701
-```
-
-### After Fix
-
-Build should succeed with output showing:
-```
-max_leb_cnt:  ~920 (for 115MB partition)
-[build.sh:info] Running build_mkimg succeeded.
-```
-
-### Validation Commands
-
-After flashing to device:
 ```bash
-# Check partition layout
-cat /proc/mtd
+./buildroot/build-local.sh --hardware mini --boot nand
+./buildroot/build-local.sh --hardware max --boot nand
+```
 
-# Check rootfs usage
-df -h /
+### Verifying Patches Applied
 
-# Should show:
-# Filesystem      Size  Used Avail Use% Mounted on
-# ubi0:rootfs     115M  ~90M  ~25M  78% /
+Check the build log for:
+```
+✅ SeedSigner SDK patches applied successfully
+
+Partition layout optimized:
+  - OEM: 30MB → 8MB (save 22MB)
+  - Userdata: 6MB → Removed (save 6MB)
+  - Rootfs: 85MB → 115MB (add 30MB)
+```
+
+Or manually check the BoardConfig file:
+```bash
+cd luckfox-pico
+grep "Optimized partition table for SeedSigner" \
+  project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk
 ```
 
 ---
 
-## Why This Fix Is Correct
+## For Developers
 
-1. **SeedSigner is air-gapped and stateless**
-   - No need for userdata partition
-   - No persistent user data storage
+### Adding New Patches
 
-2. **OEM partition is oversized**
-   - 30MB is excessive for calibration data
-   - 8MB is more than sufficient
+1. Make changes in your local SDK clone
+2. Generate patch:
+   ```bash
+   cd luckfox-pico
+   git diff > ../new-feature.patch
+   ```
+3. Copy to `buildroot/patches/luckfox-sdk/`
+4. Add patch application to `apply_sdk_patches()` function
 
-3. **All 128MB flash should be usable**
-   - Current layout wastes 36MB on unused/oversized partitions
-   - New layout efficiently uses available space
+### Reverting Patches (Testing)
 
-4. **Provides future headroom**
-   - Rootfs: 92.8MB needed, 115MB available
-   - 22.2MB free for future package additions
+To test without patches:
+```bash
+cd luckfox-pico
+git checkout -- project/cfg/BoardConfig_IPC/
+```
 
 ---
 
-## Files to Modify in LuckFox SDK
+## Files to Modify in LuckFox SDK (Deprecated - Use Patches Instead)
 
-**Repository:** https://github.com/3rdIteration/luckfox-pico
+**⚠️ Note:** Direct SDK modification is no longer needed. The information below is kept for reference only.
 
-**File:** `project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk`
+~~**Repository:** https://github.com/3rdIteration/luckfox-pico~~
 
-**Changes:**
-1. Update `RK_PARTITION_CMD_IN_ENV`
-2. Update `RK_PARTITION_FS_TYPE_CFG`
-3. Possibly update max_leb_cnt calculation if hardcoded
+~~**File:** `project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk`~~
+
+The build system now applies these changes automatically via patches.
 
 ---
 

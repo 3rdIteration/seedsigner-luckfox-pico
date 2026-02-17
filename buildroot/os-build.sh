@@ -107,6 +107,47 @@ clone_repositories() {
     print_success "All repositories cloned successfully"
 }
 
+apply_sdk_patches() {
+    print_step "Applying SeedSigner SDK Patches"
+    
+    cd "$LUCKFOX_SDK_DIR"
+    
+    # Check if patches already applied (idempotent)
+    if ! grep -q "Optimized partition table for SeedSigner" \
+         project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk 2>/dev/null; then
+        
+        print_info "Applying SPI-NAND partition optimization patches..."
+        
+        # Apply Mini SPI-NAND partition optimization
+        if patch -p1 < /build/buildroot/patches/luckfox-sdk/001-optimize-mini-spi-nand-partitions.patch; then
+            echo "  ${GREEN}✓${NC} Mini SPI-NAND partition optimization applied"
+        else
+            print_error "Failed to apply Mini SPI-NAND patch"
+            return 1
+        fi
+        
+        # Apply Max SPI-NAND partition optimization
+        if patch -p1 < /build/buildroot/patches/luckfox-sdk/002-optimize-max-spi-nand-partitions.patch; then
+            echo "  ${GREEN}✓${NC} Max SPI-NAND partition optimization applied"
+        else
+            print_error "Failed to apply Max SPI-NAND patch"
+            return 1
+        fi
+        
+        print_success "SDK patches applied"
+        echo ""
+        print_info "Partition layout optimized:"
+        echo "  - OEM: 30MB → 8MB (save 22MB)"
+        echo "  - Userdata: 6MB → Removed (save 6MB)"
+        echo "  - Rootfs: 85MB → 115MB (add 30MB)"
+        echo ""
+    else
+        print_success "SDK patches already applied"
+    fi
+    
+    cd "$REPOS_DIR"
+}
+
 validate_environment() {
     print_step "Validating Build Environment"
     
@@ -567,6 +608,7 @@ run_automated_build() {
     echo "   Output Directory: $OUTPUT_DIR"
 
     clone_repositories
+    apply_sdk_patches
     validate_environment
     setup_sdk_environment
 
@@ -606,6 +648,7 @@ start_interactive_mode() {
     print_step "Starting Interactive Mode"
     
     clone_repositories
+    apply_sdk_patches
     validate_environment
     setup_sdk_environment
     
@@ -651,7 +694,8 @@ main() {
         "clone-only")
             print_info "Cloning repositories only..."
             clone_repositories
-            print_success "Repositories cloned. Container exiting."
+            apply_sdk_patches
+            print_success "Repositories cloned and patches applied. Container exiting."
             ;;
         "help"|"-h"|"--help")
             show_usage

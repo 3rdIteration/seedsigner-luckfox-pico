@@ -172,6 +172,47 @@ clone_repositories() {
     print_success "All repositories available"
 }
 
+apply_sdk_patches() {
+    print_header "Applying SeedSigner SDK Patches"
+    
+    cd "$WORK_DIR/luckfox-pico"
+    
+    # Check if patches already applied (idempotent)
+    if ! grep -q "Optimized partition table for SeedSigner" \
+         project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk 2>/dev/null; then
+        
+        print_info "Applying SPI-NAND partition optimization patches..."
+        
+        # Apply Mini SPI-NAND partition optimization
+        if patch -p1 < "$SCRIPT_DIR/patches/luckfox-sdk/001-optimize-mini-spi-nand-partitions.patch"; then
+            print_success "Mini SPI-NAND partition optimization applied"
+        else
+            print_error "Failed to apply Mini SPI-NAND patch"
+            return 1
+        fi
+        
+        # Apply Max SPI-NAND partition optimization
+        if patch -p1 < "$SCRIPT_DIR/patches/luckfox-sdk/002-optimize-max-spi-nand-partitions.patch"; then
+            print_success "Max SPI-NAND partition optimization applied"
+        else
+            print_error "Failed to apply Max SPI-NAND patch"
+            return 1
+        fi
+        
+        print_success "SDK patches applied"
+        echo ""
+        print_info "Partition layout optimized:"
+        echo "  - OEM: 30MB → 8MB (save 22MB)"
+        echo "  - Userdata: 6MB → Removed (save 6MB)"
+        echo "  - Rootfs: 85MB → 115MB (add 30MB)"
+        echo ""
+    else
+        print_success "SDK patches already applied"
+    fi
+    
+    cd "$WORK_DIR"
+}
+
 setup_toolchain() {
     print_header "Setting Up Toolchain Environment"
     
@@ -685,8 +726,11 @@ main() {
     # Clone repositories
     clone_repositories
     
+    # Apply SDK patches for SPI-NAND optimization
+    apply_sdk_patches
+    
     if [ "$clone_only" == "true" ]; then
-        print_success "Repositories cloned. Exiting."
+        print_success "Repositories cloned and patches applied. Exiting."
         exit 0
     fi
     

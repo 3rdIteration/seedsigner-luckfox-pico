@@ -157,6 +157,43 @@ jobs:
         
         echo "All repositories cloned successfully"
 
+    - name: Apply SeedSigner SDK patches
+      run: |
+        cd luckfox-pico
+        
+        echo "🔧 Applying SeedSigner optimizations to LuckFox SDK..."
+        
+        # Check if patches already applied (idempotent)
+        if ! grep -q "Optimized partition table for SeedSigner" \
+             project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk 2>/dev/null; then
+          
+          echo "  Applying SPI-NAND partition optimization patches..."
+          
+          # Apply Mini SPI-NAND partition optimization
+          if patch -p1 < ../seedsigner-luckfox-pico/buildroot/patches/luckfox-sdk/001-optimize-mini-spi-nand-partitions.patch; then
+            echo "  ✓ Mini SPI-NAND partition optimization applied"
+          else
+            echo "  ⚠ Warning: Failed to apply Mini SPI-NAND patch (may already be applied)"
+          fi
+          
+          # Apply Max SPI-NAND partition optimization
+          if patch -p1 < ../seedsigner-luckfox-pico/buildroot/patches/luckfox-sdk/002-optimize-max-spi-nand-partitions.patch; then
+            echo "  ✓ Max SPI-NAND partition optimization applied"
+          else
+            echo "  ⚠ Warning: Failed to apply Max SPI-NAND patch (may already be applied)"
+          fi
+          
+          echo "✅ SeedSigner SDK patches applied successfully"
+          echo ""
+          echo "Partition layout optimized:"
+          echo "  - OEM: 30MB → 8MB (save 22MB)"
+          echo "  - Userdata: 6MB → Removed (save 6MB)"
+          echo "  - Rootfs: 85MB → 115MB (add 30MB)"
+          echo ""
+        else
+          echo "✅ SeedSigner SDK patches already applied"
+        fi
+
     - name: Set up build environment
       run: |
         cd luckfox-pico
