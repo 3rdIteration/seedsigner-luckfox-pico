@@ -75,6 +75,8 @@ Camera API:   v4l2 (libv4l)
 | Python 3.11 | ✅ Enabled | SeedSigner runtime |
 | libcamera | ❌ Disabled | Requires GCC 9+ |
 | libcamera-apps | ❌ Disabled | Requires libcamera |
+| numpy | ❌ Disabled | Requires glibc or musl (uclibc incompatible) |
+| opencv | ❌ Disabled | Depends on numpy |
 
 ## Further Reading
 
