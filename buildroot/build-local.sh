@@ -422,8 +422,14 @@ install_seedsigner_packages() {
     local package_dir="${buildroot_dir}/package"
     
     # Copy SeedSigner packages
-    print_info "Copying SeedSigner packages..."
+    print_info "Copying SeedSigner packages from seedsigner-os..."
     cp -rv "$WORK_DIR/seedsigner-os/opt/external-packages/"* "$package_dir/"
+    
+    # Also copy packages from this repository's external-packages directory
+    if [ -d "$SCRIPT_DIR/external-packages" ]; then
+        print_info "Copying additional SeedSigner packages from this repository..."
+        cp -rv "$SCRIPT_DIR/external-packages/"* "$package_dir/"
+    fi
     
     # Add SeedSigner menu to Config.in
     local config_in="${package_dir}/Config.in"
@@ -444,8 +450,8 @@ menu "SeedSigner"
 	source "package/jpeg/Config.in"
 	source "package/python-qrcode/Config.in"
 	source "package/python-pyqrcode/Config.in"
-	source "$BR2_EXTERNAL_SEEDSIGNER_PATH/package/python-pyscard/Config.in"
-	source "$BR2_EXTERNAL_SEEDSIGNER_PATH/package/python-pysatochip/Config.in"
+	source "package/python-pyscard/Config.in"
+	source "package/python-pysatochip/Config.in"
 endmenu
 EOF
     fi

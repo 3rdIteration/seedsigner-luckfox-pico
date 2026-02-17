@@ -517,6 +517,11 @@ build_profile_artifacts() {
 
     print_step "Installing SeedSigner Packages"
     cp -rv "$SEEDSIGNER_OS_DIR/opt/external-packages/"* "$PACKAGE_DIR/"
+    
+    # Also copy packages from this repository's external-packages directory
+    if [[ -d "/build/external-packages" ]]; then
+        cp -rv "/build/external-packages/"* "$PACKAGE_DIR/"
+    fi
 
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
@@ -539,8 +544,8 @@ menu "SeedSigner"
         source "package/jpeg/Config.in"
         source "package/python-qrcode/Config.in"
         source "package/python-pyqrcode/Config.in"
-        source "$BR2_EXTERNAL_SEEDSIGNER_PATH/package/python-pyscard/Config.in"
-        source "$BR2_EXTERNAL_SEEDSIGNER_PATH/package/python-pysatochip/Config.in"
+        source "package/python-pyscard/Config.in"
+        source "package/python-pysatochip/Config.in"
 endmenu
 CONFIGMENU
     fi
