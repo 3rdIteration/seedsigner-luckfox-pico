@@ -28,6 +28,13 @@ These example builds can build a device for around $60.
 
 ## OS Image Build with Buildroot
 
+**Supported Build Configurations:**
+- ✅ LuckFox Pico Mini (RV1103) - SD Card boot
+- ✅ LuckFox Pico Pro Max (RV1106) - SD Card boot
+- ✅ LuckFox Pico Pro Max (RV1106) - SPI-NAND boot (128MB flash minimum)
+
+**Note:** Mini hardware typically has no onboard SPI-NAND flash and is designed for SD card boot only. The SPI-NAND build configuration is only available for Pro Max hardware which has sufficient 128MB flash capacity.
+
 ### Build with GitHub Actions (Recommended for Most Users)
 The easiest way to build the SeedSigner OS image is using GitHub Actions. This method builds directly on GitHub's infrastructure without requiring Docker:
 
@@ -35,7 +42,10 @@ The easiest way to build the SeedSigner OS image is using GitHub Actions. This m
 2. Navigate to the "Actions" tab in your fork
 3. Select the "Build SeedSigner OS" workflow
 4. The workflow runs automatically on pushes to `main`, `develop`, or `master` branches
-5. Builds are created for both LuckFox Pico Mini (RV1103) and Pro Max (RV1106) hardware
+5. Builds are created for:
+   - Mini (RV1103) with SD card boot
+   - Pro Max (RV1106) with SD card boot
+   - Pro Max (RV1106) with SPI-NAND boot (128MB flash)
 6. Wait for the build to complete (typically 60-120 minutes)
 7. Download the artifacts from the workflow run
 
@@ -44,7 +54,7 @@ The GitHub Actions workflow:
 - Clones the LuckFox Pico SDK (customized fork), SeedSigner code, and SeedSigner OS packages
 - Configures buildroot with SeedSigner-specific packages
 - Builds the complete OS image
-- Creates flashable SD card images and NAND flash bundles for SD_CARD and SPI_NAND boot media
+- Creates flashable SD card images and NAND flash bundles
 - Provides detailed build summaries and flashing instructions
 
 ### Build Locally with Docker (Simple Method)
