@@ -185,6 +185,21 @@ apply_sdk_patches() {
     echo "  - Rootfs: 85MB → 103MB (add 18MB, total 34MB gained)"
     echo ""
     
+    # Show partition summary
+    print_info "SPI-NAND Partition Summary (128MB flash):"
+    echo "  ┌─────────────┬──────────┬────────────┬─────────────┐"
+    echo "  │ Partition   │ Size     │ Offset     │ Purpose     │"
+    echo "  ├─────────────┼──────────┼────────────┼─────────────┤"
+    echo "  │ env         │   256 KB │ 0x00000    │ Environment │"
+    echo "  │ idblock     │   256 KB │ 0x40000    │ Boot ID     │"
+    echo "  │ uboot       │   512 KB │ 0x80000    │ U-Boot      │"
+    echo "  │ boot        │     4 MB │ 0x100000   │ Kernel+DTB  │"
+    echo "  │ oem         │    20 MB │ 0x500000   │ OEM data    │"
+    echo "  │ rootfs      │   103 MB │ 0x1900000  │ Root FS     │"
+    echo "  └─────────────┴──────────┴────────────┴─────────────┘"
+    echo "  Total allocated: ~128 MB (fits 128MB SPI-NAND)"
+    echo ""
+    
     cd "$REPOS_DIR"
 }
 
