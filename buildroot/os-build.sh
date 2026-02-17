@@ -166,23 +166,23 @@ apply_sdk_patches() {
     echo ""
     
     # Check if patches actually modified the files
-    if echo "$MINI_PARTITION" | grep -q "0x6300000@0x1D00000(rootfs)"; then
-        echo "  ${GREEN}✓${NC} Mini partition optimization VERIFIED (rootfs = 99MB)"
+    if echo "$MINI_PARTITION" | grep -q "0x6700000@0x1900000(rootfs)"; then
+        echo "  ${GREEN}✓${NC} Mini partition optimization VERIFIED (rootfs = 103MB)"
     else
         echo "  ${YELLOW}⚠${NC}  WARNING: Mini partition may not be optimized!"
     fi
     
-    if echo "$MAX_PARTITION" | grep -q "0x6300000@0x1D00000(rootfs)"; then
-        echo "  ${GREEN}✓${NC} Max partition optimization VERIFIED (rootfs = 99MB)"
+    if echo "$MAX_PARTITION" | grep -q "0x6700000@0x1900000(rootfs)"; then
+        echo "  ${GREEN}✓${NC} Max partition optimization VERIFIED (rootfs = 103MB)"
     else
         echo "  ${YELLOW}⚠${NC}  WARNING: Max partition may not be optimized!"
     fi
     echo ""
     
     print_success "Partition layout optimized:"
-    echo "  - OEM: 30MB → 24MB (save 6MB, provides headroom for 16.4MB usage)"
+    echo "  - OEM: 30MB → 20MB (save 10MB, 16.4MB used + 3.6MB headroom)"
     echo "  - Userdata: 6MB → Removed (save 6MB, SeedSigner is stateless)"
-    echo "  - Rootfs: 85MB → 99MB (add 14MB, total 28MB gained)"
+    echo "  - Rootfs: 85MB → 103MB (add 18MB, total 34MB gained)"
     echo ""
     
     cd "$REPOS_DIR"
