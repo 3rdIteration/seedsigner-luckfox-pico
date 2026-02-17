@@ -1,10 +1,29 @@
 # seedsigner-luckfox-pico
-Port of the SeedSigner code to support the LuckFox Pico Linux board family. Since this device is still an embedded Linux device, like the Raspberry Pi, the changes are fairly minimal in order to access the buttons and the camera. This repo contains the Buildroot OS build instructions for creating optimized, air-gapped Bitcoin signing devices.
+Port of the SeedSigner code to support the LuckFox Pico Linux board family. Since this device is still an embedded Linux device, like the Raspberry Pi, the changes are fairly minimal in order to access the buttons and the camera. This repo mostly pertains to the Buildroot OS build instructions, the KiCAD schematic and PCB design files, and 3D models of cases for the assembled device.
 
 SeedSigner code fork: https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability
 
-**Note:** This repository has been optimized for minimal size. Hardware schematics, 3D models, documentation, and test files have been removed to reduce repository size from ~150MB+ to essential build files only. For hardware designs and detailed documentation, please refer to the original repository or contact the maintainers.
 
+## Hardware Photos
+_Most Recent Iteration: LuckFox Pico Mini B with no onboard SPI flash_
+![LuckFox Pico Mini - SeedSigner](img/slp-2.webp)
+![LuckFox Pico Mini - SeedSigner 2](img/slp-1.webp)
+
+
+_Previous Iteration: LuckFox Pico Pro Max (More Flash, SPI Flash)_
+![LuckFox Pico Pro Max - SeedSigner](img/luckfox-devboard-front.webp)
+![Case From Behind](img/luckfox-devboard-back.webp)
+
+## Demo Videos
+
+### First Look: SeedSigner running on LuckFox Pico Linux devboard
+[![SeedSigner on LuckFox Pico Pro Max](https://img.youtube.com/vi/WHkOSn-lPG4/0.jpg)](https://www.youtube.com/watch?v=WHkOSn-lPG4)
+
+
+## Materials Needed
+Check out the shopping list for a parts list of various LuckFox-based hardware configurations: [here](docs/shopping_list.md)
+
+These example builds can build a device for around $60.
 
 
 ## OS Image Build with Buildroot
@@ -57,6 +76,10 @@ cd buildroot/
 - `--hardware mini|max` - Choose hardware type
 - `--boot sd|nand` - Choose boot medium
 - See `./build-local.sh --help` for all options
+
+For more details and manual step-by-step instructions, see [OS-build-instructions.md](docs/OS-build-instructions.md).
+
+![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
 ## Dev Machine Setup
 
