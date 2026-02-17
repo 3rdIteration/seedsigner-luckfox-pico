@@ -63,9 +63,10 @@ jobs:
       matrix:
         include:
           # When manually triggered via workflow_dispatch, use the selected inputs
-          # Otherwise, build 3 supported combinations (Mini is SD-only, no SPI-NAND variant)
+          # Otherwise, build all 4 combinations
           ${{ github.event_name == 'workflow_dispatch' && fromJSON(format('[{{"hardware":"{0}","boot":"{1}"}}]', github.event.inputs.hardware_type, github.event.inputs.boot_medium)) || fromJSON('[
             {"hardware":"RV1103_Luckfox_Pico_Mini","boot":"SD_CARD"},
+            {"hardware":"RV1103_Luckfox_Pico_Mini","boot":"SPI_NAND"},
             {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SD_CARD"},
             {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SPI_NAND"}
           ]') }}
