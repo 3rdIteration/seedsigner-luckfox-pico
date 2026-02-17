@@ -490,6 +490,19 @@ CONFIGMENU
 
     print_step "Installing SeedSigner Code"
     cp -rv "$SEEDSIGNER_CODE_DIR/src/" "$ROOTFS_DIR/seedsigner"
+    
+    print_step "Cleaning up non-essential files from rootfs"
+    # Remove documentation, hardware files, git metadata, and test files
+    # These are kept in the repo but shouldn't be in the final image
+    rm -rf "$ROOTFS_DIR/seedsigner/../docs" 2>/dev/null || true
+    rm -rf "$ROOTFS_DIR/seedsigner/../hardware-kicad" 2>/dev/null || true
+    rm -rf "$ROOTFS_DIR/seedsigner/../img" 2>/dev/null || true
+    rm -rf "$ROOTFS_DIR/seedsigner/../test_suite" 2>/dev/null || true
+    rm -rf "$ROOTFS_DIR/seedsigner/../.git" 2>/dev/null || true
+    rm -f "$ROOTFS_DIR/seedsigner/../.gitignore" 2>/dev/null || true
+    rm -f "$ROOTFS_DIR/seedsigner/../.gitmodules" 2>/dev/null || true
+    rm -f "$ROOTFS_DIR/seedsigner/../README.md" 2>/dev/null || true
+    print_success "Cleaned up non-essential files"
 
     [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"

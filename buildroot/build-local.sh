@@ -444,6 +444,18 @@ install_seedsigner_app() {
     print_info "Copying SeedSigner application..."
     cp -rv "$WORK_DIR/seedsigner/src/" "$rootfs_dir/seedsigner"
     
+    # Clean up non-essential files from rootfs
+    print_info "Cleaning up non-essential files from rootfs..."
+    rm -rf "$rootfs_dir/seedsigner/../docs" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../hardware-kicad" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../img" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../test_suite" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../.git" 2>/dev/null || true
+    rm -f "$rootfs_dir/seedsigner/../.gitignore" 2>/dev/null || true
+    rm -f "$rootfs_dir/seedsigner/../.gitmodules" 2>/dev/null || true
+    rm -f "$rootfs_dir/seedsigner/../README.md" 2>/dev/null || true
+    print_success "Cleaned up non-essential files"
+    
     # Patch settings.json for Mini hardware
     if [ "$hardware" == "mini" ]; then
         local settings_json="$rootfs_dir/seedsigner/settings.json"
