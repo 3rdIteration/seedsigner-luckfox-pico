@@ -444,6 +444,8 @@ menu "SeedSigner"
 	source "package/jpeg/Config.in"
 	source "package/python-qrcode/Config.in"
 	source "package/python-pyqrcode/Config.in"
+	source "$BR2_EXTERNAL_SEEDSIGNER_PATH/package/python-pyscard/Config.in"
+	source "$BR2_EXTERNAL_SEEDSIGNER_PATH/package/python-pysatochip/Config.in"
 endmenu
 EOF
     fi
