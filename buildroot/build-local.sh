@@ -199,16 +199,20 @@ apply_sdk_patches() {
     # Apply Mini SPI-NAND partition optimization using sed (more reliable than patches)
     print_info "Applying Mini SPI-NAND partition optimization..."
     MINI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk"
-    sed -i 's/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),30M(oem),6M(userdata),85M(rootfs)"/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),20M(oem),103M(rootfs)"/' "$MINI_FILE"
-    sed -i 's/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs,userdata@\/userdata@ubifs"/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs"/' "$MINI_FILE"
+    # Remove userdata from partition table and shrink OEM, expand rootfs
+    sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),103M(rootfs)/' "$MINI_FILE"
+    # Remove userdata from filesystem config
+    sed -i 's/,userdata@\/userdata@ubifs//' "$MINI_FILE"
     print_success "Mini SPI-NAND partition modified (sed)"
     echo ""
     
     # Apply Max SPI-NAND partition optimization using sed
     print_info "Applying Max SPI-NAND partition optimization..."
     MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
-    sed -i 's/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),30M(oem),10M(userdata),210M(rootfs)"/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),20M(oem),103M(rootfs)"/' "$MAX_FILE"
-    sed -i 's/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs,userdata@\/userdata@ubifs"/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs"/' "$MAX_FILE"
+    # Remove userdata from partition table and shrink OEM, expand rootfs
+    sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),103M(rootfs)/' "$MAX_FILE"
+    # Remove userdata from filesystem config
+    sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
     print_success "Max SPI-NAND partition modified (sed)"
     echo ""
     
