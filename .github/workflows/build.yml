@@ -185,8 +185,8 @@ jobs:
         # Apply Mini SPI-NAND partition optimization using sed (more reliable than patches)
         echo "📦 Applying Mini SPI-NAND partition optimization..."
         MINI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk"
-        # Remove userdata from partition table and shrink OEM, expand rootfs
-        sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),103M(rootfs)/' "$MINI_FILE"
+        # Remove userdata from partition table and shrink OEM, expand rootfs (Mini has 128MB flash)
+        sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),99M(rootfs)/' "$MINI_FILE"
         # Remove userdata from filesystem config  
         sed -i 's/,userdata@\/userdata@ubifs//' "$MINI_FILE"
         echo "  ✓ Mini SPI-NAND partition modified (sed)"
@@ -195,7 +195,7 @@ jobs:
         # Apply Max SPI-NAND partition optimization using sed
         echo "📦 Applying Max SPI-NAND partition optimization..."
         MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
-        # Remove userdata from partition table and shrink OEM, expand rootfs  
+        # Remove userdata from partition table and shrink OEM, expand rootfs (Max has 256MB flash)
         sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),103M(rootfs)/' "$MAX_FILE"
         # Remove userdata from filesystem config
         sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
@@ -215,27 +215,47 @@ jobs:
         echo ""
         
         # Check if patches actually modified the files
-        if echo "$MINI_PARTITION" | grep -q "103M(rootfs)"; then
-          echo "✅ Mini partition optimization VERIFIED (rootfs = 103MB)"
+        if echo "$MINI_PARTITION" | grep -q "99M(rootfs)"; then
+          echo "✅ Mini partition optimization VERIFIED (rootfs = 99MB for 128MB flash)"
         else
           echo "⚠️  WARNING: Mini partition may not be optimized!"
         fi
         
         if echo "$MAX_PARTITION" | grep -q "103M(rootfs)"; then
-          echo "✅ Max partition optimization VERIFIED (rootfs = 103MB)"
+          echo "✅ Max partition optimization VERIFIED (rootfs = 103MB for 256MB flash)"
         else
           echo "⚠️  WARNING: Max partition may not be optimized!"
         fi
         echo ""
         
         echo "✅ Partition layout optimized:"
-        echo "  - OEM: 30MB → 20MB (save 10MB, 16.4MB used + 3.6MB headroom)"
-        echo "  - Userdata: 6MB → Removed (save 6MB, SeedSigner is stateless)"
-        echo "  - Rootfs: 85MB → 103MB (add 18MB, total 34MB gained)"
+        echo "  Mini (128MB flash):"
+        echo "    - OEM: 30MB → 20MB (save 10MB)"
+        echo "    - Userdata: 6MB → Removed (save 6MB)"
+        echo "    - Rootfs: 85MB → 99MB (gain 14MB, fits 128MB with margin)"
+        echo "  Max (256MB flash):"
+        echo "    - OEM: 30MB → 20MB (save 10MB)"
+        echo "    - Userdata: 10MB → Removed (save 10MB)"
+        echo "    - Rootfs: 210MB → 103MB (optimized for consistency)"
         echo ""
         
-        # Show partition summary
-        echo "📊 SPI-NAND Partition Summary (128MB flash):"
+        # Show partition summary for Mini
+        echo "📊 Mini SPI-NAND Partition Summary (128MB flash):"
+        echo "  ┌─────────────┬──────────┬────────────┬─────────────┐"
+        echo "  │ Partition   │ Size     │ Offset     │ Purpose     │"
+        echo "  ├─────────────┼──────────┼────────────┼─────────────┤"
+        echo "  │ env         │   256 KB │ 0x00000    │ Environment │"
+        echo "  │ idblock     │   256 KB │ 0x40000    │ Boot ID     │"
+        echo "  │ uboot       │   512 KB │ 0x80000    │ U-Boot      │"
+        echo "  │ boot        │     4 MB │ 0x100000   │ Kernel+DTB  │"
+        echo "  │ oem         │    20 MB │ 0x500000   │ OEM data    │"
+        echo "  │ rootfs      │    99 MB │ 0x1900000  │ Root FS     │"
+        echo "  └─────────────┴──────────┴────────────┴─────────────┘"
+        echo "  Total allocated: ~124 MB (fits 128MB with 4MB margin)"
+        echo ""
+        
+        # Show partition summary for Max
+        echo "📊 Max SPI-NAND Partition Summary (256MB flash):"
         echo "  ┌─────────────┬──────────┬────────────┬─────────────┐"
         echo "  │ Partition   │ Size     │ Offset     │ Purpose     │"
         echo "  ├─────────────┼──────────┼────────────┼─────────────┤"

@@ -135,7 +135,7 @@ apply_sdk_patches() {
     print_info "Applying Mini SPI-NAND partition optimization..."
     MINI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk"
     # Remove userdata from partition table and shrink OEM, expand rootfs
-    sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),103M(rootfs)/' "$MINI_FILE"
+    sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),99M(rootfs)/' "$MINI_FILE"
     # Remove userdata from filesystem config
     sed -i 's/,userdata@\/userdata@ubifs//' "$MINI_FILE"
     echo "  ${GREEN}✓${NC} Mini SPI-NAND partition modified (sed)"
