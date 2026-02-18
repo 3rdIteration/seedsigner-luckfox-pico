@@ -131,26 +131,20 @@ apply_sdk_patches() {
     fi
     echo ""
     
-    # Apply Mini SPI-NAND partition optimization
+    # Apply Mini SPI-NAND partition optimization using sed (more reliable than patches)
     print_info "Applying Mini SPI-NAND partition optimization..."
-    if patch -p1 --verbose < /build/buildroot/patches/luckfox-sdk/001-optimize-mini-spi-nand-partitions.patch; then
-        echo "  ${GREEN}✓${NC} Mini SPI-NAND patch applied successfully"
-    else
-        EXIT_CODE=$?
-        print_error "Failed to apply Mini SPI-NAND patch (exit code: $EXIT_CODE)"
-        print_error "This may be a fatal error for SPI-NAND builds"
-    fi
+    MINI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk"
+    sed -i 's/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),30M(oem),6M(userdata),85M(rootfs)"/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),20M(oem),103M(rootfs)"/' "$MINI_FILE"
+    sed -i 's/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs,userdata@\/userdata@ubifs"/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs"/' "$MINI_FILE"
+    echo "  ${GREEN}✓${NC} Mini SPI-NAND partition modified (sed)"
     echo ""
     
-    # Apply Max SPI-NAND partition optimization
+    # Apply Max SPI-NAND partition optimization using sed
     print_info "Applying Max SPI-NAND partition optimization..."
-    if patch -p1 --verbose < /build/buildroot/patches/luckfox-sdk/002-optimize-max-spi-nand-partitions.patch; then
-        echo "  ${GREEN}✓${NC} Max SPI-NAND patch applied successfully"
-    else
-        EXIT_CODE=$?
-        print_error "Failed to apply Max SPI-NAND patch (exit code: $EXIT_CODE)"
-        print_error "This may be a fatal error for SPI-NAND builds"
-    fi
+    MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
+    sed -i 's/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),30M(oem),10M(userdata),210M(rootfs)"/export RK_PARTITION_CMD_IN_ENV="256K(env),256K@256K(idblock),512K(uboot),4M(boot),20M(oem),103M(rootfs)"/' "$MAX_FILE"
+    sed -i 's/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs,userdata@\/userdata@ubifs"/export RK_PARTITION_FS_TYPE_CFG="rootfs@IGNORE@ubifs,oem@\/oem@ubifs"/' "$MAX_FILE"
+    echo "  ${GREEN}✓${NC} Max SPI-NAND partition modified (sed)"
     echo ""
     
     # Verify patches were applied by checking partition sizes
