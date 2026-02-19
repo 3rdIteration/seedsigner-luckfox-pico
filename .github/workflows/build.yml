@@ -496,12 +496,8 @@ jobs:
         for RKLUNCH_FILE in "${RKLUNCH_LOCATIONS[@]}"; do
           if [[ -f "$RKLUNCH_FILE" ]]; then
             echo "  Modifying $RKLUNCH_FILE..."
-            # Comment out the entire if/else/fi block for rkipc
-            # This handles the conditional rkipc startup properly
-            sed -i '/if \[ -d "\/oem\/usr\/share\/iqfiles" \]; then/,/fi/{s/^[[:space:]]*\(.*\)$/#\1  # Disabled for SeedSigner/}' "$RKLUNCH_FILE"
-            # Also comment individual rkipc lines in case they appear elsewhere
-            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/#\1\2  # Disabled for SeedSigner/' "$RKLUNCH_FILE"
-            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/#\1\2  # Disabled for SeedSigner/' "$RKLUNCH_FILE"
+            # Comment any active rkipc launch line regardless of formatting.
+            sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$RKLUNCH_FILE"
             echo "  ✓ Disabled rkipc in $RKLUNCH_FILE"
             MODIFIED=true
           fi
@@ -514,6 +510,14 @@ jobs:
           echo "   OEM partition may still have rkipc autostart enabled"
         fi
         
+        # Second pass: patch every RkLunch.sh found in tree to avoid path assumptions.
+        echo "Running robust RkLunch.sh patch pass..."
+        while IFS= read -r RKLUNCH_FILE; do
+          [[ -n "$RKLUNCH_FILE" ]] || continue
+          echo "  Robust patch on $RKLUNCH_FILE"
+          sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$RKLUNCH_FILE"
+        done < <(find . -type f -name "RkLunch.sh" 2>/dev/null)
+
         ./build.sh app
 
     - name: Install SeedSigner application

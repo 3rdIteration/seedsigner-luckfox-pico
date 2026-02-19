@@ -1,95 +1,98 @@
 #!/bin/sh
 #
-# Start/stop/respawn rkaiq_3A_server for camera ISP support
-#
-# This service provides the ISP (Image Signal Processor) support needed
-# for the camera to function properly with SeedSigner.
-#
-# The service will automatically restart if it dies.
+# Start/stop rkaiq_3A_server for camera ISP support.
 #
 
-DAEMON=/oem/usr/bin/rkaiq_3A_server
-PIDFILE=/var/run/rkaiq_3A_server.pid
+DAEMON="/oem/usr/bin/rkaiq_3A_server"
+PIDFILE="/var/run/rkaiq_3A_server.pid"
+LOGFILE="/tmp/rkaiq_3A_server.log"
+
+wait_for_oem() {
+    local i=0
+    while [ $i -lt 10 ]; do
+        [ -x "$DAEMON" ] && return 0
+        i=$((i + 1))
+        sleep 1
+    done
+    return 1
+}
 
 start() {
     echo "Starting rkaiq_3A_server..."
-    
-    # Check if already running
-    if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+
+    if ! wait_for_oem; then
+        echo "Error: $DAEMON not ready (is /oem mounted?)"
+        return 1
+    fi
+
+    mkdir -p /var/run
+
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         echo "rkaiq_3A_server is already running"
         return 0
     fi
-    
-    # Start the daemon
-    if [ -x "$DAEMON" ]; then
-        $DAEMON &
-        echo $! > "$PIDFILE"
+
+    rm -f "$PIDFILE"
+    "$DAEMON" >>"$LOGFILE" 2>&1 &
+    echo "$!" > "$PIDFILE"
+    sleep 2
+
+    if kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
         echo "rkaiq_3A_server started"
-    else
-        echo "Error: $DAEMON not found or not executable"
-        return 1
+        return 0
     fi
+
+    echo "Error: rkaiq_3A_server failed to start (see $LOGFILE)"
+    rm -f "$PIDFILE"
+    return 1
 }
 
 stop() {
     echo "Stopping rkaiq_3A_server..."
-    
-    if [ -f "$PIDFILE" ]; then
-        PID=$(cat "$PIDFILE")
-        if kill -0 "$PID" 2>/dev/null; then
-            kill "$PID"
-            rm -f "$PIDFILE"
-            echo "rkaiq_3A_server stopped"
-        else
-            echo "rkaiq_3A_server not running (stale pidfile)"
-            rm -f "$PIDFILE"
-        fi
-    else
-        # Fallback to killall if no pidfile
-        killall rkaiq_3A_server 2>/dev/null && echo "rkaiq_3A_server stopped" || echo "rkaiq_3A_server not running"
+
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        kill "$(cat "$PIDFILE")" 2>/dev/null || true
+        sleep 1
     fi
+
+    killall rkaiq_3A_server 2>/dev/null || true
+    rm -f "$PIDFILE"
+    echo "rkaiq_3A_server stopped"
+    return 0
 }
 
-restart() {
-    stop
-    sleep 1
-    start
-}
-
-# Auto-restart functionality - keep the service alive
-respawn() {
-    echo "Starting rkaiq_3A_server with auto-restart..."
-    while true; do
-        # Check if process is running
-        if [ ! -f "$PIDFILE" ] || ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-            echo "rkaiq_3A_server not running, starting..."
-            start
-        fi
-        sleep 5
-    done
+status() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "rkaiq_3A_server is running (pid $(cat "$PIDFILE"))"
+        return 0
+    fi
+    if pidof rkaiq_3A_server >/dev/null 2>&1; then
+        echo "rkaiq_3A_server is running (pid $(pidof rkaiq_3A_server))"
+        return 0
+    fi
+    echo "rkaiq_3A_server is not running"
+    return 1
 }
 
 case "$1" in
     start)
         start
-        # Start respawn monitor in background to keep service alive
-        (respawn &)
         ;;
     stop)
         stop
-        # Kill respawn monitors
-        killall -q S50rkaiq 2>/dev/null || true
         ;;
     restart|reload)
-        restart
-        # Restart respawn monitor
-        killall -q S50rkaiq 2>/dev/null || true
-        (respawn &)
+        stop
+        sleep 1
+        start
+        ;;
+    status)
+        status
         ;;
     *)
-        echo "Usage: $0 {start|stop|restart|reload}"
+        echo "Usage: $0 {start|stop|restart|reload|status}"
         exit 1
         ;;
 esac
 
-exit 0
+exit $?

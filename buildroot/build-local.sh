@@ -531,20 +531,22 @@ build_system() {
     for rklunch_path in "${rklunch_paths[@]}"; do
         if [[ -f "$rklunch_path" ]]; then
             print_info "Disabling rkipc autostart in $rklunch_path..."
-            # Comment out the entire if/else/fi block for rkipc
-            sed -i '/if \[ -d "\/oem\/usr\/share\/iqfiles" \]; then/,/fi/{s/^[[:space:]]*\(.*\)$/#\1  # Disabled for SeedSigner/}' "$rklunch_path"
-            # Also comment individual rkipc lines in case they appear elsewhere
-            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/#\1\2  # Disabled for SeedSigner/' "$rklunch_path"
-            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/#\1\2  # Disabled for SeedSigner/' "$rklunch_path"
+            # Comment any active rkipc launch line regardless of exact formatting.
+            sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$rklunch_path"
             print_success "Disabled rkipc in $(basename $rklunch_path)"
             rklunch_found=true
-            break
         fi
     done
     
     if [[ "$rklunch_found" == false ]]; then
         print_warning "RkLunch.sh not found in SDK source, rkipc may still autostart"
     fi
+
+    # Second pass: patch every discovered RkLunch.sh in tree to avoid path assumptions.
+    while IFS= read -r rklunch_path; do
+        [[ -n "$rklunch_path" ]] || continue
+        sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$rklunch_path"
+    done < <(find "$WORK_DIR/luckfox-pico" -type f -name "RkLunch.sh" 2>/dev/null)
     
     print_info "Building Applications..."
     ./build.sh app

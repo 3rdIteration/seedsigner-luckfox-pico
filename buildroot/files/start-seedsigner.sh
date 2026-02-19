@@ -17,6 +17,17 @@ cleanup() {
     exit 0
 }
 
+start_camera_service() {
+    if [ ! -x /etc/init.d/S50rkaiq ]; then
+        log_message "S50rkaiq service script not found; continuing"
+        return 0
+    fi
+
+    log_message "Starting camera ISP service (S50rkaiq)..."
+    /etc/init.d/S50rkaiq restart >/dev/null 2>&1 || /etc/init.d/S50rkaiq start >/dev/null 2>&1 || true
+    sleep 2
+}
+
 # Set up signal handlers
 trap cleanup SIGTERM SIGINT
 
@@ -31,9 +42,8 @@ retry_count=0
 while [ $retry_count -lt $MAX_RETRIES ]; do
     log_message "Starting SeedSigner (attempt $((retry_count + 1))/$MAX_RETRIES)"
     
-    # Restart camera ISP service for clean state
-    log_message "Restarting camera ISP service (S50rkaiq)..."
-    /etc/init.d/S50rkaiq restart 2>/dev/null || log_message "Note: S50rkaiq restart returned an error (may not exist on all builds)"
+    # Start camera service immediately before the app.
+    start_camera_service
     
     # Start SeedSigner
     if python main.py; then
