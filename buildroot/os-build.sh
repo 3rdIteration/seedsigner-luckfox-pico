@@ -596,9 +596,11 @@ CONFIGMENU
     for rklunch_path in "${rklunch_paths[@]}"; do
         if [[ -f "$rklunch_path" ]]; then
             print_info "Disabling rkipc autostart in $rklunch_path..."
-            # Comment out rkipc start line
-            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$rklunch_path"
-            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$rklunch_path"
+            # Comment out the entire if/else/fi block for rkipc
+            sed -i '/if \[ -d "\/oem\/usr\/share\/iqfiles" \]; then/,/fi/{s/^[[:space:]]*\(.*\)$/#\1  # Disabled for SeedSigner/}' "$rklunch_path"
+            # Also comment individual rkipc lines in case they appear elsewhere
+            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/#\1\2  # Disabled for SeedSigner/' "$rklunch_path"
+            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/#\1\2  # Disabled for SeedSigner/' "$rklunch_path"
             print_success "Disabled rkipc in $(basename $rklunch_path)"
             rklunch_found=true
             break

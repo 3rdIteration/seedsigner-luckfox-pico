@@ -1,9 +1,11 @@
 #!/bin/sh
 #
-# Start/stop rkaiq_3A_server for camera ISP support
+# Start/stop/respawn rkaiq_3A_server for camera ISP support
 #
 # This service provides the ISP (Image Signal Processor) support needed
 # for the camera to function properly with SeedSigner.
+#
+# The service will automatically restart if it dies.
 #
 
 DAEMON=/oem/usr/bin/rkaiq_3A_server
@@ -54,15 +56,35 @@ restart() {
     start
 }
 
+# Auto-restart functionality - keep the service alive
+respawn() {
+    echo "Starting rkaiq_3A_server with auto-restart..."
+    while true; do
+        # Check if process is running
+        if [ ! -f "$PIDFILE" ] || ! kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+            echo "rkaiq_3A_server not running, starting..."
+            start
+        fi
+        sleep 5
+    done
+}
+
 case "$1" in
     start)
         start
+        # Start respawn monitor in background to keep service alive
+        (respawn &)
         ;;
     stop)
         stop
+        # Kill respawn monitors
+        killall -q S50rkaiq 2>/dev/null || true
         ;;
     restart|reload)
         restart
+        # Restart respawn monitor
+        killall -q S50rkaiq 2>/dev/null || true
+        (respawn &)
         ;;
     *)
         echo "Usage: $0 {start|stop|restart|reload}"

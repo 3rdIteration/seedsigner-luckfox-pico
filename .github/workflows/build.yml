@@ -496,9 +496,12 @@ jobs:
         for RKLUNCH_FILE in "${RKLUNCH_LOCATIONS[@]}"; do
           if [[ -f "$RKLUNCH_FILE" ]]; then
             echo "  Modifying $RKLUNCH_FILE..."
-            # Comment out both rkipc command variations
-            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$RKLUNCH_FILE"
-            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$RKLUNCH_FILE"
+            # Comment out the entire if/else/fi block for rkipc
+            # This handles the conditional rkipc startup properly
+            sed -i '/if \[ -d "\/oem\/usr\/share\/iqfiles" \]; then/,/fi/{s/^[[:space:]]*\(.*\)$/#\1  # Disabled for SeedSigner/}' "$RKLUNCH_FILE"
+            # Also comment individual rkipc lines in case they appear elsewhere
+            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/#\1\2  # Disabled for SeedSigner/' "$RKLUNCH_FILE"
+            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/#\1\2  # Disabled for SeedSigner/' "$RKLUNCH_FILE"
             echo "  ✓ Disabled rkipc in $RKLUNCH_FILE"
             MODIFIED=true
           fi
@@ -725,14 +728,11 @@ jobs:
         https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image
         EOF
         
-        # Create tar.gz archive
+        # Bundle is ready - no tar.gz creation to avoid double-zipping
+        # GitHub Actions will zip the folder when uploading artifact
         cd ../../../build-artifacts
-        #         NAND_BUNDLE_NAME="seedsigner-luckfox-pico-${BOARD_LABEL}-nand-bundle-${TIMESTAMP}.tar.gz"
-        # Removed tar.gz creation - upload folder directly to avoid double-zipping
-        #         tar -czf "$NAND_BUNDLE_NAME" "$(basename "$NAND_BUNDLE_DIR")"
-        
-        echo "Created NAND bundle: $NAND_BUNDLE_NAME"
-        ls -lh "$NAND_BUNDLE_NAME"
+        echo "✅ Created NAND bundle directory: $(basename "$NAND_BUNDLE_DIR")"
+        ls -lh "$(basename "$NAND_BUNDLE_DIR")"
 
     - name: List build artifacts
       if: always()
@@ -810,11 +810,31 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**How to Flash NAND:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Download and extract the NAND bundle (.tar.gz file)" >> $GITHUB_STEP_SUMMARY
-          echo "2. Use official LuckFox/Rockchip upgrade tools with \`update.img\`, or" >> $GITHUB_STEP_SUMMARY
-          echo "3. Use U-Boot workflows with \`sd_update.txt\` or \`tftp_update.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. See [LuckFox Official Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico/Linux-MacOS-Burn-Image/)" >> $GITHUB_STEP_SUMMARY
+          echo "**How to Flash SPI-NAND:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 1: Windows - SocToolKit (Easiest)**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download and install [SocToolKit](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/#1-download-and-install-soctoolkit)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Extract the NAND bundle zip file" >> $GITHUB_STEP_SUMMARY
+          echo "3. Connect device in MASKROM mode (hold BOOT button while connecting USB)" >> $GITHUB_STEP_SUMMARY
+          echo "4. In SocToolKit: Select \`update.img\` and click Flash" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 2: Linux/Mac - rkdeveloptool**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Extract the NAND bundle zip file" >> $GITHUB_STEP_SUMMARY
+          echo "2. Install rkdeveloptool: \`sudo apt install rkdeveloptool\` (Linux)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Connect device in MASKROM mode (hold BOOT button while connecting USB)" >> $GITHUB_STEP_SUMMARY
+          echo "4. Flash individual partitions following \`sd_update.txt\` sequence" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 3: MicroSD Auto-Flash (No PC Connection)**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Extract NAND bundle and copy ALL files to MicroSD card root" >> $GITHUB_STEP_SUMMARY
+          echo "2. Insert MicroSD into device and power on" >> $GITHUB_STEP_SUMMARY
+          echo "3. U-Boot will automatically flash SPI-NAND from \`sd_update.txt\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Note:** This OVERWRITES existing SPI-NAND content" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Important:** NAND images are NOT the same as SD Card images!" >> $GITHUB_STEP_SUMMARY
+          echo "- NAND bundles flash to onboard SPI-NAND storage" >> $GITHUB_STEP_SUMMARY
+          echo "- SD Card images (\`.img\`) are for booting directly from SD" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📖 [Complete Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/)" >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -z "$SD_IMAGES" ] && [ -z "$NAND_BUNDLES" ]; then
