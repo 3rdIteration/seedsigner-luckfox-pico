@@ -50,6 +50,43 @@ These rules must **NEVER** be violated unless explicitly instructed by the user:
 - Branches contain specific patches not in main branches
 - User has tested these specific combinations
 
+### 3. ALWAYS Keep Build Scripts in Sync
+
+**CRITICAL:** This repository has THREE different build methods that must be kept in sync:
+
+1. **`buildroot/os-build.sh`** - Docker/container builds
+2. **`buildroot/build-local.sh`** - Native/local builds  
+3. **`.github/workflows/build.yml`** - GitHub Actions CI builds
+
+**DO NOT:**
+- Make changes to only one build script
+- Assume GitHub Actions uses os-build.sh (it doesn't!)
+- Forget to update all three when modifying the build process
+
+**ALWAYS:**
+- Apply the same changes to all three build methods
+- Test that modifications work in all three contexts
+- Verify GitHub Actions workflow matches the shell scripts
+
+**WHY:**
+- GitHub Actions has its own custom build steps (doesn't call os-build.sh)
+- Changes to os-build.sh will NOT affect CI builds
+- Inconsistent builds lead to "works locally but fails in CI" issues
+- Users need all three methods to work identically
+
+**EXAMPLE:**
+If you add a partition modification or package installation:
+```bash
+# 1. Add to buildroot/os-build.sh
+# 2. Add to buildroot/build-local.sh  
+# 3. Add to .github/workflows/build.yml (same logic, different context)
+```
+
+**VERIFICATION:**
+- Check GitHub Actions logs to confirm changes took effect
+- Compare all three files side-by-side for critical build steps
+- Watch for "file not found" or "step skipped" in CI logs
+
 ---
 
 ## External Package Integration - KEY LEARNING

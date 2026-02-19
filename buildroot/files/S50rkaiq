@@ -6,7 +6,7 @@
 # for the camera to function properly with SeedSigner.
 #
 
-DAEMON=/usr/bin/rkaiq_3A_server
+DAEMON=/oem/usr/bin/rkaiq_3A_server
 PIDFILE=/var/run/rkaiq_3A_server.pid
 
 start() {
