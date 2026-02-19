@@ -31,6 +31,10 @@ retry_count=0
 while [ $retry_count -lt $MAX_RETRIES ]; do
     log_message "Starting SeedSigner (attempt $((retry_count + 1))/$MAX_RETRIES)"
     
+    # Restart camera ISP service for clean state
+    log_message "Restarting camera ISP service (S50rkaiq)..."
+    /etc/init.d/S50rkaiq restart 2>/dev/null || log_message "Note: S50rkaiq restart returned an error (may not exist on all builds)"
+    
     # Start SeedSigner
     if python main.py; then
         log_message "SeedSigner exited successfully"

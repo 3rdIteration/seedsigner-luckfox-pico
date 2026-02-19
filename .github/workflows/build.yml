@@ -759,9 +759,7 @@ jobs:
       if: success()
       with:
         name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}
-        path: |
-          build-artifacts/*.img
-          build-artifacts/*-nand-bundle-*
+        path: build-artifacts/
         retention-days: 30
         if-no-files-found: warn
     
