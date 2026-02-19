@@ -450,6 +450,14 @@ jobs:
         # Copy SeedSigner defconfig
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/.config"
+
+        # Remove pip/setuptools from Mini SPI-NAND to save space
+        if [[ "${HARDWARE}" == "RV1103_Luckfox_Pico_Mini" ]] && [[ "${BOOT_MEDIUM}" == "SPI_NAND" ]]; then
+          echo "🔧 Removing python-pip and python-setuptools for Mini SPI-NAND build..."
+          sed -i "s/^BR2_PACKAGE_PYTHON_PIP=y/# BR2_PACKAGE_PYTHON_PIP is not set/" "$BUILDROOT_DIR/.config"
+          sed -i "s/^BR2_PACKAGE_PYTHON_SETUPTOOLS=y/# BR2_PACKAGE_PYTHON_SETUPTOOLS is not set/" "$BUILDROOT_DIR/.config"
+          echo "✅ Removed pip/setuptools packages"
+        fi
         
         # Now that .config exists, update pyzbar patch with actual Python version if available
         PACKAGE_DIR="${BUILDROOT_DIR}/package"
@@ -693,18 +701,35 @@ jobs:
         - partition images (*.img)
         - U-Boot scripts: sd_update.txt and tftp_update.txt
         
-        Flash guidance:
-        - Use update.img with official Luckfox/Rockchip upgrade tooling, or
-        - Use sd_update.txt / tftp_update.txt with U-Boot workflows.
+        Flash guidance for SPI-NAND:
         
-        For detailed instructions, see:
-        https://wiki.luckfox.com/Luckfox-Pico/Linux-MacOS-Burn-Image/
+        1. Download and extract the bundle
+        2. Install LuckFox DriverAssitant and select "Driver Install"
+        3. Connect the board while holding the BOOT button to enter MASKROM mode
+        4. Use one of these methods:
+           
+           Method A - Windows upgrade_tool:
+           - Use Windows upgrade_tool with update.img
+           - Command: upgrade_tool uf update.img
+           
+           Method B - Linux/Mac rkdeveloptool:
+           - Use rkdeveloptool with individual partition images
+           - Follow the partition flash sequence in sd_update.txt
+           
+           Method C - U-Boot SD card update:
+           - Copy all .img files and sd_update.txt to SD card root
+           - Boot from SD card
+           - U-Boot will automatically flash SPI-NAND from sd_update.txt
+        
+        For detailed flashing instructions, see:
+        https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image
         EOF
         
         # Create tar.gz archive
         cd ../../../build-artifacts
-        NAND_BUNDLE_NAME="seedsigner-luckfox-pico-${BOARD_LABEL}-nand-bundle-${TIMESTAMP}.tar.gz"
-        tar -czf "$NAND_BUNDLE_NAME" "$(basename "$NAND_BUNDLE_DIR")"
+        #         NAND_BUNDLE_NAME="seedsigner-luckfox-pico-${BOARD_LABEL}-nand-bundle-${TIMESTAMP}.tar.gz"
+        # Removed tar.gz creation - upload folder directly to avoid double-zipping
+        #         tar -czf "$NAND_BUNDLE_NAME" "$(basename "$NAND_BUNDLE_DIR")"
         
         echo "Created NAND bundle: $NAND_BUNDLE_NAME"
         ls -lh "$NAND_BUNDLE_NAME"
@@ -736,7 +761,7 @@ jobs:
         name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}
         path: |
           build-artifacts/*.img
-          build-artifacts/*.tar.gz
+          build-artifacts/*-nand-bundle-*
         retention-days: 30
         if-no-files-found: warn
     
