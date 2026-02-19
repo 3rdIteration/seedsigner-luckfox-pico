@@ -587,7 +587,17 @@ install_seedsigner_app() {
     cp -v "$SCRIPT_DIR/files/luckfox.cfg" "$rootfs_dir/etc/luckfox.cfg"
     cp -v "$SCRIPT_DIR/files/nv12_converter" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/start-seedsigner.sh" "$rootfs_dir/"
+    cp -v "$SCRIPT_DIR/files/S50rkaiq" "$rootfs_dir/etc/init.d/" && chmod +x "$rootfs_dir/etc/init.d/S50rkaiq"
     cp -v "$SCRIPT_DIR/files/S99seedsigner" "$rootfs_dir/etc/init.d/"
+    
+    # Disable rkipc autostart in RkLunch.sh (as recommended by LuckFox support)
+    if [[ -f "$rootfs_dir/oem/usr/bin/RkLunch.sh" ]]; then
+        print_info "Disabling rkipc autostart in RkLunch.sh..."
+        sed -i 's/^\(.*rkipc -a.*\)$/#\1  # Disabled for SeedSigner - conflicts with camera access/' "$rootfs_dir/oem/usr/bin/RkLunch.sh"
+        print_success "Disabled rkipc in RkLunch.sh"
+    else
+        print_warning "RkLunch.sh not found at expected location, skipping rkipc disable"
+    fi
     
     print_success "SeedSigner application installed"
 }

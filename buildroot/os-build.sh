@@ -608,7 +608,17 @@ CONFIGMENU
     [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
+    [[ -f "/build/files/S50rkaiq" ]] && cp -v "/build/files/S50rkaiq" "$ROOTFS_DIR/etc/init.d/" && chmod +x "$ROOTFS_DIR/etc/init.d/S50rkaiq"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+
+    # Disable rkipc autostart in RkLunch.sh (as recommended by LuckFox support)
+    if [[ -f "$ROOTFS_DIR/oem/usr/bin/RkLunch.sh" ]]; then
+        print_info "Disabling rkipc autostart in RkLunch.sh..."
+        sed -i 's/^\(.*rkipc -a.*\)$/#\1  # Disabled for SeedSigner - conflicts with camera access/' "$ROOTFS_DIR/oem/usr/bin/RkLunch.sh"
+        print_success "Disabled rkipc in RkLunch.sh"
+    else
+        print_warning "RkLunch.sh not found at expected location, skipping rkipc disable"
+    fi
 
     print_step "Packaging Firmware"
     ./build.sh firmware
