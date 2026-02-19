@@ -584,6 +584,31 @@ CONFIGMENU
     print_step "Building Media Support"
     ./build.sh media
 
+    # Disable rkipc autostart in RkLunch.sh (as recommended by LuckFox support)
+    # Must modify source before building app/OEM partition
+    local rklunch_paths=(
+        "$LUCKFOX_SDK_DIR/project/app/rkipc/rkipc/common/RkLunch.sh"
+        "$LUCKFOX_SDK_DIR/project/app/rkipc/rkipc/common/system/RkLunch.sh"
+        "$LUCKFOX_SDK_DIR/sysdrv/source/rootfs_oem/usr/bin/RkLunch.sh"
+    )
+    
+    local rklunch_found=false
+    for rklunch_path in "${rklunch_paths[@]}"; do
+        if [[ -f "$rklunch_path" ]]; then
+            print_info "Disabling rkipc autostart in $rklunch_path..."
+            # Comment out rkipc start line
+            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$rklunch_path"
+            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$rklunch_path"
+            print_success "Disabled rkipc in $(basename $rklunch_path)"
+            rklunch_found=true
+            break
+        fi
+    done
+    
+    if [[ "$rklunch_found" == false ]]; then
+        print_warning "RkLunch.sh not found in SDK source, rkipc may still autostart"
+    fi
+
     print_step "Building Applications"
     ./build.sh app
 
@@ -605,19 +630,20 @@ CONFIGMENU
     rm -f "$ROOTFS_DIR/seedsigner/../README.md" 2>/dev/null || true
     print_success "Cleaned up non-essential files"
 
+    print_step "Installing SeedSigner Support Files"
     [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
-    [[ -f "/build/files/S50rkaiq" ]] && cp -v "/build/files/S50rkaiq" "$ROOTFS_DIR/etc/init.d/" && chmod +x "$ROOTFS_DIR/etc/init.d/S50rkaiq"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
-
-    # Disable rkipc autostart in RkLunch.sh (as recommended by LuckFox support)
-    if [[ -f "$ROOTFS_DIR/oem/usr/bin/RkLunch.sh" ]]; then
-        print_info "Disabling rkipc autostart in RkLunch.sh..."
-        sed -i 's/^\(.*rkipc -a.*\)$/#\1  # Disabled for SeedSigner - conflicts with camera access/' "$ROOTFS_DIR/oem/usr/bin/RkLunch.sh"
-        print_success "Disabled rkipc in RkLunch.sh"
+    
+    # Install S50rkaiq init script for camera ISP daemon
+    if [[ -f "/build/files/S50rkaiq" ]]; then
+        print_info "Installing S50rkaiq init script..."
+        cp -v "/build/files/S50rkaiq" "$ROOTFS_DIR/etc/init.d/S50rkaiq"
+        chmod +x "$ROOTFS_DIR/etc/init.d/S50rkaiq"
+        print_success "Installed S50rkaiq to /etc/init.d/"
     else
-        print_warning "RkLunch.sh not found at expected location, skipping rkipc disable"
+        print_warning "S50rkaiq not found, camera ISP daemon will not start automatically"
     fi
 
     print_step "Packaging Firmware"
