@@ -474,6 +474,35 @@ jobs:
         ./build.sh kernel
         ./build.sh rootfs
         ./build.sh media
+        
+        # Disable rkipc autostart BEFORE building the app (OEM partition)
+        # This modifies the source files that will be packaged into the OEM partition
+        echo "🔧 Disabling rkipc autostart in OEM source files..."
+        RKLUNCH_LOCATIONS=(
+          "project/app/rkipc/rkipc/common/RkLunch.sh"
+          "project/app/rkipc/rkipc/common/system/RkLunch.sh"
+          "sysdrv/source/rootfs_oem/usr/bin/RkLunch.sh"
+        )
+        
+        MODIFIED=false
+        for RKLUNCH_FILE in "${RKLUNCH_LOCATIONS[@]}"; do
+          if [[ -f "$RKLUNCH_FILE" ]]; then
+            echo "  Modifying $RKLUNCH_FILE..."
+            # Comment out both rkipc command variations
+            sed -i 's/^\([[:space:]]*\)\(rkipc -a .*\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$RKLUNCH_FILE"
+            sed -i 's/^\([[:space:]]*\)\(rkipc &\)$/\1#\2  # Disabled for SeedSigner - conflicts with camera access/' "$RKLUNCH_FILE"
+            echo "  ✓ Disabled rkipc in $RKLUNCH_FILE"
+            MODIFIED=true
+          fi
+        done
+        
+        if $MODIFIED; then
+          echo "✅ rkipc autostart disabled in OEM source"
+        else
+          echo "⚠️  Warning: Could not find RkLunch.sh in any expected location"
+          echo "   OEM partition may still have rkipc autostart enabled"
+        fi
+        
         ./build.sh app
 
     - name: Install SeedSigner application
@@ -550,6 +579,17 @@ jobs:
         cp -v ../seedsigner-luckfox-pico/buildroot/files/nv12_converter "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
+        
+        # Install S50rkaiq init script for camera ISP support
+        echo "🔧 Installing S50rkaiq init script..."
+        if [[ -f "../seedsigner-luckfox-pico/buildroot/files/S50rkaiq" ]]; then
+          cp -v ../seedsigner-luckfox-pico/buildroot/files/S50rkaiq "$ROOTFS_DIR/etc/init.d/"
+          chmod +x "$ROOTFS_DIR/etc/init.d/S50rkaiq"
+          echo "✅ S50rkaiq installed to /etc/init.d/"
+        else
+          echo "⚠️  Warning: S50rkaiq file not found"
+          echo "   Camera ISP service will not be automatically started"
+        fi
 
     - name: Package firmware
       run: |
