@@ -196,7 +196,7 @@ jobs:
         echo "📦 Applying Max SPI-NAND partition optimization..."
         MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
         # Remove userdata from partition table and shrink OEM, expand rootfs (Max has 256MB flash)
-        sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),103M(rootfs)/' "$MAX_FILE"
+        sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),227M(rootfs)/' "$MAX_FILE"
         # Remove userdata from filesystem config
         sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
         echo "  ✓ Max SPI-NAND partition modified (sed)"
@@ -221,7 +221,7 @@ jobs:
           echo "⚠️  WARNING: Mini partition may not be optimized!"
         fi
         
-        if echo "$MAX_PARTITION" | grep -q "103M(rootfs)"; then
+        if echo "$MAX_PARTITION" | grep -q "227M(rootfs)"; then
           echo "✅ Max partition optimization VERIFIED (rootfs = 103MB for 256MB flash)"
         else
           echo "⚠️  WARNING: Max partition may not be optimized!"

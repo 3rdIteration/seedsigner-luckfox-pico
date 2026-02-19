@@ -145,7 +145,7 @@ apply_sdk_patches() {
     print_info "Applying Max SPI-NAND partition optimization..."
     MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
     # Remove userdata from partition table and shrink OEM, expand rootfs
-    sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),103M(rootfs)/' "$MAX_FILE"
+    sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),227M(rootfs)/' "$MAX_FILE"
     # Remove userdata from filesystem config
     sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
     echo "  ${GREEN}✓${NC} Max SPI-NAND partition modified (sed)"
@@ -164,13 +164,13 @@ apply_sdk_patches() {
     echo ""
     
     # Check if patches actually modified the files
-    if echo "$MINI_PARTITION" | grep -q "103M(rootfs)"; then
+    if echo "$MINI_PARTITION" | grep -q "99M(rootfs)"; then
         echo "  ${GREEN}✓${NC} Mini partition optimization VERIFIED (rootfs = 103MB)"
     else
         echo "  ${YELLOW}⚠${NC}  WARNING: Mini partition may not be optimized!"
     fi
     
-    if echo "$MAX_PARTITION" | grep -q "103M(rootfs)"; then
+    if echo "$MAX_PARTITION" | grep -q "227M(rootfs)"; then
         echo "  ${GREEN}✓${NC} Max partition optimization VERIFIED (rootfs = 103MB)"
     else
         echo "  ${YELLOW}⚠${NC}  WARNING: Max partition may not be optimized!"
