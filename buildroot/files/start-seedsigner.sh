@@ -40,8 +40,21 @@ start_camera_service() {
     sleep 2
 }
 
+stop_camera_service() {
+    local camera_service="/usr/bin/rkaiq-service"
+    if [ ! -x "$camera_service" ]; then
+        log_message "rkaiq service script not found at $camera_service; continuing"
+        return 0
+    fi
+
+    log_message "Stopping camera ISP service (rkaiq-service)..."
+    "$camera_service" stop >/dev/null 2>&1 || true
+    sleep 1
+}
+
 start_camera_service_later() {
     local target_pid="$1"
+    local post_spi_delay="$2"
     (
         local waited=0
         while [ "$waited" -lt "$CAMERA_START_TIMEOUT" ]; do
@@ -51,8 +64,8 @@ start_camera_service_later() {
 
             # Wait for SeedSigner to initialize the SPI display first.
             if ls -l "/proc/$target_pid/fd" 2>/dev/null | grep -q 'spidev'; then
-                log_message "Detected SeedSigner SPI device init; waiting ${CAMERA_POST_SPI_DELAY}s before starting camera service"
-                sleep "$CAMERA_POST_SPI_DELAY"
+                log_message "Detected SeedSigner SPI device init; waiting ${post_spi_delay}s before starting camera service"
+                sleep "$post_spi_delay"
                 if kill -0 "$target_pid" 2>/dev/null; then
                     start_camera_service
                 fi
@@ -106,13 +119,19 @@ cd /seedsigner
 # Retry loop
 retry_count=0
 while [ $retry_count -lt $MAX_RETRIES ]; do
+    camera_post_spi_delay=$((CAMERA_POST_SPI_DELAY + retry_count))
+
     log_message "Starting SeedSigner (attempt $((retry_count + 1))/$MAX_RETRIES)"
+
+    # Always clear camera-related processes before launching the app.
+    killall rkipc 2>/dev/null || true
+    stop_camera_service
     
     # Start SeedSigner first. On Mini, camera ISP start before display init can
     # exhaust memory and cause SPI open failures.
     python main.py &
     APP_PID="$!"
-    start_camera_service_later "$APP_PID"
+    start_camera_service_later "$APP_PID" "$camera_post_spi_delay"
 
     wait "$APP_PID"
     exit_code=$?
