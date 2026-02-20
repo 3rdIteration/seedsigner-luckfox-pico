@@ -3,7 +3,7 @@
 # Configuration
 MAX_RETRIES=5
 RETRY_DELAY=10  # seconds
-CAMERA_START_DELAY=6  # seconds after python app launch
+CAMERA_START_DELAY=11  # seconds after python app launch
 LOG_FILE="/tmp/startup.log"
 APP_PID=""
 CAMERA_HELPER_PID=""
