@@ -3,7 +3,9 @@
 # Configuration
 MAX_RETRIES=5
 RETRY_DELAY=10  # seconds
-CAMERA_START_DELAY=11  # seconds after python app launch
+CAMERA_START_TIMEOUT=20  # max seconds to wait for app init signal
+CAMERA_POLL_INTERVAL=1   # seconds
+CAMERA_POST_SPI_DELAY=5  # seconds to wait after SPI init detection
 LOG_FILE="/tmp/startup.log"
 APP_PID=""
 CAMERA_HELPER_PID=""
@@ -41,8 +43,28 @@ start_camera_service() {
 start_camera_service_later() {
     local target_pid="$1"
     (
-        sleep "$CAMERA_START_DELAY"
+        local waited=0
+        while [ "$waited" -lt "$CAMERA_START_TIMEOUT" ]; do
+            if ! kill -0 "$target_pid" 2>/dev/null; then
+                return 0
+            fi
+
+            # Wait for SeedSigner to initialize the SPI display first.
+            if ls -l "/proc/$target_pid/fd" 2>/dev/null | grep -q 'spidev'; then
+                log_message "Detected SeedSigner SPI device init; waiting ${CAMERA_POST_SPI_DELAY}s before starting camera service"
+                sleep "$CAMERA_POST_SPI_DELAY"
+                if kill -0 "$target_pid" 2>/dev/null; then
+                    start_camera_service
+                fi
+                return 0
+            fi
+
+            sleep "$CAMERA_POLL_INTERVAL"
+            waited=$((waited + CAMERA_POLL_INTERVAL))
+        done
+
         if kill -0 "$target_pid" 2>/dev/null; then
+            log_message "SeedSigner init signal not detected after ${CAMERA_START_TIMEOUT}s; starting camera service anyway"
             start_camera_service
         fi
     ) &
