@@ -32,7 +32,7 @@ Docker-based build system for SeedSigner OS that uses containerized compilation 
 1. Creates Docker container with cross-compilation toolchain
 2. Clones required repositories inside container:
    - luckfox-pico SDK
-   - seedsigner code (upstream-luckfox-staging-1 branch)
+   - seedsigner code (luckfox-staging-portability branch)
    - seedsigner-os packages
 3. Compiles U-Boot bootloader
 4. Builds Linux kernel with device drivers

@@ -1,7 +1,7 @@
 # seedsigner-luckfox-pico
 Port of the SeedSigner code to support the LuckFox Pico Linux board family. Since this device is still an embedded Linux device, like the Raspberry Pi, the changes are fairly minimal in order to access the buttons and the camera. This repo mostly pertains to the Buildroot OS build instructions, the KiCAD schematic and PCB design files, and 3D models of cases for the assembled device.
 
-SeedSigner code fork: https://github.com/lightningspore/seedsigner/tree/0.8.5-luckfox
+SeedSigner code fork: https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability
 
 
 ## Hardware Photos
@@ -78,6 +78,7 @@ cd buildroot/
 - See `./build-local.sh --help` for all options
 
 For more details and manual step-by-step instructions, see [OS-build-instructions.md](docs/OS-build-instructions.md).
+For Luckfox runtime startup order, camera service sequencing, and Mini memory/timing behavior, see [LUCKFOX_STARTUP_WORKFLOW.md](docs/LUCKFOX_STARTUP_WORKFLOW.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
@@ -139,7 +140,7 @@ Replace `/dev/diskX` with your actual SD card device path.
 
 
 ## LuckFox Pico OS Modifications
-We have forked the [LuckFox Pico SDK](https://github.com/lightningspore/luckfox-pico) in order to enable various hardware features like pull-up resistors, adjust video RAM, and other things.
+We have forked the [LuckFox Pico SDK](https://github.com/3rdIteration/luckfox-pico) in order to enable various hardware features like pull-up resistors, adjust video RAM, and other things.
 
 ### Camera Memory
 The LuckFox devotes some of its memory for camera-related algorithms, but we don't use this feature. Particularly on the LuckFox Pico Mini device, which only has 64MB of RAM, it is beneficial for us to reclaim a bit of this memory.

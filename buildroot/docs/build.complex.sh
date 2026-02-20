@@ -111,10 +111,10 @@ check_repositories() {
     
     # Required repositories 
     local repos=(
-        "$HOME/luckfox-pico:https://github.com/lightningspore/luckfox-pico.git"
-        "$HOME/seedsigner:https://github.com/lightningspore/seedsigner.git:-b upstream-luckfox-staging-1"
+        "$HOME/luckfox-pico:https://github.com/3rdIteration/luckfox-pico.git"
+        "$HOME/seedsigner:https://github.com/3rdIteration/seedsigner.git:-b luckfox-staging-portability"
         "$HOME/seedsigner-luckfox-pico:current repo"
-        "$HOME/seedsigner-os:https://github.com/seedsigner/seedsigner-os.git"
+        "$HOME/seedsigner-os:https://github.com/3rdIteration/seedsigner-os.git"
     )
     
     for repo_info in "${repos[@]}"; do
@@ -150,21 +150,21 @@ setup_repositories() {
     # Clone repositories if they don't exist
     if [ ! -d "luckfox-pico" ]; then
         print_header "Cloning luckfox-pico..."
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 --single-branch
     else
         print_success "luckfox-pico already exists"
     fi
     
     if [ ! -d "seedsigner-os" ]; then
         print_header "Cloning seedsigner-os..."
-        git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/seedsigner-os.git --depth=1 --single-branch
     else
         print_success "seedsigner-os already exists"
     fi
     
     if [ ! -d "seedsigner" ]; then
-        print_header "Cloning seedsigner (luckfox-dev branch)..."
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
+        print_header "Cloning seedsigner (luckfox-staging-portability branch)..."
+        git clone https://github.com/3rdIteration/seedsigner.git --depth=1 -b luckfox-staging-portability --single-branch --recurse-submodules
     else
         print_success "seedsigner already exists"
     fi

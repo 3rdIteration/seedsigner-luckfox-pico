@@ -145,7 +145,7 @@ clone_repositories() {
     # Clone luckfox-pico SDK
     if [ ! -d "luckfox-pico" ]; then
         print_info "Cloning luckfox-pico SDK..."
-        git clone https://github.com/lightningspore/luckfox-pico.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 --single-branch
         print_success "luckfox-pico cloned"
     else
         print_info "luckfox-pico already exists"
@@ -154,7 +154,7 @@ clone_repositories() {
     # Clone SeedSigner OS packages
     if [ ! -d "seedsigner-os" ]; then
         print_info "Cloning seedsigner-os packages..."
-        git clone https://github.com/seedsigner/seedsigner-os.git --depth=1 --single-branch
+        git clone https://github.com/3rdIteration/seedsigner-os.git --depth=1 --single-branch
         print_success "seedsigner-os cloned"
     else
         print_info "seedsigner-os already exists"
@@ -163,13 +163,107 @@ clone_repositories() {
     # Clone SeedSigner application code
     if [ ! -d "seedsigner" ]; then
         print_info "Cloning seedsigner application..."
-        git clone https://github.com/lightningspore/seedsigner.git --depth=1 -b upstream-luckfox-staging-1 --single-branch --recurse-submodules
+        git clone https://github.com/3rdIteration/seedsigner.git --depth=1 -b luckfox-staging-portability --single-branch --recurse-submodules
         print_success "seedsigner cloned"
     else
         print_info "seedsigner already exists"
     fi
     
     print_success "All repositories available"
+}
+
+apply_sdk_patches() {
+    print_header "Applying SeedSigner SDK Patches"
+    
+    cd "$WORK_DIR/luckfox-pico"
+    
+    # Show files before patching
+    print_info "Checking target files..."
+    if [ -f project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk ]; then
+        print_success "Mini BoardConfig found"
+    else
+        print_error "Mini BoardConfig NOT FOUND!"
+        cd "$WORK_DIR"
+        return 1
+    fi
+    
+    if [ -f project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk ]; then
+        print_success "Max BoardConfig found"
+    else
+        print_error "Max BoardConfig NOT FOUND!"
+        cd "$WORK_DIR"
+        return 1
+    fi
+    echo ""
+    
+    # Apply Mini SPI-NAND partition optimization using sed (more reliable than patches)
+    print_info "Applying Mini SPI-NAND partition optimization..."
+    MINI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk"
+    # Remove userdata from partition table and shrink OEM, expand rootfs
+    sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),99M(rootfs)/' "$MINI_FILE"
+    # Remove userdata from filesystem config
+    sed -i 's/,userdata@\/userdata@ubifs//' "$MINI_FILE"
+    print_success "Mini SPI-NAND partition modified (sed)"
+    echo ""
+    
+    # Apply Max SPI-NAND partition optimization using sed
+    print_info "Applying Max SPI-NAND partition optimization..."
+    MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
+    # Remove userdata from partition table and shrink OEM, expand rootfs
+    sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),227M(rootfs)/' "$MAX_FILE"
+    # Remove userdata from filesystem config
+    sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
+    print_success "Max SPI-NAND partition modified (sed)"
+    echo ""
+    
+    # Verify patches were applied by checking partition sizes
+    print_info "Verifying patches..."
+    MINI_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk | head -1)
+    MAX_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk | head -1)
+    
+    echo "  Mini partition table:"
+    echo "    $MINI_PARTITION"
+    echo ""
+    echo "  Max partition table:"
+    echo "    $MAX_PARTITION"
+    echo ""
+    
+    # Check if patches actually modified the files
+    if echo "$MINI_PARTITION" | grep -q "99M(rootfs)"; then
+        print_success "Mini partition optimization VERIFIED (rootfs = 103MB)"
+    else
+        print_warning "WARNING: Mini partition may not be optimized!"
+    fi
+    
+    if echo "$MAX_PARTITION" | grep -q "227M(rootfs)"; then
+        print_success "Max partition optimization VERIFIED (rootfs = 103MB)"
+    else
+        print_warning "WARNING: Max partition may not be optimized!"
+    fi
+    echo ""
+    
+    print_success "Partition layout optimized:"
+    echo "  - OEM: 30MB → 20MB (save 10MB, 16.4MB used + 3.6MB headroom)"
+    echo "  - Userdata: 6MB → Removed (save 6MB, SeedSigner is stateless)"
+    echo "  - Rootfs: 85MB → 103MB (add 18MB, total 34MB gained)"
+    echo ""
+    
+    # Show partition summary
+    print_info "SPI-NAND Partition Summary (128MB flash):"
+    echo "  ┌─────────────┬──────────┬────────────┬─────────────┐"
+    echo "  │ Partition   │ Size     │ Offset     │ Purpose     │"
+    echo "  ├─────────────┼──────────┼────────────┼─────────────┤"
+    echo "  │ env         │   256 KB │ 0x00000    │ Environment │"
+    echo "  │ idblock     │   256 KB │ 0x40000    │ Boot ID     │"
+    echo "  │ uboot       │   512 KB │ 0x80000    │ U-Boot      │"
+    echo "  │ boot        │     4 MB │ 0x100000   │ Kernel+DTB  │"
+    echo "  │ oem         │    20 MB │ 0x500000   │ OEM data    │"
+    echo "  │ rootfs      │   103 MB │ 0x1900000  │ Root FS     │"
+    echo "  └─────────────┴──────────┴────────────┴─────────────┘"
+    echo "  Total allocated: ~128 MB (fits 128MB SPI-NAND)"
+    echo ""
+    
+    cd "$WORK_DIR"
 }
 
 setup_toolchain() {
@@ -341,8 +435,14 @@ install_seedsigner_packages() {
     local package_dir="${buildroot_dir}/package"
     
     # Copy SeedSigner packages
-    print_info "Copying SeedSigner packages..."
+    print_info "Copying SeedSigner packages from seedsigner-os..."
     cp -rv "$WORK_DIR/seedsigner-os/opt/external-packages/"* "$package_dir/"
+    
+    # Also copy packages from this repository's external-packages directory
+    if [ -d "$SCRIPT_DIR/external-packages" ]; then
+        print_info "Copying additional SeedSigner packages from this repository..."
+        cp -rv "$SCRIPT_DIR/external-packages/"* "$package_dir/"
+    fi
     
     # Add SeedSigner menu to Config.in
     local config_in="${package_dir}/Config.in"
@@ -355,12 +455,16 @@ menu "SeedSigner"
 	source "package/python-pyzbar/Config.in"
 	source "package/python-mock/Config.in"
 	source "package/python-embit/Config.in"
+	source "package/python-mnemonic/Config.in"
+	source "package/python-shamir-mnemonic/Config.in"
 	source "package/python-pillow/Config.in"
 	source "package/zbar/Config.in"
 	source "package/jpeg-turbo/Config.in.options"
 	source "package/jpeg/Config.in"
 	source "package/python-qrcode/Config.in"
 	source "package/python-pyqrcode/Config.in"
+	source "package/python-pyscard/Config.in"
+	source "package/python-pysatochip/Config.in"
 endmenu
 EOF
     fi
@@ -415,6 +519,9 @@ build_system() {
     print_info "Building Media..."
     ./build.sh media
     
+    # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
+    print_info "Keeping RkLunch.sh rkipc autostart enabled"
+    
     print_info "Building Applications..."
     ./build.sh app
     
@@ -441,6 +548,18 @@ install_seedsigner_app() {
     # Copy SeedSigner code
     print_info "Copying SeedSigner application..."
     cp -rv "$WORK_DIR/seedsigner/src/" "$rootfs_dir/seedsigner"
+    
+    # Clean up non-essential files from rootfs
+    print_info "Cleaning up non-essential files from rootfs..."
+    rm -rf "$rootfs_dir/seedsigner/../docs" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../hardware-kicad" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../img" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../test_suite" 2>/dev/null || true
+    rm -rf "$rootfs_dir/seedsigner/../.git" 2>/dev/null || true
+    rm -f "$rootfs_dir/seedsigner/../.gitignore" 2>/dev/null || true
+    rm -f "$rootfs_dir/seedsigner/../.gitmodules" 2>/dev/null || true
+    rm -f "$rootfs_dir/seedsigner/../README.md" 2>/dev/null || true
+    print_success "Cleaned up non-essential files"
     
     # Patch settings.json for Mini hardware
     if [ "$hardware" == "mini" ]; then
@@ -472,6 +591,16 @@ install_seedsigner_app() {
     cp -v "$SCRIPT_DIR/files/nv12_converter" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/start-seedsigner.sh" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/S99seedsigner" "$rootfs_dir/etc/init.d/"
+    
+    # Install rkaiq camera ISP service script (manual start only, no boot autostart)
+    if [[ -f "$SCRIPT_DIR/files/rkaiq-service" ]]; then
+        print_info "Installing rkaiq service script..."
+        cp -v "$SCRIPT_DIR/files/rkaiq-service" "$rootfs_dir/usr/bin/rkaiq-service"
+        chmod +x "$rootfs_dir/usr/bin/rkaiq-service"
+        print_success "Installed rkaiq-service to /usr/bin/"
+    else
+        print_warning "rkaiq-service not found, rkaiq-service will not be available"
+    fi
     
     print_success "SeedSigner application installed"
 }
@@ -671,8 +800,11 @@ main() {
     # Clone repositories
     clone_repositories
     
+    # Apply SDK patches for SPI-NAND optimization
+    apply_sdk_patches
+    
     if [ "$clone_only" == "true" ]; then
-        print_success "Repositories cloned. Exiting."
+        print_success "Repositories cloned and patches applied. Exiting."
         exit 0
     fi
     

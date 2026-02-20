@@ -2,6 +2,7 @@ name: Build SeedSigner OS
 
 on:
   push:
+    branches: [ main, develop, master ]
   pull_request:
     branches: [ main, develop, master ]
   workflow_dispatch:
@@ -26,7 +27,7 @@ on:
         description: 'LuckFox Pico SDK Repository URL'
         required: false
         type: string
-        default: 'https://github.com/lightningspore/luckfox-pico.git'
+        default: 'https://github.com/3rdIteration/luckfox-pico.git'
       luckfox_branch:
         description: 'LuckFox Pico SDK Branch (leave empty for default branch)'
         required: false
@@ -36,17 +37,17 @@ on:
         description: 'SeedSigner Repository URL'
         required: false
         type: string
-        default: 'https://github.com/lightningspore/seedsigner.git'
+        default: 'https://github.com/3rdIteration/seedsigner.git'
       seedsigner_branch:
         description: 'SeedSigner Branch'
         required: false
         type: string
-        default: 'upstream-luckfox-staging-1'
+        default: 'luckfox-staging-portability'
       seedsigner_os_repo_url:
         description: 'SeedSigner OS Repository URL'
         required: false
         type: string
-        default: 'https://github.com/seedsigner/seedsigner-os.git'
+        default: 'https://github.com/3rdIteration/seedsigner-os.git'
       seedsigner_os_branch:
         description: 'SeedSigner OS Branch (leave empty for default branch)'
         required: false
@@ -101,11 +102,11 @@ jobs:
       run: |
         # Set repository URLs and branches with fallbacks
         # Use workflow_dispatch inputs if available, otherwise use defaults
-        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/lightningspore/luckfox-pico.git' }}"
+        LUCKFOX_REPO="${{ github.event.inputs.luckfox_repo_url || 'https://github.com/3rdIteration/luckfox-pico.git' }}"
         LUCKFOX_BRANCH="${{ github.event.inputs.luckfox_branch || '' }}"
-        SEEDSIGNER_REPO="${{ github.event.inputs.seedsigner_repo_url || 'https://github.com/lightningspore/seedsigner.git' }}"
-        SEEDSIGNER_BRANCH="${{ github.event.inputs.seedsigner_branch || 'upstream-luckfox-staging-1' }}"
-        SEEDSIGNER_OS_REPO="${{ github.event.inputs.seedsigner_os_repo_url || 'https://github.com/seedsigner/seedsigner-os.git' }}"
+        SEEDSIGNER_REPO="${{ github.event.inputs.seedsigner_repo_url || 'https://github.com/3rdIteration/seedsigner.git' }}"
+        SEEDSIGNER_BRANCH="${{ github.event.inputs.seedsigner_branch || 'luckfox-staging-portability' }}"
+        SEEDSIGNER_OS_REPO="${{ github.event.inputs.seedsigner_os_repo_url || 'https://github.com/3rdIteration/seedsigner-os.git' }}"
         SEEDSIGNER_OS_BRANCH="${{ github.event.inputs.seedsigner_os_branch || '' }}"
         
         echo "Repository Configuration:"
@@ -147,7 +148,7 @@ jobs:
           fi
         fi
         
-        # Clone SeedSigner code (upstream-luckfox-staging-1 branch contains LuckFox-specific adaptations)
+        # Clone SeedSigner code (luckfox-staging-portability branch contains LuckFox-specific adaptations)
         echo "Cloning seedsigner application code..."
         if ! git clone "$SEEDSIGNER_REPO" --depth=1 -b "$SEEDSIGNER_BRANCH" --single-branch --recurse-submodules seedsigner; then
           echo "ERROR: Failed to clone seedsigner code from $SEEDSIGNER_REPO (branch: $SEEDSIGNER_BRANCH)"
@@ -156,6 +157,117 @@ jobs:
         fi
         
         echo "All repositories cloned successfully"
+
+    - name: Apply SeedSigner SDK patches
+      run: |
+        cd luckfox-pico
+        
+        echo "🔧 Applying SeedSigner optimizations to LuckFox SDK..."
+        echo ""
+        
+        # Show files before patching
+        echo "📋 Checking target files..."
+        if [ -f project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk ]; then
+          echo "  ✓ Mini BoardConfig found"
+        else
+          echo "  ✗ Mini BoardConfig NOT FOUND!"
+          exit 1
+        fi
+        
+        if [ -f project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk ]; then
+          echo "  ✓ Max BoardConfig found"
+        else
+          echo "  ✗ Max BoardConfig NOT FOUND!"
+          exit 1
+        fi
+        echo ""
+        
+        # Apply Mini SPI-NAND partition optimization using sed (more reliable than patches)
+        echo "📦 Applying Mini SPI-NAND partition optimization..."
+        MINI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk"
+        # Remove userdata from partition table and shrink OEM, expand rootfs (Mini has 128MB flash)
+        sed -i 's/30M(oem),6M(userdata),85M(rootfs)/20M(oem),99M(rootfs)/' "$MINI_FILE"
+        # Remove userdata from filesystem config  
+        sed -i 's/,userdata@\/userdata@ubifs//' "$MINI_FILE"
+        echo "  ✓ Mini SPI-NAND partition modified (sed)"
+        echo ""
+        
+        # Apply Max SPI-NAND partition optimization using sed
+        echo "📦 Applying Max SPI-NAND partition optimization..."
+        MAX_FILE="project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk"
+        # Remove userdata from partition table and shrink OEM, expand rootfs (Max has 256MB flash)
+        sed -i 's/30M(oem),10M(userdata),210M(rootfs)/20M(oem),227M(rootfs)/' "$MAX_FILE"
+        # Remove userdata from filesystem config
+        sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
+        echo "  ✓ Max SPI-NAND partition modified (sed)"
+        echo ""
+        
+        # Verify patches were applied by checking partition sizes
+        echo "🔍 Verifying patches..."
+        MINI_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk | head -1)
+        MAX_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1106_Luckfox_Pico_Pro_Max-IPC.mk | head -1)
+        
+        echo "Mini partition table:"
+        echo "  $MINI_PARTITION"
+        echo ""
+        echo "Max partition table:"
+        echo "  $MAX_PARTITION"
+        echo ""
+        
+        # Check if patches actually modified the files
+        if echo "$MINI_PARTITION" | grep -q "99M(rootfs)"; then
+          echo "✅ Mini partition optimization VERIFIED (rootfs = 99MB for 128MB flash)"
+        else
+          echo "⚠️  WARNING: Mini partition may not be optimized!"
+        fi
+        
+        if echo "$MAX_PARTITION" | grep -q "227M(rootfs)"; then
+          echo "✅ Max partition optimization VERIFIED (rootfs = 103MB for 256MB flash)"
+        else
+          echo "⚠️  WARNING: Max partition may not be optimized!"
+        fi
+        echo ""
+        
+        echo "✅ Partition layout optimized:"
+        echo "  Mini (128MB flash):"
+        echo "    - OEM: 30MB → 20MB (save 10MB)"
+        echo "    - Userdata: 6MB → Removed (save 6MB)"
+        echo "    - Rootfs: 85MB → 99MB (gain 14MB, fits 128MB with margin)"
+        echo "  Max (256MB flash):"
+        echo "    - OEM: 30MB → 20MB (save 10MB)"
+        echo "    - Userdata: 10MB → Removed (save 10MB)"
+        echo "    - Rootfs: 210MB → 103MB (optimized for consistency)"
+        echo ""
+        
+        # Show partition summary for Mini
+        echo "📊 Mini SPI-NAND Partition Summary (128MB flash):"
+        echo "  ┌─────────────┬──────────┬────────────┬─────────────┐"
+        echo "  │ Partition   │ Size     │ Offset     │ Purpose     │"
+        echo "  ├─────────────┼──────────┼────────────┼─────────────┤"
+        echo "  │ env         │   256 KB │ 0x00000    │ Environment │"
+        echo "  │ idblock     │   256 KB │ 0x40000    │ Boot ID     │"
+        echo "  │ uboot       │   512 KB │ 0x80000    │ U-Boot      │"
+        echo "  │ boot        │     4 MB │ 0x100000   │ Kernel+DTB  │"
+        echo "  │ oem         │    20 MB │ 0x500000   │ OEM data    │"
+        echo "  │ rootfs      │    99 MB │ 0x1900000  │ Root FS     │"
+        echo "  └─────────────┴──────────┴────────────┴─────────────┘"
+        echo "  Total allocated: ~124 MB (fits 128MB with 4MB margin)"
+        echo ""
+        
+        # Show partition summary for Max
+        echo "📊 Max SPI-NAND Partition Summary (256MB flash):"
+        echo "  ┌─────────────┬──────────┬────────────┬─────────────┐"
+        echo "  │ Partition   │ Size     │ Offset     │ Purpose     │"
+        echo "  ├─────────────┼──────────┼────────────┼─────────────┤"
+        echo "  │ env         │   256 KB │ 0x00000    │ Environment │"
+        echo "  │ idblock     │   256 KB │ 0x40000    │ Boot ID     │"
+        echo "  │ uboot       │   512 KB │ 0x80000    │ U-Boot      │"
+        echo "  │ boot        │     4 MB │ 0x100000   │ Kernel+DTB  │"
+        echo "  │ oem         │    20 MB │ 0x500000   │ OEM data    │"
+        echo "  │ rootfs      │   103 MB │ 0x1900000  │ Root FS     │"
+        echo "  └─────────────┴──────────┴────────────┴─────────────┘"
+        echo "  Total allocated: ~128 MB (fits 128MB SPI-NAND)"
+        echo ""
 
     - name: Set up build environment
       run: |
@@ -285,6 +397,12 @@ jobs:
         # Copy SeedSigner packages from seedsigner-os
         cp -rv ../seedsigner-os/opt/external-packages/* "$PACKAGE_DIR/"
         
+        # Also copy packages from this repository's external-packages directory
+        if [ -d ../seedsigner-luckfox-pico/buildroot/external-packages ]; then
+          echo "Copying additional SeedSigner packages from this repository..."
+          cp -rv ../seedsigner-luckfox-pico/buildroot/external-packages/* "$PACKAGE_DIR/"
+        fi
+        
         # Update pyzbar patch
         # Note: Will be updated with actual Python version after .config is created in next step
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
@@ -301,12 +419,16 @@ jobs:
         	source "package/python-pyzbar/Config.in"
         	source "package/python-mock/Config.in"
         	source "package/python-embit/Config.in"
+        	source "package/python-mnemonic/Config.in"
+        	source "package/python-shamir-mnemonic/Config.in"
         	source "package/python-pillow/Config.in"
         	source "package/zbar/Config.in"
         	source "package/jpeg-turbo/Config.in.options"
         	source "package/jpeg/Config.in"
         	source "package/python-qrcode/Config.in"
         	source "package/python-pyqrcode/Config.in"
+        	source "package/python-pyscard/Config.in"
+        	source "package/python-pysatochip/Config.in"
         endmenu
         EOF
         fi
@@ -328,6 +450,14 @@ jobs:
         # Copy SeedSigner defconfig
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/.config"
+
+        # Remove pip/setuptools from Mini SPI-NAND to save space
+        if [[ "${HARDWARE}" == "RV1103_Luckfox_Pico_Mini" ]] && [[ "${BOOT_MEDIUM}" == "SPI_NAND" ]]; then
+          echo "🔧 Removing python-pip and python-setuptools for Mini SPI-NAND build..."
+          sed -i "s/^BR2_PACKAGE_PYTHON_PIP=y/# BR2_PACKAGE_PYTHON_PIP is not set/" "$BUILDROOT_DIR/.config"
+          sed -i "s/^BR2_PACKAGE_PYTHON_SETUPTOOLS=y/# BR2_PACKAGE_PYTHON_SETUPTOOLS is not set/" "$BUILDROOT_DIR/.config"
+          echo "✅ Removed pip/setuptools packages"
+        fi
         
         # Now that .config exists, update pyzbar patch with actual Python version if available
         PACKAGE_DIR="${BUILDROOT_DIR}/package"
@@ -352,6 +482,9 @@ jobs:
         ./build.sh kernel
         ./build.sh rootfs
         ./build.sh media
+        
+        # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
+        echo "Keeping RkLunch.sh rkipc autostart enabled"
         ./build.sh app
 
     - name: Install SeedSigner application
@@ -428,6 +561,17 @@ jobs:
         cp -v ../seedsigner-luckfox-pico/buildroot/files/nv12_converter "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
+        
+        # Install rkaiq camera ISP service script (manual start only, no boot autostart)
+        echo "🔧 Installing rkaiq service script..."
+        if [[ -f "../seedsigner-luckfox-pico/buildroot/files/rkaiq-service" ]]; then
+          cp -v ../seedsigner-luckfox-pico/buildroot/files/rkaiq-service "$ROOTFS_DIR/usr/bin/rkaiq-service"
+          chmod +x "$ROOTFS_DIR/usr/bin/rkaiq-service"
+          echo "✅ rkaiq-service installed to /usr/bin/"
+        else
+          echo "⚠️  Warning: rkaiq-service file not found"
+          echo "   rkaiq-service will not be available"
+        fi
 
     - name: Package firmware
       run: |
@@ -531,21 +675,35 @@ jobs:
         - partition images (*.img)
         - U-Boot scripts: sd_update.txt and tftp_update.txt
         
-        Flash guidance:
-        - Use update.img with official Luckfox/Rockchip upgrade tooling, or
-        - Use sd_update.txt / tftp_update.txt with U-Boot workflows.
+        Flash guidance for SPI-NAND:
         
-        For detailed instructions, see:
-        https://wiki.luckfox.com/Luckfox-Pico/Linux-MacOS-Burn-Image/
+        1. Download and extract the bundle
+        2. Install LuckFox DriverAssitant and select "Driver Install"
+        3. Connect the board while holding the BOOT button to enter MASKROM mode
+        4. Use one of these methods:
+           
+           Method A - Windows upgrade_tool:
+           - Use Windows upgrade_tool with update.img
+           - Command: upgrade_tool uf update.img
+           
+           Method B - Linux/Mac rkdeveloptool:
+           - Use rkdeveloptool with individual partition images
+           - Follow the partition flash sequence in sd_update.txt
+           
+           Method C - U-Boot SD card update:
+           - Copy all .img files and sd_update.txt to SD card root
+           - Boot from SD card
+           - U-Boot will automatically flash SPI-NAND from sd_update.txt
+        
+        For detailed flashing instructions, see:
+        https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image
         EOF
         
-        # Create tar.gz archive
+        # Bundle is ready - no tar.gz creation to avoid double-zipping
+        # GitHub Actions will zip the folder when uploading artifact
         cd ../../../build-artifacts
-        NAND_BUNDLE_NAME="seedsigner-luckfox-pico-${BOARD_LABEL}-nand-bundle-${TIMESTAMP}.tar.gz"
-        tar -czf "$NAND_BUNDLE_NAME" "$(basename "$NAND_BUNDLE_DIR")"
-        
-        echo "Created NAND bundle: $NAND_BUNDLE_NAME"
-        ls -lh "$NAND_BUNDLE_NAME"
+        echo "✅ Created NAND bundle directory: $(basename "$NAND_BUNDLE_DIR")"
+        ls -lh "$(basename "$NAND_BUNDLE_DIR")"
 
     - name: List build artifacts
       if: always()
@@ -572,9 +730,7 @@ jobs:
       if: success()
       with:
         name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}
-        path: |
-          build-artifacts/*.img
-          build-artifacts/*.tar.gz
+        path: build-artifacts/
         retention-days: 30
         if-no-files-found: warn
     
@@ -623,11 +779,31 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**How to Flash NAND:**" >> $GITHUB_STEP_SUMMARY
-          echo "1. Download and extract the NAND bundle (.tar.gz file)" >> $GITHUB_STEP_SUMMARY
-          echo "2. Use official LuckFox/Rockchip upgrade tools with \`update.img\`, or" >> $GITHUB_STEP_SUMMARY
-          echo "3. Use U-Boot workflows with \`sd_update.txt\` or \`tftp_update.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "4. See [LuckFox Official Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico/Linux-MacOS-Burn-Image/)" >> $GITHUB_STEP_SUMMARY
+          echo "**How to Flash SPI-NAND:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 1: Windows - SocToolKit (Easiest)**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download and install [SocToolKit](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/#1-download-and-install-soctoolkit)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Extract the NAND bundle zip file" >> $GITHUB_STEP_SUMMARY
+          echo "3. Connect device in MASKROM mode (hold BOOT button while connecting USB)" >> $GITHUB_STEP_SUMMARY
+          echo "4. In SocToolKit: Select \`update.img\` and click Flash" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 2: Linux/Mac - rkdeveloptool**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Extract the NAND bundle zip file" >> $GITHUB_STEP_SUMMARY
+          echo "2. Install rkdeveloptool: \`sudo apt install rkdeveloptool\` (Linux)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Connect device in MASKROM mode (hold BOOT button while connecting USB)" >> $GITHUB_STEP_SUMMARY
+          echo "4. Flash individual partitions following \`sd_update.txt\` sequence" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 3: MicroSD Auto-Flash (No PC Connection)**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Extract NAND bundle and copy ALL files to MicroSD card root" >> $GITHUB_STEP_SUMMARY
+          echo "2. Insert MicroSD into device and power on" >> $GITHUB_STEP_SUMMARY
+          echo "3. U-Boot will automatically flash SPI-NAND from \`sd_update.txt\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. **Note:** This OVERWRITES existing SPI-NAND content" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Important:** NAND images are NOT the same as SD Card images!" >> $GITHUB_STEP_SUMMARY
+          echo "- NAND bundles flash to onboard SPI-NAND storage" >> $GITHUB_STEP_SUMMARY
+          echo "- SD Card images (\`.img\`) are for booting directly from SD" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📖 [Complete Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/)" >> $GITHUB_STEP_SUMMARY
         fi
         
         if [ -z "$SD_IMAGES" ] && [ -z "$NAND_BUNDLES" ]; then
