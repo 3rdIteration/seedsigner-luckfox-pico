@@ -78,6 +78,7 @@ cd buildroot/
 - See `./build-local.sh --help` for all options
 
 For more details and manual step-by-step instructions, see [OS-build-instructions.md](docs/OS-build-instructions.md).
+For Luckfox runtime startup order, camera service sequencing, and Mini memory/timing behavior, see [LUCKFOX_STARTUP_WORKFLOW.md](docs/LUCKFOX_STARTUP_WORKFLOW.md).
 
 ![Buildroot Prompt](img/seedsigner-buildroot-setup.webp)
 
