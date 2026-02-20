@@ -592,14 +592,14 @@ install_seedsigner_app() {
     cp -v "$SCRIPT_DIR/files/start-seedsigner.sh" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/S99seedsigner" "$rootfs_dir/etc/init.d/"
     
-    # Install S50rkaiq init script for camera ISP daemon
-    if [[ -f "$SCRIPT_DIR/files/S50rkaiq" ]]; then
-        print_info "Installing S50rkaiq init script..."
-        cp -v "$SCRIPT_DIR/files/S50rkaiq" "$rootfs_dir/etc/init.d/S50rkaiq"
-        chmod +x "$rootfs_dir/etc/init.d/S50rkaiq"
-        print_success "Installed S50rkaiq to /etc/init.d/"
+    # Install rkaiq camera ISP service script (manual start only, no boot autostart)
+    if [[ -f "$SCRIPT_DIR/files/rkaiq-service" ]]; then
+        print_info "Installing rkaiq service script..."
+        cp -v "$SCRIPT_DIR/files/rkaiq-service" "$rootfs_dir/usr/bin/rkaiq-service"
+        chmod +x "$rootfs_dir/usr/bin/rkaiq-service"
+        print_success "Installed rkaiq-service to /usr/bin/"
     else
-        print_warning "S50rkaiq not found, camera ISP daemon will not start automatically"
+        print_warning "rkaiq-service not found, rkaiq-service will not be available"
     fi
     
     print_success "SeedSigner application installed"

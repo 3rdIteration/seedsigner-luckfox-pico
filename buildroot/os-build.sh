@@ -614,14 +614,14 @@ CONFIGMENU
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
     
-    # Install S50rkaiq init script for camera ISP daemon
-    if [[ -f "/build/files/S50rkaiq" ]]; then
-        print_info "Installing S50rkaiq init script..."
-        cp -v "/build/files/S50rkaiq" "$ROOTFS_DIR/etc/init.d/S50rkaiq"
-        chmod +x "$ROOTFS_DIR/etc/init.d/S50rkaiq"
-        print_success "Installed S50rkaiq to /etc/init.d/"
+    # Install rkaiq camera ISP service script (manual start only, no boot autostart)
+    if [[ -f "/build/files/rkaiq-service" ]]; then
+        print_info "Installing rkaiq service script..."
+        cp -v "/build/files/rkaiq-service" "$ROOTFS_DIR/usr/bin/rkaiq-service"
+        chmod +x "$ROOTFS_DIR/usr/bin/rkaiq-service"
+        print_success "Installed rkaiq-service to /usr/bin/"
     else
-        print_warning "S50rkaiq not found, camera ISP daemon will not start automatically"
+        print_warning "rkaiq-service not found, rkaiq-service will not be available"
     fi
 
     print_step "Packaging Firmware"

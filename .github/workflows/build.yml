@@ -562,15 +562,15 @@ jobs:
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
         
-        # Install S50rkaiq init script for camera ISP support
-        echo "🔧 Installing S50rkaiq init script..."
-        if [[ -f "../seedsigner-luckfox-pico/buildroot/files/S50rkaiq" ]]; then
-          cp -v ../seedsigner-luckfox-pico/buildroot/files/S50rkaiq "$ROOTFS_DIR/etc/init.d/"
-          chmod +x "$ROOTFS_DIR/etc/init.d/S50rkaiq"
-          echo "✅ S50rkaiq installed to /etc/init.d/"
+        # Install rkaiq camera ISP service script (manual start only, no boot autostart)
+        echo "🔧 Installing rkaiq service script..."
+        if [[ -f "../seedsigner-luckfox-pico/buildroot/files/rkaiq-service" ]]; then
+          cp -v ../seedsigner-luckfox-pico/buildroot/files/rkaiq-service "$ROOTFS_DIR/usr/bin/rkaiq-service"
+          chmod +x "$ROOTFS_DIR/usr/bin/rkaiq-service"
+          echo "✅ rkaiq-service installed to /usr/bin/"
         else
-          echo "⚠️  Warning: S50rkaiq file not found"
-          echo "   Camera ISP service will not be automatically started"
+          echo "⚠️  Warning: rkaiq-service file not found"
+          echo "   rkaiq-service will not be available"
         fi
 
     - name: Package firmware

@@ -3,7 +3,10 @@
 # Configuration
 MAX_RETRIES=5
 RETRY_DELAY=10  # seconds
+CAMERA_START_DELAY=6  # seconds after python app launch
 LOG_FILE="/tmp/startup.log"
+APP_PID=""
+CAMERA_HELPER_PID=""
 
 # Function to log messages
 log_message() {
@@ -13,19 +16,37 @@ log_message() {
 # Function to cleanup on exit
 cleanup() {
     log_message "Stopping SeedSigner..."
+    if [ -n "$CAMERA_HELPER_PID" ]; then
+        kill "$CAMERA_HELPER_PID" 2>/dev/null || true
+    fi
+    if [ -n "$APP_PID" ]; then
+        kill "$APP_PID" 2>/dev/null || true
+    fi
     killall rkipc 2>/dev/null
     exit 0
 }
 
 start_camera_service() {
-    if [ ! -x /etc/init.d/S50rkaiq ]; then
-        log_message "S50rkaiq service script not found; continuing"
+    local camera_service="/usr/bin/rkaiq-service"
+    if [ ! -x "$camera_service" ]; then
+        log_message "rkaiq service script not found at $camera_service; continuing"
         return 0
     fi
 
-    log_message "Starting camera ISP service (S50rkaiq)..."
-    /etc/init.d/S50rkaiq restart >/dev/null 2>&1 || /etc/init.d/S50rkaiq start >/dev/null 2>&1 || true
+    log_message "Starting camera ISP service (rkaiq-service)..."
+    "$camera_service" start >/dev/null 2>&1 || "$camera_service" restart >/dev/null 2>&1 || true
     sleep 2
+}
+
+start_camera_service_later() {
+    local target_pid="$1"
+    (
+        sleep "$CAMERA_START_DELAY"
+        if kill -0 "$target_pid" 2>/dev/null; then
+            start_camera_service
+        fi
+    ) &
+    CAMERA_HELPER_PID="$!"
 }
 
 bootstrap_camera_graph() {
@@ -65,16 +86,25 @@ retry_count=0
 while [ $retry_count -lt $MAX_RETRIES ]; do
     log_message "Starting SeedSigner (attempt $((retry_count + 1))/$MAX_RETRIES)"
     
-    # Start camera service immediately before the app.
-    start_camera_service
-    
-    # Start SeedSigner
-    if python main.py; then
+    # Start SeedSigner first. On Mini, camera ISP start before display init can
+    # exhaust memory and cause SPI open failures.
+    python main.py &
+    APP_PID="$!"
+    start_camera_service_later "$APP_PID"
+
+    wait "$APP_PID"
+    exit_code=$?
+    APP_PID=""
+    if [ -n "$CAMERA_HELPER_PID" ]; then
+        wait "$CAMERA_HELPER_PID" 2>/dev/null || true
+        CAMERA_HELPER_PID=""
+    fi
+
+    if [ $exit_code -eq 0 ]; then
         log_message "SeedSigner exited successfully"
         exit 0
     else
         retry_count=$((retry_count + 1))
-        exit_code=$?
         log_message "SeedSigner failed with exit code $exit_code"
         
         if [ $retry_count -lt $MAX_RETRIES ]; then
