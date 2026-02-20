@@ -483,41 +483,8 @@ jobs:
         ./build.sh rootfs
         ./build.sh media
         
-        # Disable rkipc autostart BEFORE building the app (OEM partition)
-        # This modifies the source files that will be packaged into the OEM partition
-        echo "🔧 Disabling rkipc autostart in OEM source files..."
-        RKLUNCH_LOCATIONS=(
-          "project/app/rkipc/rkipc/common/RkLunch.sh"
-          "project/app/rkipc/rkipc/common/system/RkLunch.sh"
-          "sysdrv/source/rootfs_oem/usr/bin/RkLunch.sh"
-        )
-        
-        MODIFIED=false
-        for RKLUNCH_FILE in "${RKLUNCH_LOCATIONS[@]}"; do
-          if [[ -f "$RKLUNCH_FILE" ]]; then
-            echo "  Modifying $RKLUNCH_FILE..."
-            # Comment any active rkipc launch line regardless of formatting.
-            sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$RKLUNCH_FILE"
-            echo "  ✓ Disabled rkipc in $RKLUNCH_FILE"
-            MODIFIED=true
-          fi
-        done
-        
-        if $MODIFIED; then
-          echo "✅ rkipc autostart disabled in OEM source"
-        else
-          echo "⚠️  Warning: Could not find RkLunch.sh in any expected location"
-          echo "   OEM partition may still have rkipc autostart enabled"
-        fi
-        
-        # Second pass: patch every RkLunch.sh found in tree to avoid path assumptions.
-        echo "Running robust RkLunch.sh patch pass..."
-        while IFS= read -r RKLUNCH_FILE; do
-          [[ -n "$RKLUNCH_FILE" ]] || continue
-          echo "  Robust patch on $RKLUNCH_FILE"
-          sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$RKLUNCH_FILE"
-        done < <(find . -type f -name "RkLunch.sh" 2>/dev/null)
-
+        # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
+        echo "Keeping RkLunch.sh rkipc autostart enabled"
         ./build.sh app
 
     - name: Install SeedSigner application

@@ -584,34 +584,8 @@ CONFIGMENU
     print_step "Building Media Support"
     ./build.sh media
 
-    # Disable rkipc autostart in RkLunch.sh (as recommended by LuckFox support)
-    # Must modify source before building app/OEM partition
-    local rklunch_paths=(
-        "$LUCKFOX_SDK_DIR/project/app/rkipc/rkipc/common/RkLunch.sh"
-        "$LUCKFOX_SDK_DIR/project/app/rkipc/rkipc/common/system/RkLunch.sh"
-        "$LUCKFOX_SDK_DIR/sysdrv/source/rootfs_oem/usr/bin/RkLunch.sh"
-    )
-    
-    local rklunch_found=false
-    for rklunch_path in "${rklunch_paths[@]}"; do
-        if [[ -f "$rklunch_path" ]]; then
-            print_info "Disabling rkipc autostart in $rklunch_path..."
-            # Comment any active rkipc launch line regardless of exact formatting.
-            sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$rklunch_path"
-            print_success "Disabled rkipc in $(basename $rklunch_path)"
-            rklunch_found=true
-        fi
-    done
-    
-    if [[ "$rklunch_found" == false ]]; then
-        print_warning "RkLunch.sh not found in SDK source, rkipc may still autostart"
-    fi
-
-    # Second pass: patch every discovered RkLunch.sh in tree to avoid path assumptions.
-    while IFS= read -r rklunch_path; do
-        [[ -n "$rklunch_path" ]] || continue
-        sed -i -E '/^[[:space:]]*#/! s|^([[:space:]]*)(rkipc([[:space:]].*)?)$|#\1\2  # Disabled for SeedSigner|' "$rklunch_path"
-    done < <(find "$LUCKFOX_SDK_DIR" -type f -name "RkLunch.sh" 2>/dev/null)
+    # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
+    print_info "Keeping RkLunch.sh rkipc autostart enabled"
 
     print_step "Building Applications"
     ./build.sh app
