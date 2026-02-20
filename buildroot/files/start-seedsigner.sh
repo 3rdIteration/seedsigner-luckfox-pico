@@ -28,11 +28,34 @@ start_camera_service() {
     sleep 2
 }
 
+bootstrap_camera_graph() {
+    # Some builds only create a usable ISP graph after rkipc performs early init.
+    if ls /dev/v4l-subdev* >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! command -v rkipc >/dev/null 2>&1; then
+        log_message "rkipc not found; skipping camera graph bootstrap"
+        return 0
+    fi
+
+    log_message "Bootstrapping camera graph via temporary rkipc start..."
+    if [ -d "/oem/usr/share/iqfiles" ]; then
+        rkipc -a /oem/usr/share/iqfiles >/tmp/rkipc-bootstrap.log 2>&1 &
+    else
+        rkipc >/tmp/rkipc-bootstrap.log 2>&1 &
+    fi
+    sleep 3
+    killall rkipc 2>/dev/null || true
+    sleep 1
+}
+
 # Set up signal handlers
 trap cleanup SIGTERM SIGINT
 
 # Kill any existing rkipc processes
 killall rkipc 2>/dev/null
+bootstrap_camera_graph
 
 # Change to SeedSigner directory
 cd /seedsigner

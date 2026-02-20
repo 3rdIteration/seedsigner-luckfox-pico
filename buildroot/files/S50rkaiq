@@ -7,6 +7,16 @@ DAEMON="/oem/usr/bin/rkaiq_3A_server"
 PIDFILE="/var/run/rkaiq_3A_server.pid"
 LOGFILE="/tmp/rkaiq_3A_server.log"
 
+ensure_camera_modules() {
+    for mod in rk_dvbm video_rkisp video_rkcif sc3336; do
+        if ! lsmod 2>/dev/null | awk '{print $1}' | grep -qx "$mod"; then
+            if [ -f "/oem/usr/ko/${mod}.ko" ]; then
+                insmod "/oem/usr/ko/${mod}.ko" >/dev/null 2>&1 || true
+            fi
+        fi
+    done
+}
+
 wait_for_oem() {
     local i=0
     while [ $i -lt 10 ]; do
@@ -24,6 +34,9 @@ start() {
         echo "Error: $DAEMON not ready (is /oem mounted?)"
         return 1
     fi
+
+    ensure_camera_modules
+    export LD_LIBRARY_PATH="/oem/usr/lib:/usr/lib:/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
     mkdir -p /var/run
 
