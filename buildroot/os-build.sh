@@ -152,6 +152,18 @@ apply_sdk_patches() {
     echo "  ${GREEN}✓${NC} Max SPI-NAND partition modified (sed)"
     echo ""
     
+    # Apply Pi eMMC partition update to remove userdata.img expectation
+    print_info "Applying Pi eMMC partition update..."
+    PI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-EMMC-Buildroot-RV1106_Luckfox_Pico_Pi-IPC.mk"
+    if [ -f "$PI_FILE" ]; then
+        sed -i 's/,256M(userdata),/,/' "$PI_FILE"
+        sed -i 's/,userdata@\/userdata@ext4//' "$PI_FILE"
+        echo "  ${GREEN}✓${NC} Pi eMMC userdata removed from partition/fs config (sed)"
+    else
+        echo "  ${YELLOW}⚠${NC}  Pi eMMC BoardConfig not found, skipping"
+    fi
+    echo ""
+
     # Verify patches were applied by checking partition sizes
     print_info "Verifying patches..."
     MINI_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk | head -1)
