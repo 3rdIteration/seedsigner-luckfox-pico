@@ -407,7 +407,6 @@ create_nand_image_artifacts() {
         uboot.img
         boot.img
         oem.img
-        userdata.img
         rootfs.img
         sd_update.txt
         tftp_update.txt

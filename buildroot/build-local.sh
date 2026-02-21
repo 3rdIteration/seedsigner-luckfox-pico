@@ -686,7 +686,7 @@ create_nand_bundle() {
     # Copy required files
     local required_files=(
         update.img download.bin env.img idblock.img
-        uboot.img boot.img oem.img userdata.img
+        uboot.img boot.img oem.img
         rootfs.img sd_update.txt tftp_update.txt
     )
     
