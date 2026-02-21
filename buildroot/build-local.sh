@@ -8,8 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Default Python version for buildroot (matches GitHub Actions workflow)
-DEFAULT_PYTHON_VERSION="3.11"
+# Default Python version for buildroot (used if detection fails)
+DEFAULT_PYTHON_VERSION="3.12"
+DISABLE_UART2_CONSOLE_DEBUG="${DISABLE_UART2_CONSOLE_DEBUG:-1}"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -30,6 +31,7 @@ Usage: ./build-local.sh [options]
 Options:
   --hardware TYPE    - Hardware type: mini|max|pi (default: mini)
   --boot MEDIUM      - Boot medium: sd|nand|emmc (default: sd)
+  --enable-uart2-console - Keep UART2 console/debug enabled (default: disabled)
   --check-deps       - Check and install missing dependencies
   --clone-only       - Only clone repositories and exit
   --clean            - Clean previous build artifacts
@@ -428,6 +430,66 @@ apply_mini_cma_config() {
     grep 'RK_BOOTARGS_CMA_SIZE' "$board_config" || print_warning "No CMA configuration found (will use default)"
     
     print_success "CMA size set to $cma_size"
+}
+
+apply_uart2_console_config() {
+    local hardware="$1"
+    local boot_medium="$2"
+
+    if [ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]; then
+        print_info "UART2 console debug left enabled (DISABLE_UART2_CONSOLE_DEBUG=${DISABLE_UART2_CONSOLE_DEBUG})"
+        return 0
+    fi
+
+    print_header "Disabling UART2 Console Debug"
+
+    cd "$WORK_DIR/luckfox-pico"
+
+    local sdk_hardware
+    case "$hardware" in
+        mini)
+            sdk_hardware="RV1103_Luckfox_Pico_Mini"
+            ;;
+        max)
+            sdk_hardware="RV1106_Luckfox_Pico_Pro_Max"
+            ;;
+        *)
+            print_error "Unknown hardware type: $hardware"
+            exit 1
+            ;;
+    esac
+
+    local sdk_boot_medium
+    case "$boot_medium" in
+        sd)
+            sdk_boot_medium="SD_CARD"
+            ;;
+        nand)
+            sdk_boot_medium="SPI_NAND"
+            ;;
+        *)
+            print_error "Unknown boot medium: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found: $board_config"
+        exit 1
+    fi
+
+    print_info "Using board config: $board_config"
+    sed -i 's/\<console=ttyFIQ0\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+    sed -i 's/[[:space:]]\+/ /g; s/"[[:space:]]\+/" /g; s/[[:space:]]\+"/ "/g' "$board_config"
+
+    if grep -q 'console=ttyFIQ0' "$board_config"; then
+        print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled in $board_config"
 }
 
 prepare_buildroot() {
@@ -841,6 +903,10 @@ main() {
                 check_deps_only=true
                 shift
                 ;;
+            --enable-uart2-console)
+                DISABLE_UART2_CONSOLE_DEBUG=0
+                shift
+                ;;
             --clone-only)
                 clone_only=true
                 shift
@@ -864,6 +930,7 @@ main() {
     print_header "SeedSigner Local Build System"
     print_info "Hardware: $hardware"
     print_info "Boot Medium: $boot_medium"
+    print_info "Disable UART2 Console Debug: $DISABLE_UART2_CONSOLE_DEBUG"
     print_info "Working Directory: $WORK_DIR"
     
     # Handle special modes
@@ -898,6 +965,7 @@ main() {
     # Full build process
     setup_toolchain
     configure_board "$hardware" "$boot_medium"
+    apply_uart2_console_config "$hardware" "$boot_medium"
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages

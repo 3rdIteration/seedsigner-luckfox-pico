@@ -35,6 +35,8 @@ export BR2_JLEVEL="${BUILD_JOBS}"
 export FORCE_UNSAFE_CONFIGURE=1
 export BUILD_MODEL="${BUILD_MODEL:-both}"
 export MINI_CMA_SIZE="${MINI_CMA_SIZE:-1M}"
+export DISABLE_UART2_CONSOLE_DEBUG="${DISABLE_UART2_CONSOLE_DEBUG:-1}"
+export DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.12}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -62,6 +64,7 @@ show_usage() {
     echo "  - Model selector via BUILD_MODEL=mini|max|pi|both"
     echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
     echo "  - 'both' builds mini+max; use 'pi' to build the Pico Pi (eMMC only)"
+    echo "  - UART2 console toggle via DISABLE_UART2_CONSOLE_DEBUG=1|0 (default: 1)"
     echo ""
 }
 
@@ -374,6 +377,53 @@ apply_mini_cma_profile() {
     fi
 }
 
+apply_uart2_console_config() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    if [[ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]]; then
+        print_info "UART2 console debug left enabled (DISABLE_UART2_CONSOLE_DEBUG=${DISABLE_UART2_CONSOLE_DEBUG})"
+        return
+    fi
+
+    local sdk_hardware
+    case "$board_profile" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max) sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        *)
+            print_error "Unsupported board profile for UART2 console config: $board_profile"
+            exit 1
+            ;;
+    esac
+
+    local sdk_boot_medium
+    case "$boot_medium" in
+        sd) sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        *)
+            print_error "Unsupported boot medium for UART2 console config: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="$LUCKFOX_SDK_DIR/project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    if [[ ! -f "$board_config" ]]; then
+        print_error "Board config file not found for UART2 console config: $board_config"
+        exit 1
+    fi
+
+    print_step "Disabling UART2 console debug in board config (${board_profile}/${boot_medium})"
+    sed -i 's/\<console=ttyFIQ0\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+    sed -i 's/[[:space:]]\+/ /g; s/"[[:space:]]\+/" /g; s/[[:space:]]\+"/ "/g' "$board_config"
+
+    if grep -q 'console=ttyFIQ0' "$board_config"; then
+        print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled: $board_config"
+}
+
 resolve_rootfs_dir() {
     local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
     local matches=( $pattern )
@@ -604,6 +654,7 @@ build_profile_artifacts() {
 
     # Some SDK clean paths may reset board context; force board selection again.
     select_board_profile "$board_profile" "$boot_medium"
+    apply_uart2_console_config "$board_profile" "$boot_medium"
 
     print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
     ensure_buildroot_tree
@@ -618,7 +669,15 @@ build_profile_artifacts() {
 
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
-        sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
+        local python_ver
+        python_ver=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || true)
+        if [[ -z "$python_ver" ]]; then
+            python_ver="$DEFAULT_PYTHON_VERSION"
+            print_info "Python version not found in Buildroot config; using default: $python_ver"
+        else
+            print_info "Detected Python version from Buildroot config: $python_ver"
+        fi
+        sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${python_ver}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
     fi
 
     print_step "Adding SeedSigner Menu to Buildroot"
