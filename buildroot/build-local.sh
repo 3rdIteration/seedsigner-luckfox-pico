@@ -68,6 +68,9 @@ resolve_dts_path_for_hardware() {
         max)
             dts_file="$dts_dir/rv1106g-luckfox-pico-pro-max.dts"
             ;;
+        pi)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pi.dts"
+            ;;
         *)
             print_error "Unknown hardware type for DTS patch: $hardware"
             exit 1
@@ -93,6 +96,9 @@ resolve_dtsi_path_for_hardware() {
             ;;
         max)
             dtsi_file="$dts_dir/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+            ;;
+        pi)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pi-ipc.dtsi"
             ;;
         *)
             print_error "Unknown hardware type for DTSI patch: $hardware"

@@ -91,6 +91,9 @@ resolve_dts_path_for_profile() {
         max)
             dts_file="$dts_dir/rv1106g-luckfox-pico-pro-max.dts"
             ;;
+        pi)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pi.dts"
+            ;;
         *)
             print_error "Unsupported board profile for DTS patch: $board_profile"
             exit 1
@@ -116,6 +119,9 @@ resolve_dtsi_path_for_profile() {
             ;;
         max)
             dtsi_file="$dts_dir/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+            ;;
+        pi)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pi-ipc.dtsi"
             ;;
         *)
             print_error "Unsupported board profile for DTSI patch: $board_profile"
