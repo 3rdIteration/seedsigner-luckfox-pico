@@ -56,6 +56,32 @@ debug_uart_bootargs_outputs() {
     fi
 }
 
+resolve_dts_path_for_hardware() {
+    local hardware="$1"
+    local dts_dir="$WORK_DIR/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dts_file=""
+
+    case "$hardware" in
+        mini)
+            dts_file="$dts_dir/rv1103g-luckfox-pico-mini.dts"
+            ;;
+        max)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pro-max.dts"
+            ;;
+        *)
+            print_error "Unknown hardware type for DTS patch: $hardware"
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$dts_file" ]; then
+        print_error "DTS file not found for UART2 console patch: $dts_file"
+        exit 1
+    fi
+
+    echo "$dts_file"
+}
+
 show_usage() {
     cat << 'USAGE'
 SeedSigner Local Build System (No Docker)
@@ -530,6 +556,29 @@ apply_uart2_console_config() {
     fi
 
     print_success "UART2 console debug disabled in $board_config"
+}
+
+apply_uart2_console_dts_patch() {
+    local hardware="$1"
+
+    if [ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]; then
+        return 0
+    fi
+
+    print_header "Disabling UART2 Console Debug in DTS"
+
+    local dts_file
+    dts_file="$(resolve_dts_path_for_hardware "$hardware")"
+    debug_uart_bootargs_file "$dts_file" "dts before patch"
+    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$dts_file"
+    debug_uart_bootargs_file "$dts_file" "dts after patch"
+
+    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$dts_file"; then
+        print_error "UART2 console debug removal verification failed in DTS: $dts_file"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled in DTS: $dts_file"
 }
 
 prepare_buildroot() {
@@ -1007,6 +1056,7 @@ main() {
     setup_toolchain
     configure_board "$hardware" "$boot_medium"
     apply_uart2_console_config "$hardware" "$boot_medium"
+    apply_uart2_console_dts_patch "$hardware"
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages

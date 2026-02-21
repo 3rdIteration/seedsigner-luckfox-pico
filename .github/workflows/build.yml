@@ -410,6 +410,49 @@ jobs:
           echo "UART2 console debug remains enabled"
         fi
 
+    - name: Configure UART2 console debug in DTS
+      run: |
+        cd luckfox-pico
+
+        DISABLE_UART2_CONSOLE_DEBUG="${{ github.event.inputs.disable_uart2_console_debug }}"
+        if [ -z "$DISABLE_UART2_CONSOLE_DEBUG" ]; then
+          DISABLE_UART2_CONSOLE_DEBUG="true"
+        fi
+
+        HARDWARE="${{ matrix.hardware }}"
+        if [[ "$HARDWARE" == "RV1103_Luckfox_Pico_Mini" ]]; then
+          DTS_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1103g-luckfox-pico-mini.dts"
+        elif [[ "$HARDWARE" == "RV1106_Luckfox_Pico_Pro_Max" ]]; then
+          DTS_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1106g-luckfox-pico-pro-max.dts"
+        else
+          echo "ERROR: Unknown hardware for DTS patch: $HARDWARE"
+          exit 1
+        fi
+
+        echo "UART2 console debug DTS setting: disable=${DISABLE_UART2_CONSOLE_DEBUG}"
+        echo "Target DTS file: $DTS_FILE"
+
+        if [ "$DISABLE_UART2_CONSOLE_DEBUG" = "true" ]; then
+          if [ ! -f "$DTS_FILE" ]; then
+            echo "ERROR: DTS file not found for UART2 console settings: $DTS_FILE"
+            exit 1
+          fi
+
+          echo "UART bootargs debug in DTS (before patch):"
+          grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$DTS_FILE" || echo "  (no matching bootarg tokens)"
+          sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$DTS_FILE"
+          echo "UART bootargs debug in DTS (after patch):"
+          grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$DTS_FILE" || echo "  (no matching bootarg tokens)"
+
+          if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$DTS_FILE"; then
+            echo "ERROR: Failed to remove UART2 console argument from $DTS_FILE"
+            exit 1
+          fi
+          echo "UART2 console debug disabled in DTS: $DTS_FILE"
+        else
+          echo "UART2 console debug remains enabled in DTS"
+        fi
+
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
       run: |
@@ -657,6 +700,11 @@ jobs:
         done
         if [ "$FOUND_UART_FILES" != "true" ]; then
           echo "No text-like image metadata files found under output/image"
+        fi
+
+        if grep -aEq 'console=ttyFIQ0|earlycon=uart8250|user_debug=' output/image/boot.img; then
+          echo "ERROR: UART console/debug tokens still present in output/image/boot.img"
+          exit 1
         fi
 
     - name: Create flashable SD image

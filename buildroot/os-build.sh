@@ -79,6 +79,32 @@ debug_uart_bootargs_outputs() {
     fi
 }
 
+resolve_dts_path_for_profile() {
+    local board_profile="$1"
+    local dts_dir="$LUCKFOX_SDK_DIR/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dts_file=""
+
+    case "$board_profile" in
+        mini)
+            dts_file="$dts_dir/rv1103g-luckfox-pico-mini.dts"
+            ;;
+        max)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pro-max.dts"
+            ;;
+        *)
+            print_error "Unsupported board profile for DTS patch: $board_profile"
+            exit 1
+            ;;
+    esac
+
+    if [[ ! -f "$dts_file" ]]; then
+        print_error "DTS file not found for UART2 console patch: $dts_file"
+        exit 1
+    fi
+
+    echo "$dts_file"
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -463,6 +489,29 @@ apply_uart2_console_config() {
     print_success "UART2 console debug disabled in: $board_config"
 }
 
+apply_uart2_console_dts_patch() {
+    local board_profile="$1"
+
+    if [[ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]]; then
+        return
+    fi
+
+    local dts_file
+    dts_file="$(resolve_dts_path_for_profile "$board_profile")"
+
+    print_step "Disabling UART2 console debug in DTS (${board_profile})"
+    debug_uart_bootargs_file "$dts_file" "dts before patch"
+    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$dts_file"
+    debug_uart_bootargs_file "$dts_file" "dts after patch"
+
+    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$dts_file"; then
+        print_error "UART2 console debug removal verification failed in DTS: $dts_file"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled in DTS: $dts_file"
+}
+
 resolve_rootfs_dir() {
     local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
     local matches=( $pattern )
@@ -694,6 +743,7 @@ build_profile_artifacts() {
     # Some SDK clean paths may reset board context; force board selection again.
     select_board_profile "$board_profile" "$boot_medium"
     apply_uart2_console_config "$board_profile" "$boot_medium"
+    apply_uart2_console_dts_patch "$board_profile"
 
     print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
     ensure_buildroot_tree
