@@ -450,12 +450,7 @@ jobs:
             if grep -Eq '&uart2[[:space:]]*\{' "$target"; then
               sed -i '/&uart2[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$target"
             else
-              cat >> "$target" <<'EOF'
-
-&uart2 {
-	status = "okay";
-};
-EOF
+              printf '\n&uart2 {\n\tstatus = "okay";\n};\n' >> "$target"
             fi
             echo "UART bootargs debug in DTS source (after patch): $target"
             grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$target" || echo "  (no matching bootarg tokens)"
@@ -505,11 +500,7 @@ EOF
           sed -i -E '/^CONFIG_SERIAL_8250(=|_)/d;/^# CONFIG_SERIAL_8250 is not set$/d' "$KERNEL_CFG_FILE"
           sed -i -E '/^CONFIG_SERIAL_8250_DW(=|_)/d;/^# CONFIG_SERIAL_8250_DW is not set$/d' "$KERNEL_CFG_FILE"
           sed -i -E '/^CONFIG_SERIAL_OF_PLATFORM(=|_)/d;/^# CONFIG_SERIAL_OF_PLATFORM is not set$/d' "$KERNEL_CFG_FILE"
-          cat >> "$KERNEL_CFG_FILE" <<'EOF'
-CONFIG_SERIAL_8250=y
-CONFIG_SERIAL_8250_DW=y
-CONFIG_SERIAL_OF_PLATFORM=y
-EOF
+          printf 'CONFIG_SERIAL_8250=y\nCONFIG_SERIAL_8250_DW=y\nCONFIG_SERIAL_OF_PLATFORM=y\n' >> "$KERNEL_CFG_FILE"
 
           if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$KERNEL_CFG_FILE"; then
             echo "ERROR: Failed to disable FIQ debugger in $KERNEL_CFG_FILE"
