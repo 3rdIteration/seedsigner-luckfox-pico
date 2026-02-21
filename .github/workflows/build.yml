@@ -643,6 +643,28 @@ jobs:
           sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
         fi
 
+        # Normalize python-pyzbar download source for Buildroot mirror compatibility.
+        # Keep the same upstream content/hash, but force a deterministic tag tarball URL.
+        PYZBAR_MK="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.mk"
+        PYZBAR_HASH="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.hash"
+        if [ -f "$PYZBAR_MK" ]; then
+          PYZBAR_VER=$(sed -n 's/^PYTHON_PYZBAR_VERSION[[:space:]]*=[[:space:]]*//p' "$PYZBAR_MK" | head -n 1 | tr -d '[:space:]')
+          PYZBAR_SRC="v${PYZBAR_VER}.tar.gz"
+          sed -i "s|^PYTHON_PYZBAR_SITE[[:space:]]*=.*|PYTHON_PYZBAR_SITE = https://github.com/SeedSigner/pyzbar/archive/refs/tags|" "$PYZBAR_MK"
+          if grep -q '^PYTHON_PYZBAR_SOURCE[[:space:]]*=' "$PYZBAR_MK"; then
+            sed -i "s|^PYTHON_PYZBAR_SOURCE[[:space:]]*=.*|PYTHON_PYZBAR_SOURCE = ${PYZBAR_SRC}|" "$PYZBAR_MK"
+          else
+            sed -i "/^PYTHON_PYZBAR_SITE[[:space:]]*=/a PYTHON_PYZBAR_SOURCE = ${PYZBAR_SRC}" "$PYZBAR_MK"
+          fi
+          sed -i '/^PYTHON_PYZBAR_SITE_METHOD[[:space:]]*=/d' "$PYZBAR_MK"
+          echo "Normalized python-pyzbar source to ${PYZBAR_SRC}"
+
+          if [ -f "$PYZBAR_HASH" ]; then
+            sed -i -E "/^(sha256|md5)[[:space:]]/ s/[[:space:]][^[:space:]]+$/ ${PYZBAR_SRC}/" "$PYZBAR_HASH"
+            echo "Updated python-pyzbar hash filename to ${PYZBAR_SRC}"
+          fi
+        fi
+
     - name: Build system
       run: |
         cd luckfox-pico

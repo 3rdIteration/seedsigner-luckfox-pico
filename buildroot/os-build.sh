@@ -899,6 +899,30 @@ build_profile_artifacts() {
         sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${python_ver}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
     fi
 
+    # Normalize python-pyzbar download source for Buildroot mirror compatibility.
+    # Keep the same upstream content/hash, but force a deterministic tag tarball URL.
+    local pyzbar_mk="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.mk"
+    local pyzbar_hash="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.hash"
+    if [[ -f "$pyzbar_mk" ]]; then
+        local pyzbar_ver
+        local pyzbar_src
+        pyzbar_ver=$(sed -n 's/^PYTHON_PYZBAR_VERSION[[:space:]]*=[[:space:]]*//p' "$pyzbar_mk" | head -n 1 | tr -d '[:space:]')
+        pyzbar_src="v${pyzbar_ver}.tar.gz"
+        sed -i "s|^PYTHON_PYZBAR_SITE[[:space:]]*=.*|PYTHON_PYZBAR_SITE = https://github.com/SeedSigner/pyzbar/archive/refs/tags|" "$pyzbar_mk"
+        if grep -q '^PYTHON_PYZBAR_SOURCE[[:space:]]*=' "$pyzbar_mk"; then
+            sed -i "s|^PYTHON_PYZBAR_SOURCE[[:space:]]*=.*|PYTHON_PYZBAR_SOURCE = ${pyzbar_src}|" "$pyzbar_mk"
+        else
+            sed -i "/^PYTHON_PYZBAR_SITE[[:space:]]*=/a PYTHON_PYZBAR_SOURCE = ${pyzbar_src}" "$pyzbar_mk"
+        fi
+        sed -i '/^PYTHON_PYZBAR_SITE_METHOD[[:space:]]*=/d' "$pyzbar_mk"
+        print_info "Normalized python-pyzbar source to ${pyzbar_src}"
+
+        if [[ -f "$pyzbar_hash" ]]; then
+            sed -i -E "/^(sha256|md5)[[:space:]]/ s/[[:space:]][^[:space:]]+$/ ${pyzbar_src}/" "$pyzbar_hash"
+            print_info "Updated python-pyzbar hash filename to ${pyzbar_src}"
+        fi
+    fi
+
     print_step "Adding SeedSigner Menu to Buildroot"
     if ! grep -q '^menu "SeedSigner"$' "$CONFIG_IN"; then
         cat << 'CONFIGMENU' >> "$CONFIG_IN"
