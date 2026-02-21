@@ -82,6 +82,32 @@ resolve_dts_path_for_hardware() {
     echo "$dts_file"
 }
 
+resolve_dtsi_path_for_hardware() {
+    local hardware="$1"
+    local dts_dir="$WORK_DIR/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dtsi_file=""
+
+    case "$hardware" in
+        mini)
+            dtsi_file="$dts_dir/rv1103-luckfox-pico-ipc.dtsi"
+            ;;
+        max)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+            ;;
+        *)
+            print_error "Unknown hardware type for DTSI patch: $hardware"
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$dtsi_file" ]; then
+        print_error "DTSI file not found for UART2 console patch: $dtsi_file"
+        exit 1
+    fi
+
+    echo "$dtsi_file"
+}
+
 show_usage() {
     cat << 'USAGE'
 SeedSigner Local Build System (No Docker)
@@ -567,18 +593,21 @@ apply_uart2_console_dts_patch() {
 
     print_header "Disabling UART2 Console Debug in DTS"
 
-    local dts_file
+    local dts_file dtsi_file target
     dts_file="$(resolve_dts_path_for_hardware "$hardware")"
-    debug_uart_bootargs_file "$dts_file" "dts before patch"
-    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$dts_file"
-    debug_uart_bootargs_file "$dts_file" "dts after patch"
+    dtsi_file="$(resolve_dtsi_path_for_hardware "$hardware")"
+    for target in "$dts_file" "$dtsi_file"; do
+        debug_uart_bootargs_file "$target" "dts source before patch"
+        sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+        debug_uart_bootargs_file "$target" "dts source after patch"
 
-    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$dts_file"; then
-        print_error "UART2 console debug removal verification failed in DTS: $dts_file"
-        exit 1
-    fi
+        if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$target"; then
+            print_error "UART2 console debug removal verification failed in DTS source: $target"
+            exit 1
+        fi
+    done
 
-    print_success "UART2 console debug disabled in DTS: $dts_file"
+    print_success "UART2 console debug disabled in DTS sources: $dts_file, $dtsi_file"
 }
 
 prepare_buildroot() {

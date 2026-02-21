@@ -105,6 +105,32 @@ resolve_dts_path_for_profile() {
     echo "$dts_file"
 }
 
+resolve_dtsi_path_for_profile() {
+    local board_profile="$1"
+    local dts_dir="$LUCKFOX_SDK_DIR/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dtsi_file=""
+
+    case "$board_profile" in
+        mini)
+            dtsi_file="$dts_dir/rv1103-luckfox-pico-ipc.dtsi"
+            ;;
+        max)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+            ;;
+        *)
+            print_error "Unsupported board profile for DTSI patch: $board_profile"
+            exit 1
+            ;;
+    esac
+
+    if [[ ! -f "$dtsi_file" ]]; then
+        print_error "DTSI file not found for UART2 console patch: $dtsi_file"
+        exit 1
+    fi
+
+    echo "$dtsi_file"
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -496,20 +522,23 @@ apply_uart2_console_dts_patch() {
         return
     fi
 
-    local dts_file
+    local dts_file dtsi_file target
     dts_file="$(resolve_dts_path_for_profile "$board_profile")"
+    dtsi_file="$(resolve_dtsi_path_for_profile "$board_profile")"
 
-    print_step "Disabling UART2 console debug in DTS (${board_profile})"
-    debug_uart_bootargs_file "$dts_file" "dts before patch"
-    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$dts_file"
-    debug_uart_bootargs_file "$dts_file" "dts after patch"
+    print_step "Disabling UART2 console debug in DTS sources (${board_profile})"
+    for target in "$dts_file" "$dtsi_file"; do
+        debug_uart_bootargs_file "$target" "before patch"
+        sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+        debug_uart_bootargs_file "$target" "after patch"
 
-    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$dts_file"; then
-        print_error "UART2 console debug removal verification failed in DTS: $dts_file"
-        exit 1
-    fi
+        if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$target"; then
+            print_error "UART2 console debug removal verification failed in DTS source: $target"
+            exit 1
+        fi
+    done
 
-    print_success "UART2 console debug disabled in DTS: $dts_file"
+    print_success "UART2 console debug disabled in DTS sources: $dts_file, $dtsi_file"
 }
 
 resolve_rootfs_dir() {
