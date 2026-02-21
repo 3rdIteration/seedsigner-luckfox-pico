@@ -474,32 +474,25 @@ apply_uart2_console_config() {
     esac
 
     local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
-    local active_config=".BoardConfig.mk"
 
-    local cfg
-    local found=false
-    for cfg in "$board_config" "$active_config"; do
-        if [ ! -f "$cfg" ]; then
-            continue
-        fi
+    if [ ! -f "$board_config" ] && [ -L ".BoardConfig.mk" ]; then
+        board_config="$(readlink -f .BoardConfig.mk)"
+    fi
 
-        found=true
-        print_info "Updating board config: $cfg"
-        sed -i 's/\<console=ttyFIQ0\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$cfg"
-        sed -i 's/[[:space:]]\+/ /g; s/"[[:space:]]\+/" /g; s/[[:space:]]\+"/ "/g' "$cfg"
-
-        if grep -q 'console=ttyFIQ0' "$cfg"; then
-            print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present in $cfg"
-            exit 1
-        fi
-    done
-
-    if [ "$found" != "true" ]; then
-        print_error "No board config files found for UART2 console config"
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found for UART2 console config: $board_config"
         exit 1
     fi
 
-    print_success "UART2 console debug disabled in active board configuration"
+    print_info "Updating board config: $board_config"
+    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+
+    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$board_config"; then
+        print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present in $board_config"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled in $board_config"
 }
 
 prepare_buildroot() {

@@ -383,30 +383,25 @@ jobs:
         fi
 
         BOARD_CONFIG="$BOARD_CONFIG_PATH"
-        ACTIVE_BOARD_CONFIG=".BoardConfig.mk"
+        if [ ! -f "$BOARD_CONFIG" ] && [ -L ".BoardConfig.mk" ]; then
+          BOARD_CONFIG="$(readlink -f .BoardConfig.mk)"
+        fi
         echo "UART2 console debug setting: disable=${DISABLE_UART2_CONSOLE_DEBUG}"
         echo "Target board config: $BOARD_CONFIG"
 
         if [ "$DISABLE_UART2_CONSOLE_DEBUG" = "true" ]; then
-          FOUND_CONFIG=false
-          for CFG in "$BOARD_CONFIG" "$ACTIVE_BOARD_CONFIG"; do
-            if [ -f "$CFG" ]; then
-              FOUND_CONFIG=true
-              sed -i 's/\<console=ttyFIQ0\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$CFG"
-              sed -i 's/[[:space:]]\+/ /g; s/"[[:space:]]\+/" /g; s/[[:space:]]\+"/ "/g' "$CFG"
-
-              if grep -q 'console=ttyFIQ0' "$CFG"; then
-                echo "ERROR: Failed to remove UART2 console argument from $CFG"
-                exit 1
-              fi
-              echo "UART2 console debug disabled in $CFG"
-            fi
-          done
-
-          if [ "$FOUND_CONFIG" != "true" ]; then
-            echo "ERROR: No board config files found to apply UART2 console settings"
+          if [ ! -f "$BOARD_CONFIG" ]; then
+            echo "ERROR: Board config file not found for UART2 console settings: $BOARD_CONFIG"
             exit 1
           fi
+
+          sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$BOARD_CONFIG"
+
+          if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$BOARD_CONFIG"; then
+            echo "ERROR: Failed to remove UART2 console argument from $BOARD_CONFIG"
+            exit 1
+          fi
+          echo "UART2 console debug disabled in $BOARD_CONFIG"
         else
           echo "UART2 console debug remains enabled"
         fi
