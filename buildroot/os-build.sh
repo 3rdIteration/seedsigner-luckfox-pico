@@ -635,6 +635,9 @@ CONFIGMENU
     print_step "Applying SeedSigner Configuration"
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        # Also copy as luckfox_pico_w_defconfig so the Pi board (RK_BUILDROOT_DEFCONFIG=luckfox_pico_w_defconfig)
+        # loads our clean config instead of the SDK's WiFi/BT-enabled config
+        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_w_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
     else
         print_error "SeedSigner configuration file not found"

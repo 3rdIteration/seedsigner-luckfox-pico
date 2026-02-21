@@ -492,6 +492,9 @@ apply_seedsigner_config() {
     
     # Copy SeedSigner defconfig
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/configs/luckfox_pico_defconfig"
+    # Also copy as luckfox_pico_w_defconfig so the Pi board (RK_BUILDROOT_DEFCONFIG=luckfox_pico_w_defconfig)
+    # loads our clean config instead of the SDK's WiFi/BT-enabled config
+    cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/configs/luckfox_pico_w_defconfig"
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/.config"
     
     # Update pyzbar patch

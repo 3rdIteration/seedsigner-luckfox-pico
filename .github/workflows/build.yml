@@ -457,6 +457,9 @@ jobs:
         
         # Copy SeedSigner defconfig
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        # Also copy as luckfox_pico_w_defconfig so the Pi board (RK_BUILDROOT_DEFCONFIG=luckfox_pico_w_defconfig)
+        # loads our clean config instead of the SDK's WiFi/BT-enabled config
+        cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_w_defconfig"
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/.config"
 
         # Remove pip/setuptools from Mini SPI-NAND to save space
