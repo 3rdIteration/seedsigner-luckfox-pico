@@ -447,6 +447,16 @@ jobs:
             echo "UART bootargs debug in DTS source (before patch): $target"
             grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$target" || echo "  (no matching bootarg tokens)"
             sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+            if grep -Eq '&uart2[[:space:]]*\{' "$target"; then
+              sed -i '/&uart2[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$target"
+            else
+              cat >> "$target" <<'EOF'
+
+&uart2 {
+	status = "okay";
+};
+EOF
+            fi
             echo "UART bootargs debug in DTS source (after patch): $target"
             grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$target" || echo "  (no matching bootarg tokens)"
 
@@ -492,12 +502,20 @@ jobs:
           echo "Disabling FIQ debugger in kernel defconfig: $KERNEL_CFG_FILE"
           sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$KERNEL_CFG_FILE"
           echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_SERIAL_8250(=|_)/d;/^# CONFIG_SERIAL_8250 is not set$/d' "$KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_SERIAL_8250_DW(=|_)/d;/^# CONFIG_SERIAL_8250_DW is not set$/d' "$KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_SERIAL_OF_PLATFORM(=|_)/d;/^# CONFIG_SERIAL_OF_PLATFORM is not set$/d' "$KERNEL_CFG_FILE"
+          cat >> "$KERNEL_CFG_FILE" <<'EOF'
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_DW=y
+CONFIG_SERIAL_OF_PLATFORM=y
+EOF
 
           if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$KERNEL_CFG_FILE"; then
             echo "ERROR: Failed to disable FIQ debugger in $KERNEL_CFG_FILE"
             exit 1
           fi
-          grep -nE 'FIQ_DEBUGGER' "$KERNEL_CFG_FILE" || true
+          grep -nE 'FIQ_DEBUGGER|SERIAL_8250|SERIAL_OF_PLATFORM' "$KERNEL_CFG_FILE" || true
         else
           echo "UART2 FIQ debugger configuration remains enabled"
         fi

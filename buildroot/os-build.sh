@@ -538,6 +538,18 @@ apply_uart2_console_dts_patch() {
     for target in "$dts_file" "$dtsi_file"; do
         debug_uart_bootargs_file "$target" "before patch"
         sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+
+        # Enable UART2 as a normal peripheral UART so /dev/ttyS* can be created.
+        if grep -Eq '&uart2[[:space:]]*\{' "$target"; then
+            sed -i '/&uart2[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$target"
+        else
+            cat >> "$target" <<'EOF'
+
+&uart2 {
+	status = "okay";
+};
+EOF
+        fi
         debug_uart_bootargs_file "$target" "after patch"
 
         if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$target"; then
@@ -600,11 +612,33 @@ apply_uart2_fiq_kernel_patch() {
     sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$kernel_cfg_file"
     echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$kernel_cfg_file"
 
+    # Ensure DesignWare 8250 UART driver path is enabled for RV1106 UARTs.
+    sed -i -E '/^CONFIG_SERIAL_8250(=|_)/d;/^# CONFIG_SERIAL_8250 is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_SERIAL_8250_DW(=|_)/d;/^# CONFIG_SERIAL_8250_DW is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_SERIAL_OF_PLATFORM(=|_)/d;/^# CONFIG_SERIAL_OF_PLATFORM is not set$/d' "$kernel_cfg_file"
+    {
+        echo 'CONFIG_SERIAL_8250=y'
+        echo 'CONFIG_SERIAL_8250_DW=y'
+        echo 'CONFIG_SERIAL_OF_PLATFORM=y'
+    } >> "$kernel_cfg_file"
+
     if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$kernel_cfg_file"; then
         print_error "Kernel FIQ debugger disable verification failed in: $kernel_cfg_file"
         exit 1
     fi
-    print_success "Kernel FIQ debugger disabled in: $kernel_cfg_file"
+    if ! grep -Eq '^CONFIG_SERIAL_8250=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_8250 in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_8250_DW=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_8250_DW in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_OF_PLATFORM=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_OF_PLATFORM in $kernel_cfg_file"
+        exit 1
+    fi
+    print_success "Kernel FIQ debugger disabled and serial drivers enabled in: $kernel_cfg_file"
 }
 
 resolve_rootfs_dir() {
