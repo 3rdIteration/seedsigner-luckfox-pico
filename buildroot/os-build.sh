@@ -59,8 +59,9 @@ show_usage() {
     echo "  - No host directory pollution"
     echo "  - Self-contained and portable"
     echo "  - SD artifacts for multiple board labels (default: mini,max)"
-    echo "  - Model selector via BUILD_MODEL=mini|max|both"
+    echo "  - Model selector via BUILD_MODEL=mini|max|pi|both"
     echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
+    echo "  - 'both' builds mini+max; use 'pi' to build the Pico Pi (eMMC only)"
     echo ""
 }
 
@@ -151,6 +152,18 @@ apply_sdk_patches() {
     echo "  ${GREEN}✓${NC} Max SPI-NAND partition modified (sed)"
     echo ""
     
+    # Apply Pi eMMC partition update to remove userdata.img expectation
+    print_info "Applying Pi eMMC partition update..."
+    PI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-EMMC-Buildroot-RV1106_Luckfox_Pico_Pi-IPC.mk"
+    if [ -f "$PI_FILE" ]; then
+        sed -i 's/,256M(userdata),/,/' "$PI_FILE"
+        sed -i 's/,userdata@\/userdata@ext4//' "$PI_FILE"
+        echo "  ${GREEN}✓${NC} Pi eMMC userdata removed from partition/fs config (sed)"
+    else
+        echo "  ${YELLOW}⚠${NC}  Pi eMMC BoardConfig not found, skipping"
+    fi
+    echo ""
+
     # Verify patches were applied by checking partition sizes
     print_info "Verifying patches..."
     MINI_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk | head -1)
@@ -295,8 +308,11 @@ select_board_profile() {
         max)
             hw_index=4
             ;;
+        pi)
+            hw_index=7
+            ;;
         *)
-            print_error "Unsupported board profile: $board_profile (expected: mini,max)"
+            print_error "Unsupported board profile: $board_profile (expected: mini,max,pi)"
             exit 1
             ;;
     esac
@@ -308,8 +324,11 @@ select_board_profile() {
         nand)
             boot_index=1
             ;;
+        emmc)
+            boot_index=0
+            ;;
         *)
-            print_error "Unsupported boot medium: $boot_medium (expected: sd,nand)"
+            print_error "Unsupported boot medium: $boot_medium (expected: sd,nand,emmc)"
             exit 1
             ;;
     esac
@@ -400,7 +419,6 @@ create_nand_image_artifacts() {
         uboot.img
         boot.img
         oem.img
-        userdata.img
         rootfs.img
         sd_update.txt
         tftp_update.txt
@@ -443,6 +461,68 @@ EOF
     tar -czf "$OUTPUT_DIR/$nand_bundle" -C "$OUTPUT_DIR" "$(basename "$nand_bundle_dir")"
     print_success "NAND bundle folder created: $nand_bundle_dir"
     print_success "NAND bundle archive created: $OUTPUT_DIR/$nand_bundle"
+}
+
+
+create_emmc_bundle() {
+    local board_profile="$1"
+    local ts="$2"
+
+    print_step "Creating eMMC-Flashable Bundle (${board_profile})"
+
+    local image_dir="$LUCKFOX_SDK_DIR/output/image"
+
+    if [[ ! -d "$image_dir" ]]; then
+        print_error "Image output directory not found: $image_dir"
+        exit 1
+    fi
+
+    cd "$image_dir"
+
+    if [[ ! -f "update.img" ]]; then
+        print_error "update.img not found. Run './build.sh firmware' before eMMC bundling."
+        exit 1
+    fi
+
+    local emmc_bundle_dir="$OUTPUT_DIR/seedsigner-luckfox-pico-${board_profile}-emmc-files-${ts}"
+    mkdir -p "$emmc_bundle_dir"
+
+    local emmc_files=(
+        update.img
+        download.bin
+        env.img
+        idblock.img
+        uboot.img
+        boot.img
+        oem.img
+        rootfs.img
+    )
+
+    for file in "${emmc_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            cp -v "$file" "$emmc_bundle_dir/"
+        else
+            print_info "Optional file not found, skipping: $file"
+        fi
+    done
+
+    cat > "$emmc_bundle_dir/README.txt" << 'EOF'
+SeedSigner Luckfox eMMC Flash Bundle
+
+Contains SDK-generated eMMC flashing files:
+- update.img / download.bin
+- partition images (*.img)
+
+Flash guidance:
+- Use update.img with official Luckfox SocToolKit (Windows) or rkdeveloptool (Linux/Mac)
+- Connect the board in MASKROM mode (hold BOOT button while connecting USB)
+- See: https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image
+EOF
+
+    local emmc_bundle="seedsigner-luckfox-pico-${board_profile}-emmc-bundle-${ts}.tar.gz"
+    tar -czf "$OUTPUT_DIR/$emmc_bundle" -C "$OUTPUT_DIR" "$(basename "$emmc_bundle_dir")"
+    print_success "eMMC bundle folder created: $emmc_bundle_dir"
+    print_success "eMMC bundle archive created: $OUTPUT_DIR/$emmc_bundle"
 }
 
 
@@ -566,6 +646,9 @@ CONFIGMENU
     print_step "Applying SeedSigner Configuration"
     if [[ -f "/build/configs/luckfox_pico_defconfig" ]]; then
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        # Also copy as luckfox_pico_w_defconfig so the Pi board (RK_BUILDROOT_DEFCONFIG=luckfox_pico_w_defconfig)
+        # loads our clean config instead of the SDK's WiFi/BT-enabled config
+        cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/configs/luckfox_pico_w_defconfig"
         cp -v "/build/configs/luckfox_pico_defconfig" "$BUILDROOT_DIR/.config"
     else
         print_error "SeedSigner configuration file not found"
@@ -636,6 +719,8 @@ CONFIGMENU
         export LAST_MINI_BUILD_TS="$ts"
     elif [[ "$board_profile" == "max" ]]; then
         export LAST_MAX_BUILD_TS="$ts"
+    elif [[ "$board_profile" == "pi" ]]; then
+        export LAST_PI_BUILD_TS="$ts"
     fi
 
     if [[ "$boot_medium" == "sd" ]]; then
@@ -657,6 +742,9 @@ CONFIGMENU
 
         cp -v "$sd_image" "$OUTPUT_DIR/"
         print_success "SD image created for ${board_profile}: $OUTPUT_DIR/$sd_image"
+    elif [[ "$boot_medium" == "emmc" ]]; then
+        print_step "Creating eMMC Bundle (${board_profile})"
+        create_emmc_bundle "$board_profile" "$ts"
     fi
 
     if [[ "$include_nand" == "true" ]]; then
@@ -697,6 +785,12 @@ run_automated_build() {
         if [[ "$BUILD_MODEL" == "max" || "$BUILD_MODEL" == "both" ]]; then
             build_profile_artifacts "max" "sd" "false"
         fi
+    fi
+
+    # Pico Pi only supports eMMC boot medium.
+    if [[ "$BUILD_MODEL" == "pi" ]]; then
+        print_step "Generating eMMC Output (pi, official flow)"
+        build_profile_artifacts "pi" "emmc" "false"
     fi
 
     # Build NAND/flash bundles using official SPI_NAND build flow.

@@ -14,6 +14,7 @@ on:
         options:
           - RV1103_Luckfox_Pico_Mini
           - RV1106_Luckfox_Pico_Pro_Max
+          - RV1106_Luckfox_Pico_Pi
         default: 'RV1103_Luckfox_Pico_Mini'
       boot_medium:
         description: 'Boot Medium'
@@ -22,6 +23,7 @@ on:
         options:
           - SD_CARD
           - SPI_NAND
+          - EMMC
         default: 'SD_CARD'
       luckfox_repo_url:
         description: 'LuckFox Pico SDK Repository URL'
@@ -69,7 +71,8 @@ jobs:
             {"hardware":"RV1103_Luckfox_Pico_Mini","boot":"SD_CARD"},
             {"hardware":"RV1103_Luckfox_Pico_Mini","boot":"SPI_NAND"},
             {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SD_CARD"},
-            {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SPI_NAND"}
+            {"hardware":"RV1106_Luckfox_Pico_Pro_Max","boot":"SPI_NAND"},
+            {"hardware":"RV1106_Luckfox_Pico_Pi","boot":"EMMC"}
           ]') }}
     
     steps:
@@ -201,7 +204,19 @@ jobs:
         sed -i 's/,userdata@\/userdata@ubifs//' "$MAX_FILE"
         echo "  ✓ Max SPI-NAND partition modified (sed)"
         echo ""
-        
+
+        # Apply Pi eMMC partition update to remove userdata.img expectation
+        echo "📦 Applying Pi eMMC partition update..."
+        PI_FILE="project/cfg/BoardConfig_IPC/BoardConfig-EMMC-Buildroot-RV1106_Luckfox_Pico_Pi-IPC.mk"
+        if [ -f "$PI_FILE" ]; then
+          sed -i 's/,256M(userdata),/,/' "$PI_FILE"
+          sed -i 's/,userdata@\/userdata@ext4//' "$PI_FILE"
+          echo "  ✓ Pi eMMC userdata removed from partition/fs config (sed)"
+        else
+          echo "  ⚠ Pi eMMC BoardConfig not found, skipping"
+        fi
+        echo ""
+
         # Verify patches were applied by checking partition sizes
         echo "🔍 Verifying patches..."
         MINI_PARTITION=$(grep "RK_PARTITION_CMD_IN_ENV=" project/cfg/BoardConfig_IPC/BoardConfig-SPI_NAND-Buildroot-RV1103_Luckfox_Pico_Mini-IPC.mk | head -1)
@@ -305,16 +320,21 @@ jobs:
           HW_INDEX=1
         elif [[ "$HARDWARE" == "RV1106_Luckfox_Pico_Pro_Max" ]]; then
           HW_INDEX=4
+        elif [[ "$HARDWARE" == "RV1106_Luckfox_Pico_Pi" ]]; then
+          HW_INDEX=7
         else
           echo "Error: Unknown hardware type: $HARDWARE"
           exit 1
         fi
         
         # Map boot medium to SDK lunch menu index
+        # For eMMC boards the SDK presents only [0] EMMC, so boot_index is always 0
         if [[ "$BOOT_MEDIUM" == "SD_CARD" ]]; then
           BOOT_INDEX=0
         elif [[ "$BOOT_MEDIUM" == "SPI_NAND" ]]; then
           BOOT_INDEX=1
+        elif [[ "$BOOT_MEDIUM" == "EMMC" ]]; then
+          BOOT_INDEX=0
         else
           echo "Error: Unknown boot medium: $BOOT_MEDIUM"
           exit 1
@@ -449,6 +469,9 @@ jobs:
         
         # Copy SeedSigner defconfig
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_defconfig"
+        # Also copy as luckfox_pico_w_defconfig so the Pi board (RK_BUILDROOT_DEFCONFIG=luckfox_pico_w_defconfig)
+        # loads our clean config instead of the SDK's WiFi/BT-enabled config
+        cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/configs/luckfox_pico_w_defconfig"
         cp -v ../seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig "$BUILDROOT_DIR/.config"
 
         # Remove pip/setuptools from Mini SPI-NAND to save space
@@ -525,7 +548,7 @@ jobs:
             echo "Warning: settings.json not found at $SETTINGS_JSON"
           fi
         else
-          echo "Max hardware detected - keeping default FOX_40 configuration"
+          echo "RV1106 hardware (Max or Pi) detected - keeping default FOX_40 configuration"
         fi
         
         # Fix pyzbar library path - symlink zbar.so from site-packages to /usr/lib
@@ -586,11 +609,13 @@ jobs:
         HARDWARE="${{ matrix.hardware }}"
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         
-        # Determine board label (mini or max)
+        # Determine board label (mini, max, or pi)
         if [[ "$HARDWARE" == *"Mini"* ]]; then
           BOARD_LABEL="mini"
         elif [[ "$HARDWARE" == *"Max"* ]]; then
           BOARD_LABEL="max"
+        elif [[ "$HARDWARE" == *"Pico_Pi"* ]]; then
+          BOARD_LABEL="pi"
         else
           BOARD_LABEL="unknown"
         fi
@@ -612,11 +637,13 @@ jobs:
         HARDWARE="${{ matrix.hardware }}"
         TIMESTAMP=$(date +%Y%m%d_%H%M%S)
         
-        # Determine board label (mini or max)
+        # Determine board label (mini, max, or pi)
         if [[ "$HARDWARE" == *"Mini"* ]]; then
           BOARD_LABEL="mini"
         elif [[ "$HARDWARE" == *"Max"* ]]; then
           BOARD_LABEL="max"
+        elif [[ "$HARDWARE" == *"Pico_Pi"* ]]; then
+          BOARD_LABEL="pi"
         else
           BOARD_LABEL="unknown"
         fi
@@ -640,7 +667,6 @@ jobs:
           uboot.img
           boot.img
           oem.img
-          userdata.img
           rootfs.img
           sd_update.txt
           tftp_update.txt
@@ -705,6 +731,83 @@ jobs:
         echo "✅ Created NAND bundle directory: $(basename "$NAND_BUNDLE_DIR")"
         ls -lh "$(basename "$NAND_BUNDLE_DIR")"
 
+    - name: Create eMMC flash bundle
+      if: matrix.boot == 'EMMC'
+      run: |
+        cd luckfox-pico/output/image
+        
+        HARDWARE="${{ matrix.hardware }}"
+        TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+        
+        # Determine board label
+        if [[ "$HARDWARE" == *"Pico_Pi"* ]]; then
+          BOARD_LABEL="pi"
+        else
+          BOARD_LABEL="unknown"
+        fi
+        
+        # Check that firmware packaging created the required files
+        if [[ ! -f "update.img" ]]; then
+          echo "ERROR: update.img not found. Firmware packaging may have failed."
+          exit 1
+        fi
+        
+        # Create eMMC bundle directory
+        EMMC_BUNDLE_DIR="../../../build-artifacts/seedsigner-luckfox-pico-${BOARD_LABEL}-emmc-files-${TIMESTAMP}"
+        mkdir -p "$EMMC_BUNDLE_DIR"
+        
+        # Files for eMMC flashing (copy what is available)
+        EMMC_FILES=(
+          update.img
+          download.bin
+          env.img
+          idblock.img
+          uboot.img
+          boot.img
+          oem.img
+          rootfs.img
+        )
+        
+        for file in "${EMMC_FILES[@]}"; do
+          if [[ -f "$file" ]]; then
+            cp -v "$file" "$EMMC_BUNDLE_DIR/"
+          else
+            echo "Optional file not found, skipping: $file"
+          fi
+        done
+        
+        # Create README for eMMC bundle
+        cat > "$EMMC_BUNDLE_DIR/README.txt" << 'EOF'
+        SeedSigner Luckfox eMMC Flash Bundle
+        
+        Contains SDK-generated eMMC flashing files:
+        - update.img / download.bin
+        - partition images (*.img)
+        
+        Flash guidance for eMMC:
+        
+        1. Download and extract the bundle
+        2. Install LuckFox DriverAssistant and select "Driver Install"
+        3. Connect the board while holding the BOOT button to enter MASKROM mode
+        4. Use one of these methods:
+           
+           Method A - Windows SocToolKit (Easiest):
+           - Open SocToolKit, select update.img and click Flash
+           
+           Method B - Linux/Mac rkdeveloptool:
+           - Use rkdeveloptool with update.img
+           - Command: rkdeveloptool uf update.img
+        
+        For detailed flashing instructions, see:
+        https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image
+        EOF
+        
+        # Bundle is ready - no tar.gz creation to avoid double-zipping
+        # GitHub Actions will zip the folder when uploading artifact
+        cd ../../../build-artifacts
+        echo "✅ Created eMMC bundle directory: $(basename "$EMMC_BUNDLE_DIR")"
+        ls -lh "$(basename "$EMMC_BUNDLE_DIR")"
+
     - name: List build artifacts
       if: always()
       run: |
@@ -748,6 +851,7 @@ jobs:
         # Find SD card images
         SD_IMAGES=$(find build-artifacts -name "*.img" -type f 2>/dev/null || true)
         NAND_BUNDLES=$(find build-artifacts -name "*-nand-bundle-*.tar.gz" -type f 2>/dev/null || true)
+        EMMC_BUNDLES=$(find build-artifacts -name "*-emmc-files-*" -type d 2>/dev/null || true)
         
         if [ -n "$SD_IMAGES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -806,7 +910,28 @@ jobs:
           echo "📖 [Complete Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/)" >> $GITHUB_STEP_SUMMARY
         fi
         
-        if [ -z "$SD_IMAGES" ] && [ -z "$NAND_BUNDLES" ]; then
+        if [ -n "$EMMC_BUNDLES" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 eMMC Flash Bundles (Pico Pi)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**How to Flash eMMC:**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 1: Windows - SocToolKit (Easiest)**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download and install [SocToolKit](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/#1-download-and-install-soctoolkit)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Extract the eMMC bundle zip file" >> $GITHUB_STEP_SUMMARY
+          echo "3. Connect device in MASKROM mode (hold BOOT button while connecting USB)" >> $GITHUB_STEP_SUMMARY
+          echo "4. In SocToolKit: Select \`update.img\` and click Flash" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Method 2: Linux/Mac - rkdeveloptool**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Extract the eMMC bundle zip file" >> $GITHUB_STEP_SUMMARY
+          echo "2. Install rkdeveloptool: \`sudo apt install rkdeveloptool\` (Linux)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Connect device in MASKROM mode (hold BOOT button while connecting USB)" >> $GITHUB_STEP_SUMMARY
+          echo "4. Run: \`rkdeveloptool uf update.img\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📖 [Complete Flashing Guide](https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image/)" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -z "$SD_IMAGES" ] && [ -z "$NAND_BUNDLES" ] && [ -z "$EMMC_BUNDLES" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **No build artifacts found**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
