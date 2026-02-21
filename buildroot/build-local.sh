@@ -28,8 +28,8 @@ Tested on Ubuntu 22.04
 Usage: ./build-local.sh [options]
 
 Options:
-  --hardware TYPE    - Hardware type: mini|max (default: mini)
-  --boot MEDIUM      - Boot medium: sd|nand (default: sd)
+  --hardware TYPE    - Hardware type: mini|max|pi (default: mini)
+  --boot MEDIUM      - Boot medium: sd|nand|emmc (default: sd)
   --check-deps       - Check and install missing dependencies
   --clone-only       - Only clone repositories and exit
   --clean            - Clean previous build artifacts
@@ -39,6 +39,7 @@ Examples:
   ./build-local.sh                              # Build Mini with SD card
   ./build-local.sh --hardware max --boot sd     # Build Max with SD card
   ./build-local.sh --hardware mini --boot nand  # Build Mini with NAND
+  ./build-local.sh --hardware pi --boot emmc    # Build Pico Pi with eMMC
   ./build-local.sh --check-deps                 # Install dependencies
   ./build-local.sh --clone-only                 # Only clone repos
 
@@ -54,6 +55,7 @@ Build Process:
 Output:
   - SD images: luckfox-pico/output/image/*.img
   - NAND bundles: luckfox-pico/output/image/*.tar.gz
+  - eMMC bundles: luckfox-pico/output/image/*.tar.gz
 
 Repository Locations:
   - luckfox-pico: $WORK_DIR/luckfox-pico
@@ -308,6 +310,9 @@ configure_board() {
         max)
             hw_index=4
             ;;
+        pi)
+            hw_index=7
+            ;;
         *)
             print_error "Unknown hardware type: $hardware"
             exit 1
@@ -321,6 +326,9 @@ configure_board() {
             ;;
         nand)
             boot_index=1
+            ;;
+        emmc)
+            boot_index=0
             ;;
         *)
             print_error "Unknown boot medium: $boot_medium"
@@ -373,6 +381,9 @@ apply_mini_cma_config() {
             ;;
         nand)
             sdk_boot_medium="SPI_NAND"
+            ;;
+        emmc)
+            sdk_boot_medium="EMMC"
             ;;
         *)
             print_error "Unknown boot medium: $boot_medium"
@@ -709,6 +720,67 @@ EOF
     ls -lh "$bundle_name"
 }
 
+create_emmc_bundle() {
+    local hardware="$1"
+    
+    print_header "Creating eMMC Flash Bundle"
+    
+    cd "$WORK_DIR/luckfox-pico/output/image"
+    
+    if [ ! -f "update.img" ]; then
+        print_error "update.img not found"
+        exit 1
+    fi
+    
+    local board_label
+    case "$hardware" in
+        pi) board_label="pi" ;;
+        *) board_label="unknown" ;;
+    esac
+    
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local emmc_bundle_dir="seedsigner-luckfox-pico-${board_label}-emmc-files-${timestamp}"
+    
+    mkdir -p "$emmc_bundle_dir"
+    
+    # Copy available files to bundle
+    local emmc_files=(
+        update.img download.bin env.img idblock.img
+        uboot.img boot.img oem.img rootfs.img
+    )
+    
+    for file in "${emmc_files[@]}"; do
+        if [ -f "$file" ]; then
+            cp -v "$file" "$emmc_bundle_dir/"
+        else
+            print_info "Optional file not found, skipping: $file"
+        fi
+    done
+    
+    # Create README
+    cat > "$emmc_bundle_dir/README.txt" << 'EOF'
+SeedSigner Luckfox eMMC Flash Bundle
+
+Contains SDK-generated eMMC flashing files:
+- update.img / download.bin
+- partition images (*.img)
+
+Flash guidance:
+- Use update.img with official Luckfox SocToolKit (Windows) or rkdeveloptool (Linux/Mac)
+- Connect the board in MASKROM mode (hold BOOT button while connecting USB)
+
+For detailed instructions, see:
+https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image
+EOF
+    
+    # Create tar.gz archive
+    local bundle_name="seedsigner-luckfox-pico-${board_label}-emmc-bundle-${timestamp}.tar.gz"
+    tar -czf "$bundle_name" "$emmc_bundle_dir"
+    
+    print_success "eMMC bundle created: $(pwd)/$bundle_name"
+    ls -lh "$bundle_name"
+}
+
 clean_build() {
     print_header "Cleaning Build Artifacts"
     
@@ -733,20 +805,20 @@ main() {
     while [[ $# -gt 0 ]]; do
         case $1 in
             --hardware)
-                if [[ -n "$2" && "$2" =~ ^(mini|max)$ ]]; then
+                if [[ -n "$2" && "$2" =~ ^(mini|max|pi)$ ]]; then
                     hardware="$2"
                     shift 2
                 else
-                    print_error "Invalid hardware type. Use: mini|max"
+                    print_error "Invalid hardware type. Use: mini|max|pi"
                     exit 1
                 fi
                 ;;
             --boot)
-                if [[ -n "$2" && "$2" =~ ^(sd|nand)$ ]]; then
+                if [[ -n "$2" && "$2" =~ ^(sd|nand|emmc)$ ]]; then
                     boot_medium="$2"
                     shift 2
                 else
-                    print_error "Invalid boot medium. Use: sd|nand"
+                    print_error "Invalid boot medium. Use: sd|nand|emmc"
                     exit 1
                 fi
                 ;;
@@ -825,6 +897,8 @@ main() {
     # Create output based on boot medium
     if [ "$boot_medium" == "sd" ]; then
         create_sd_image "$hardware"
+    elif [ "$boot_medium" == "emmc" ]; then
+        create_emmc_bundle "$hardware"
     else
         create_nand_bundle "$hardware"
     fi
@@ -840,6 +914,10 @@ main() {
         echo "  1. Flash the .img file to an SD card"
         echo "  2. Insert SD card into LuckFox Pico device"
         echo "  3. Power on and enjoy SeedSigner!"
+    elif [ "$boot_medium" == "emmc" ]; then
+        echo "  1. Extract the eMMC bundle (.tar.gz)"
+        echo "  2. Flash using official LuckFox SocToolKit or rkdeveloptool"
+        echo "  3. See: https://wiki.luckfox.com/Luckfox-Pico-Plus-Mini/Flash-image"
     else
         echo "  1. Extract the NAND bundle (.tar.gz)"
         echo "  2. Flash using official LuckFox tools"
