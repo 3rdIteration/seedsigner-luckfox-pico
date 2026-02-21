@@ -873,7 +873,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}
+        name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}.zip
         path: build-artifacts/
         retention-days: 30
         if-no-files-found: warn
