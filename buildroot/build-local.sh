@@ -8,8 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Default Python version for buildroot (matches GitHub Actions workflow)
-DEFAULT_PYTHON_VERSION="3.11"
+# Default Python version for buildroot (used if detection fails)
+DEFAULT_PYTHON_VERSION="3.12"
+DISABLE_UART2_CONSOLE_DEBUG="${DISABLE_UART2_CONSOLE_DEBUG:-1}"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -19,6 +20,99 @@ print_success() { echo -e "${GREEN}[SUCCESS] $1${NC}"; }
 print_warning() { echo -e "${YELLOW}[WARNING] $1${NC}"; }
 print_error() { echo -e "${RED}[ERROR] $1${NC}"; }
 print_info() { echo -e "${YELLOW}[INFO] $1${NC}"; }
+
+debug_uart_bootargs_file() {
+    local file_path="$1"
+    local label="$2"
+    print_info "UART bootargs debug (${label}): $file_path"
+    if [ -f "$file_path" ]; then
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$file_path" || echo "  (no matching bootarg tokens)"
+    else
+        echo "  (file not found)"
+    fi
+}
+
+debug_uart_bootargs_outputs() {
+    local image_dir="$WORK_DIR/luckfox-pico/output/image"
+    print_info "UART bootargs debug (output image files): $image_dir"
+    if [ ! -d "$image_dir" ]; then
+        echo "  (output image directory not found)"
+        return 0
+    fi
+
+    local found=false
+    local f
+    for f in "$image_dir"/*.txt "$image_dir"/*.cfg "$image_dir"/*.ini "$image_dir"/parameter*; do
+        if [ ! -e "$f" ]; then
+            continue
+        fi
+        found=true
+        echo "  checking: $(basename "$f")"
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$f" || echo "    (no matching bootarg tokens)"
+    done
+
+    if [ "$found" != "true" ]; then
+        echo "  (no text-like image metadata files found)"
+    fi
+}
+
+resolve_dts_path_for_hardware() {
+    local hardware="$1"
+    local dts_dir="$WORK_DIR/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dts_file=""
+
+    case "$hardware" in
+        mini)
+            dts_file="$dts_dir/rv1103g-luckfox-pico-mini.dts"
+            ;;
+        max)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pro-max.dts"
+            ;;
+        pi)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pi.dts"
+            ;;
+        *)
+            print_error "Unknown hardware type for DTS patch: $hardware"
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$dts_file" ]; then
+        print_error "DTS file not found for UART2 console patch: $dts_file"
+        exit 1
+    fi
+
+    echo "$dts_file"
+}
+
+resolve_dtsi_path_for_hardware() {
+    local hardware="$1"
+    local dts_dir="$WORK_DIR/luckfox-pico/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dtsi_file=""
+
+    case "$hardware" in
+        mini)
+            dtsi_file="$dts_dir/rv1103-luckfox-pico-ipc.dtsi"
+            ;;
+        max)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+            ;;
+        pi)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pi-ipc.dtsi"
+            ;;
+        *)
+            print_error "Unknown hardware type for DTSI patch: $hardware"
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$dtsi_file" ]; then
+        print_error "DTSI file not found for UART2 console patch: $dtsi_file"
+        exit 1
+    fi
+
+    echo "$dtsi_file"
+}
 
 show_usage() {
     cat << 'USAGE'
@@ -30,6 +124,7 @@ Usage: ./build-local.sh [options]
 Options:
   --hardware TYPE    - Hardware type: mini|max|pi (default: mini)
   --boot MEDIUM      - Boot medium: sd|nand|emmc (default: sd)
+  --enable-uart2-console - Keep UART2 console/debug enabled (default: disabled)
   --check-deps       - Check and install missing dependencies
   --clone-only       - Only clone repositories and exit
   --clean            - Clean previous build artifacts
@@ -380,6 +475,9 @@ apply_mini_cma_config() {
         max)
             sdk_hardware="RV1106_Luckfox_Pico_Pro_Max"
             ;;
+        pi)
+            sdk_hardware="RV1106_Luckfox_Pico_Pi"
+            ;;
         *)
             print_error "Unknown hardware type: $hardware"
             exit 1
@@ -428,6 +526,193 @@ apply_mini_cma_config() {
     grep 'RK_BOOTARGS_CMA_SIZE' "$board_config" || print_warning "No CMA configuration found (will use default)"
     
     print_success "CMA size set to $cma_size"
+}
+
+apply_uart2_console_config() {
+    local hardware="$1"
+    local boot_medium="$2"
+
+    if [ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]; then
+        print_info "UART2 console debug left enabled (DISABLE_UART2_CONSOLE_DEBUG=${DISABLE_UART2_CONSOLE_DEBUG})"
+        return 0
+    fi
+
+    print_header "Disabling UART2 Console Debug"
+
+    cd "$WORK_DIR/luckfox-pico"
+
+    local sdk_hardware
+    case "$hardware" in
+        mini)
+            sdk_hardware="RV1103_Luckfox_Pico_Mini"
+            ;;
+        max)
+            sdk_hardware="RV1106_Luckfox_Pico_Pro_Max"
+            ;;
+        *)
+            print_error "Unknown hardware type: $hardware"
+            exit 1
+            ;;
+    esac
+
+    local sdk_boot_medium
+    case "$boot_medium" in
+        sd)
+            sdk_boot_medium="SD_CARD"
+            ;;
+        nand)
+            sdk_boot_medium="SPI_NAND"
+            ;;
+        emmc)
+            sdk_boot_medium="EMMC"
+            ;;
+        *)
+            print_error "Unknown boot medium: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+
+    if [ ! -f "$board_config" ] && [ -L ".BoardConfig.mk" ]; then
+        board_config="$(readlink -f .BoardConfig.mk)"
+    fi
+
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found for UART2 console config: $board_config"
+        exit 1
+    fi
+
+    print_info "Updating board config: $board_config"
+    debug_uart_bootargs_file "$board_config" "before patch"
+    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+    debug_uart_bootargs_file "$board_config" "after patch"
+
+    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$board_config"; then
+        print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present in $board_config"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled in $board_config"
+}
+
+apply_uart2_console_dts_patch() {
+    local hardware="$1"
+
+    if [ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]; then
+        return 0
+    fi
+
+    print_header "Disabling UART2 Console Debug in DTS"
+
+    local dts_file dtsi_file target
+    dts_file="$(resolve_dts_path_for_hardware "$hardware")"
+    dtsi_file="$(resolve_dtsi_path_for_hardware "$hardware")"
+    for target in "$dts_file" "$dtsi_file"; do
+        debug_uart_bootargs_file "$target" "dts source before patch"
+        sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+
+        # Enable UART2 as a normal peripheral UART so /dev/ttyS* can be created.
+        if grep -Eq '&uart2[[:space:]]*\{' "$target"; then
+            sed -i '/&uart2[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$target"
+        else
+            cat >> "$target" <<'EOF'
+
+&uart2 {
+	status = "okay";
+};
+EOF
+        fi
+        debug_uart_bootargs_file "$target" "dts source after patch"
+
+        if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$target"; then
+            print_error "UART2 console debug removal verification failed in DTS source: $target"
+            exit 1
+        fi
+    done
+
+    print_success "UART2 console debug disabled in DTS sources: $dts_file, $dtsi_file"
+}
+
+apply_uart2_fiq_kernel_patch() {
+    local hardware="$1"
+    local boot_medium="$2"
+
+    if [ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]; then
+        return 0
+    fi
+
+    print_header "Disabling FIQ Debugger in Kernel Defconfig"
+
+    local sdk_hardware sdk_boot_medium
+    case "$hardware" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max)  sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi)   sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
+        *)
+            print_error "Unknown hardware type for kernel FIQ patch: $hardware"
+            exit 1
+            ;;
+    esac
+    case "$boot_medium" in
+        sd)   sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
+        *)
+            print_error "Unknown boot medium for kernel FIQ patch: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    if [ ! -f "$board_config" ] && [ -L ".BoardConfig.mk" ]; then
+        board_config="$(readlink -f .BoardConfig.mk)"
+    fi
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found for kernel FIQ patch: $board_config"
+        exit 1
+    fi
+
+    local kernel_defconfig
+    kernel_defconfig="$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$board_config" | head -n1)"
+    [ -n "$kernel_defconfig" ] || kernel_defconfig="luckfox_rv1106_linux_defconfig"
+
+    local kernel_cfg_file="sysdrv/source/kernel/arch/arm/configs/${kernel_defconfig}"
+    if [ ! -f "$kernel_cfg_file" ]; then
+        print_error "Kernel defconfig not found for FIQ patch: $kernel_cfg_file"
+        exit 1
+    fi
+
+    sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$kernel_cfg_file"
+    echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$kernel_cfg_file"
+
+    # Ensure DesignWare 8250 UART driver path is enabled for RV1106 UARTs.
+    sed -i -E '/^CONFIG_SERIAL_8250(=|_)/d;/^# CONFIG_SERIAL_8250 is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_SERIAL_8250_DW(=|_)/d;/^# CONFIG_SERIAL_8250_DW is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_SERIAL_OF_PLATFORM(=|_)/d;/^# CONFIG_SERIAL_OF_PLATFORM is not set$/d' "$kernel_cfg_file"
+    {
+        echo 'CONFIG_SERIAL_8250=y'
+        echo 'CONFIG_SERIAL_8250_DW=y'
+        echo 'CONFIG_SERIAL_OF_PLATFORM=y'
+    } >> "$kernel_cfg_file"
+
+    if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$kernel_cfg_file"; then
+        print_error "Kernel FIQ debugger disable verification failed in: $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_8250=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_8250 in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_8250_DW=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_8250_DW in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_OF_PLATFORM=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_OF_PLATFORM in $kernel_cfg_file"
+        exit 1
+    fi
+    print_success "Kernel FIQ debugger disabled and serial drivers enabled in: $kernel_cfg_file"
 }
 
 prepare_buildroot() {
@@ -523,6 +808,30 @@ apply_seedsigner_config() {
         
         sed -i "s|path = \"/usr/lib/python.*/site-packages/zbar.so\"|path = \"/usr/lib/python${python_ver}/site-packages/zbar.so\"|" "$pyzbar_patch"
         print_info "Updated pyzbar patch for Python $python_ver"
+    fi
+
+    # Normalize python-pyzbar download source for Buildroot mirror compatibility.
+    # Keep the same upstream content/hash, but force a deterministic tag tarball URL.
+    local pyzbar_mk="${buildroot_dir}/package/python-pyzbar/python-pyzbar-ss.mk"
+    local pyzbar_hash="${buildroot_dir}/package/python-pyzbar/python-pyzbar-ss.hash"
+    if [ -f "$pyzbar_mk" ]; then
+        local pyzbar_ver
+        local pyzbar_src
+        pyzbar_ver=$(sed -n 's/^PYTHON_PYZBAR_VERSION[[:space:]]*=[[:space:]]*//p' "$pyzbar_mk" | head -n 1 | tr -d '[:space:]')
+        pyzbar_src="v${pyzbar_ver}.tar.gz"
+        sed -i "s|^PYTHON_PYZBAR_SITE[[:space:]]*=.*|PYTHON_PYZBAR_SITE = https://github.com/SeedSigner/pyzbar/archive/refs/tags|" "$pyzbar_mk"
+        if grep -q '^PYTHON_PYZBAR_SOURCE[[:space:]]*=' "$pyzbar_mk"; then
+            sed -i "s|^PYTHON_PYZBAR_SOURCE[[:space:]]*=.*|PYTHON_PYZBAR_SOURCE = ${pyzbar_src}|" "$pyzbar_mk"
+        else
+            sed -i "/^PYTHON_PYZBAR_SITE[[:space:]]*=/a PYTHON_PYZBAR_SOURCE = ${pyzbar_src}" "$pyzbar_mk"
+        fi
+        sed -i '/^PYTHON_PYZBAR_SITE_METHOD[[:space:]]*=/d' "$pyzbar_mk"
+        print_info "Normalized python-pyzbar source to ${pyzbar_src}"
+
+        if [ -f "$pyzbar_hash" ]; then
+            sed -i -E "/^(sha256|md5)[[:space:]]/ s/[[:space:]][^[:space:]]+$/ ${pyzbar_src}/" "$pyzbar_hash"
+            print_info "Updated python-pyzbar hash filename to ${pyzbar_src}"
+        fi
     fi
     
     print_success "SeedSigner configuration applied"
@@ -637,6 +946,7 @@ package_firmware() {
     cd "$WORK_DIR/luckfox-pico"
     
     ./build.sh firmware
+    debug_uart_bootargs_outputs
     
     print_success "Firmware packaged"
 }
@@ -841,6 +1151,10 @@ main() {
                 check_deps_only=true
                 shift
                 ;;
+            --enable-uart2-console)
+                DISABLE_UART2_CONSOLE_DEBUG=0
+                shift
+                ;;
             --clone-only)
                 clone_only=true
                 shift
@@ -864,6 +1178,7 @@ main() {
     print_header "SeedSigner Local Build System"
     print_info "Hardware: $hardware"
     print_info "Boot Medium: $boot_medium"
+    print_info "Disable UART2 Console Debug: $DISABLE_UART2_CONSOLE_DEBUG"
     print_info "Working Directory: $WORK_DIR"
     
     # Handle special modes
@@ -898,6 +1213,9 @@ main() {
     # Full build process
     setup_toolchain
     configure_board "$hardware" "$boot_medium"
+    apply_uart2_console_config "$hardware" "$boot_medium"
+    apply_uart2_console_dts_patch "$hardware"
+    apply_uart2_fiq_kernel_patch "$hardware" "$boot_medium"
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages

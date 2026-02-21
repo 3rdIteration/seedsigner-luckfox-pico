@@ -25,6 +25,14 @@ on:
           - SPI_NAND
           - EMMC
         default: 'SD_CARD'
+      disable_uart2_console_debug:
+        description: 'Disable UART2 console debug (remove ttyFIQ0 console args)'
+        required: false
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
       luckfox_repo_url:
         description: 'LuckFox Pico SDK Repository URL'
         required: false
@@ -365,6 +373,144 @@ jobs:
         echo "BOARD_CONFIG_PATH=$BOARD_CONFIG_PATH" >> $GITHUB_ENV
         echo "Board config source file: $BOARD_CONFIG_PATH"
 
+    - name: Configure UART2 console debug
+      run: |
+        cd luckfox-pico
+
+        DISABLE_UART2_CONSOLE_DEBUG="${{ github.event.inputs.disable_uart2_console_debug }}"
+        if [ -z "$DISABLE_UART2_CONSOLE_DEBUG" ]; then
+          DISABLE_UART2_CONSOLE_DEBUG="true"
+        fi
+
+        BOARD_CONFIG="$BOARD_CONFIG_PATH"
+        if [ ! -f "$BOARD_CONFIG" ] && [ -L ".BoardConfig.mk" ]; then
+          BOARD_CONFIG="$(readlink -f .BoardConfig.mk)"
+        fi
+        echo "UART2 console debug setting: disable=${DISABLE_UART2_CONSOLE_DEBUG}"
+        echo "Target board config: $BOARD_CONFIG"
+
+        if [ "$DISABLE_UART2_CONSOLE_DEBUG" = "true" ]; then
+          if [ ! -f "$BOARD_CONFIG" ]; then
+            echo "ERROR: Board config file not found for UART2 console settings: $BOARD_CONFIG"
+            exit 1
+          fi
+
+          echo "UART bootargs debug (before patch):"
+          grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$BOARD_CONFIG" || echo "  (no matching bootarg tokens)"
+          sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$BOARD_CONFIG"
+          echo "UART bootargs debug (after patch):"
+          grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$BOARD_CONFIG" || echo "  (no matching bootarg tokens)"
+
+          if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$BOARD_CONFIG"; then
+            echo "ERROR: Failed to remove UART2 console argument from $BOARD_CONFIG"
+            exit 1
+          fi
+          echo "UART2 console debug disabled in $BOARD_CONFIG"
+        else
+          echo "UART2 console debug remains enabled"
+        fi
+
+    - name: Configure UART2 console debug in DTS
+      run: |
+        cd luckfox-pico
+
+        DISABLE_UART2_CONSOLE_DEBUG="${{ github.event.inputs.disable_uart2_console_debug }}"
+        if [ -z "$DISABLE_UART2_CONSOLE_DEBUG" ]; then
+          DISABLE_UART2_CONSOLE_DEBUG="true"
+        fi
+
+        HARDWARE="${{ matrix.hardware }}"
+        if [[ "$HARDWARE" == "RV1103_Luckfox_Pico_Mini" ]]; then
+          DTS_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1103g-luckfox-pico-mini.dts"
+          DTSI_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1103-luckfox-pico-ipc.dtsi"
+        elif [[ "$HARDWARE" == "RV1106_Luckfox_Pico_Pro_Max" ]]; then
+          DTS_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1106g-luckfox-pico-pro-max.dts"
+          DTSI_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+        elif [[ "$HARDWARE" == "RV1106_Luckfox_Pico_Pi" ]]; then
+          DTS_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1106g-luckfox-pico-pi.dts"
+          DTSI_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1106-luckfox-pico-pi-ipc.dtsi"
+        else
+          echo "ERROR: Unknown hardware for DTS patch: $HARDWARE"
+          exit 1
+        fi
+
+        echo "UART2 console debug DTS setting: disable=${DISABLE_UART2_CONSOLE_DEBUG}"
+        echo "Target DTS files: $DTS_FILE , $DTSI_FILE"
+
+        if [ "$DISABLE_UART2_CONSOLE_DEBUG" = "true" ]; then
+          for target in "$DTS_FILE" "$DTSI_FILE"; do
+            if [ ! -f "$target" ]; then
+              echo "ERROR: DTS source file not found for UART2 console settings: $target"
+              exit 1
+            fi
+
+            echo "UART bootargs debug in DTS source (before patch): $target"
+            grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$target" || echo "  (no matching bootarg tokens)"
+            sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+            if grep -Eq '&uart2[[:space:]]*\{' "$target"; then
+              sed -i '/&uart2[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$target"
+            else
+              printf '\n&uart2 {\n\tstatus = "okay";\n};\n' >> "$target"
+            fi
+            echo "UART bootargs debug in DTS source (after patch): $target"
+            grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|bootargs' "$target" || echo "  (no matching bootarg tokens)"
+
+            if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$target"; then
+              echo "ERROR: Failed to remove UART2 console argument from $target"
+              exit 1
+            fi
+          done
+          echo "UART2 console debug disabled in DTS sources: $DTS_FILE , $DTSI_FILE"
+        else
+          echo "UART2 console debug remains enabled in DTS"
+        fi
+
+    - name: Configure UART2 FIQ debugger in kernel defconfig
+      run: |
+        cd luckfox-pico
+
+        DISABLE_UART2_CONSOLE_DEBUG="${{ github.event.inputs.disable_uart2_console_debug }}"
+        if [ -z "$DISABLE_UART2_CONSOLE_DEBUG" ]; then
+          DISABLE_UART2_CONSOLE_DEBUG="true"
+        fi
+
+        if [ "$DISABLE_UART2_CONSOLE_DEBUG" = "true" ]; then
+          BOARD_CONFIG="$BOARD_CONFIG_PATH"
+          if [ ! -f "$BOARD_CONFIG" ] && [ -L ".BoardConfig.mk" ]; then
+            BOARD_CONFIG="$(readlink -f .BoardConfig.mk)"
+          fi
+          if [ ! -f "$BOARD_CONFIG" ]; then
+            echo "ERROR: Board config file not found for kernel FIQ patch: $BOARD_CONFIG"
+            exit 1
+          fi
+
+          KERNEL_DEFCONFIG=$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$BOARD_CONFIG" | head -n1)
+          if [ -z "$KERNEL_DEFCONFIG" ]; then
+            KERNEL_DEFCONFIG="luckfox_rv1106_linux_defconfig"
+          fi
+          KERNEL_CFG_FILE="sysdrv/source/kernel/arch/arm/configs/${KERNEL_DEFCONFIG}"
+          if [ ! -f "$KERNEL_CFG_FILE" ]; then
+            echo "ERROR: Kernel defconfig file not found for FIQ patch: $KERNEL_CFG_FILE"
+            exit 1
+          fi
+
+          echo "Disabling FIQ debugger in kernel defconfig: $KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$KERNEL_CFG_FILE"
+          echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_SERIAL_8250(=|_)/d;/^# CONFIG_SERIAL_8250 is not set$/d' "$KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_SERIAL_8250_DW(=|_)/d;/^# CONFIG_SERIAL_8250_DW is not set$/d' "$KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_SERIAL_OF_PLATFORM(=|_)/d;/^# CONFIG_SERIAL_OF_PLATFORM is not set$/d' "$KERNEL_CFG_FILE"
+          printf 'CONFIG_SERIAL_8250=y\nCONFIG_SERIAL_8250_DW=y\nCONFIG_SERIAL_OF_PLATFORM=y\n' >> "$KERNEL_CFG_FILE"
+
+          if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$KERNEL_CFG_FILE"; then
+            echo "ERROR: Failed to disable FIQ debugger in $KERNEL_CFG_FILE"
+            exit 1
+          fi
+          grep -nE 'FIQ_DEBUGGER|SERIAL_8250|SERIAL_OF_PLATFORM' "$KERNEL_CFG_FILE" || true
+        else
+          echo "UART2 FIQ debugger configuration remains enabled"
+        fi
+
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
       run: |
@@ -486,14 +632,36 @@ jobs:
         PACKAGE_DIR="${BUILDROOT_DIR}/package"
         PYZBAR_PATCH="${PACKAGE_DIR}/python-pyzbar/0001-PATH-fixed-by-hand.patch"
         if [ -f "$PYZBAR_PATCH" ] && [ -f "$BUILDROOT_DIR/.config" ]; then
-          PYTHON_VER="3.11"
+          PYTHON_VER="3.12"
           DETECTED_PYTHON_VER=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || true)
           if [ -n "$DETECTED_PYTHON_VER" ]; then
             PYTHON_VER="$DETECTED_PYTHON_VER"
-            sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
             echo "Updated pyzbar patch for Python ${PYTHON_VER} (detected from config)"
           else
-            echo "No Python version found in config; pyzbar patch already set to default Python ${PYTHON_VER}"
+            echo "No Python version found in config; using default Python ${PYTHON_VER}"
+          fi
+          sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${PYTHON_VER}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
+        fi
+
+        # Normalize python-pyzbar download source for Buildroot mirror compatibility.
+        # Keep the same upstream content/hash, but force a deterministic tag tarball URL.
+        PYZBAR_MK="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.mk"
+        PYZBAR_HASH="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.hash"
+        if [ -f "$PYZBAR_MK" ]; then
+          PYZBAR_VER=$(sed -n 's/^PYTHON_PYZBAR_VERSION[[:space:]]*=[[:space:]]*//p' "$PYZBAR_MK" | head -n 1 | tr -d '[:space:]')
+          PYZBAR_SRC="v${PYZBAR_VER}.tar.gz"
+          sed -i "s|^PYTHON_PYZBAR_SITE[[:space:]]*=.*|PYTHON_PYZBAR_SITE = https://github.com/SeedSigner/pyzbar/archive/refs/tags|" "$PYZBAR_MK"
+          if grep -q '^PYTHON_PYZBAR_SOURCE[[:space:]]*=' "$PYZBAR_MK"; then
+            sed -i "s|^PYTHON_PYZBAR_SOURCE[[:space:]]*=.*|PYTHON_PYZBAR_SOURCE = ${PYZBAR_SRC}|" "$PYZBAR_MK"
+          else
+            sed -i "/^PYTHON_PYZBAR_SITE[[:space:]]*=/a PYTHON_PYZBAR_SOURCE = ${PYZBAR_SRC}" "$PYZBAR_MK"
+          fi
+          sed -i '/^PYTHON_PYZBAR_SITE_METHOD[[:space:]]*=/d' "$PYZBAR_MK"
+          echo "Normalized python-pyzbar source to ${PYZBAR_SRC}"
+
+          if [ -f "$PYZBAR_HASH" ]; then
+            sed -i -E "/^(sha256|md5)[[:space:]]/ s/[[:space:]][^[:space:]]+$/ ${PYZBAR_SRC}/" "$PYZBAR_HASH"
+            echo "Updated python-pyzbar hash filename to ${PYZBAR_SRC}"
           fi
         fi
 
@@ -600,6 +768,24 @@ jobs:
       run: |
         cd luckfox-pico
         ./build.sh firmware
+
+        echo "UART bootargs debug (post-firmware image metadata):"
+        FOUND_UART_FILES=false
+        for f in output/image/*.txt output/image/*.cfg output/image/*.ini output/image/parameter*; do
+          if [ -e "$f" ]; then
+            FOUND_UART_FILES=true
+            echo "==> $f"
+            grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$f" || echo "  (no matching bootarg tokens)"
+          fi
+        done
+        if [ "$FOUND_UART_FILES" != "true" ]; then
+          echo "No text-like image metadata files found under output/image"
+        fi
+
+        if grep -aEq 'console=ttyFIQ0|earlycon=uart8250|user_debug=' output/image/boot.img; then
+          echo "ERROR: UART console/debug tokens still present in output/image/boot.img"
+          exit 1
+        fi
 
     - name: Create flashable SD image
       if: matrix.boot == 'SD_CARD'
@@ -832,7 +1018,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: success()
       with:
-        name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}
+        name: seedsigner-luckfox-pico-${{ matrix.hardware }}-${{ matrix.boot }}-${{ github.run_number }}.zip
         path: build-artifacts/
         retention-days: 30
         if-no-files-found: warn

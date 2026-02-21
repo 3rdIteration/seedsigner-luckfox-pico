@@ -35,6 +35,8 @@ export BR2_JLEVEL="${BUILD_JOBS}"
 export FORCE_UNSAFE_CONFIGURE=1
 export BUILD_MODEL="${BUILD_MODEL:-both}"
 export MINI_CMA_SIZE="${MINI_CMA_SIZE:-1M}"
+export DISABLE_UART2_CONSOLE_DEBUG="${DISABLE_UART2_CONSOLE_DEBUG:-1}"
+export DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.12}"
 
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -43,6 +45,97 @@ print_step() { echo -e "\n${BLUE}[STEP] $1${NC}\n"; }
 print_success() { echo -e "\n${GREEN}[SUCCESS] $1${NC}\n"; }
 print_error() { echo -e "\n${RED}[ERROR] $1${NC}\n"; }
 print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
+
+debug_uart_bootargs_file() {
+    local file_path="$1"
+    local label="$2"
+    print_info "UART bootargs debug (${label}): $file_path"
+    if [[ -f "$file_path" ]]; then
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$file_path" || echo "  (no matching bootarg tokens)"
+    else
+        echo "  (file not found)"
+    fi
+}
+
+debug_uart_bootargs_outputs() {
+    local image_dir="$LUCKFOX_SDK_DIR/output/image"
+    print_info "UART bootargs debug (output image files): $image_dir"
+    if [[ ! -d "$image_dir" ]]; then
+        echo "  (output image directory not found)"
+        return
+    fi
+
+    local found=false
+    local f
+    for f in "$image_dir"/*.txt "$image_dir"/*.cfg "$image_dir"/*.ini "$image_dir"/parameter*; do
+        [[ -e "$f" ]] || continue
+        found=true
+        echo "  checking: $(basename "$f")"
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$f" || echo "    (no matching bootarg tokens)"
+    done
+
+    if [[ "$found" == "false" ]]; then
+        echo "  (no text-like image metadata files found)"
+    fi
+}
+
+resolve_dts_path_for_profile() {
+    local board_profile="$1"
+    local dts_dir="$LUCKFOX_SDK_DIR/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dts_file=""
+
+    case "$board_profile" in
+        mini)
+            dts_file="$dts_dir/rv1103g-luckfox-pico-mini.dts"
+            ;;
+        max)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pro-max.dts"
+            ;;
+        pi)
+            dts_file="$dts_dir/rv1106g-luckfox-pico-pi.dts"
+            ;;
+        *)
+            print_error "Unsupported board profile for DTS patch: $board_profile"
+            exit 1
+            ;;
+    esac
+
+    if [[ ! -f "$dts_file" ]]; then
+        print_error "DTS file not found for UART2 console patch: $dts_file"
+        exit 1
+    fi
+
+    echo "$dts_file"
+}
+
+resolve_dtsi_path_for_profile() {
+    local board_profile="$1"
+    local dts_dir="$LUCKFOX_SDK_DIR/sysdrv/source/kernel/arch/arm/boot/dts"
+    local dtsi_file=""
+
+    case "$board_profile" in
+        mini)
+            dtsi_file="$dts_dir/rv1103-luckfox-pico-ipc.dtsi"
+            ;;
+        max)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pro-max-ipc.dtsi"
+            ;;
+        pi)
+            dtsi_file="$dts_dir/rv1106-luckfox-pico-pi-ipc.dtsi"
+            ;;
+        *)
+            print_error "Unsupported board profile for DTSI patch: $board_profile"
+            exit 1
+            ;;
+    esac
+
+    if [[ ! -f "$dtsi_file" ]]; then
+        print_error "DTSI file not found for UART2 console patch: $dtsi_file"
+        exit 1
+    fi
+
+    echo "$dtsi_file"
+}
 
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
@@ -62,6 +155,7 @@ show_usage() {
     echo "  - Model selector via BUILD_MODEL=mini|max|pi|both"
     echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
     echo "  - 'both' builds mini+max; use 'pi' to build the Pico Pi (eMMC only)"
+    echo "  - UART2 console toggle via DISABLE_UART2_CONSOLE_DEBUG=1|0 (default: 1)"
     echo ""
 }
 
@@ -374,6 +468,179 @@ apply_mini_cma_profile() {
     fi
 }
 
+apply_uart2_console_config() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    if [[ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]]; then
+        print_info "UART2 console debug left enabled (DISABLE_UART2_CONSOLE_DEBUG=${DISABLE_UART2_CONSOLE_DEBUG})"
+        return
+    fi
+
+    local sdk_hardware
+    case "$board_profile" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max) sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi) sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
+        *)
+            print_error "Unsupported board profile for UART2 console config: $board_profile"
+            exit 1
+            ;;
+    esac
+
+    local sdk_boot_medium
+    case "$boot_medium" in
+        sd) sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
+        *)
+            print_error "Unsupported boot medium for UART2 console config: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="$LUCKFOX_SDK_DIR/project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+
+    print_step "Disabling UART2 console debug in board config (${board_profile}/${boot_medium})"
+    if [[ ! -f "$board_config" && -L "$LUCKFOX_SDK_DIR/.BoardConfig.mk" ]]; then
+        board_config="$(readlink -f "$LUCKFOX_SDK_DIR/.BoardConfig.mk")"
+    fi
+
+    if [[ ! -f "$board_config" ]]; then
+        print_error "Board config file not found for UART2 console config: $board_config"
+        exit 1
+    fi
+
+    debug_uart_bootargs_file "$board_config" "before patch"
+    sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+    debug_uart_bootargs_file "$board_config" "after patch"
+
+    if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$board_config"; then
+        print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present in $board_config"
+        exit 1
+    fi
+
+    print_success "UART2 console debug disabled in: $board_config"
+}
+
+apply_uart2_console_dts_patch() {
+    local board_profile="$1"
+
+    if [[ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]]; then
+        return
+    fi
+
+    local dts_file dtsi_file target
+    dts_file="$(resolve_dts_path_for_profile "$board_profile")"
+    dtsi_file="$(resolve_dtsi_path_for_profile "$board_profile")"
+
+    print_step "Disabling UART2 console debug in DTS sources (${board_profile})"
+    for target in "$dts_file" "$dtsi_file"; do
+        debug_uart_bootargs_file "$target" "before patch"
+        sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$target"
+
+        # Enable UART2 as a normal peripheral UART so /dev/ttyS* can be created.
+        if grep -Eq '&uart2[[:space:]]*\{' "$target"; then
+            sed -i '/&uart2[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$target"
+        else
+            cat >> "$target" <<'EOF'
+
+&uart2 {
+	status = "okay";
+};
+EOF
+        fi
+        debug_uart_bootargs_file "$target" "after patch"
+
+        if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$target"; then
+            print_error "UART2 console debug removal verification failed in DTS source: $target"
+            exit 1
+        fi
+    done
+
+    print_success "UART2 console debug disabled in DTS sources: $dts_file, $dtsi_file"
+}
+
+apply_uart2_fiq_kernel_patch() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    if [[ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]]; then
+        return
+    fi
+
+    local sdk_hardware sdk_boot_medium
+    case "$board_profile" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max)  sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi)   sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
+        *)
+            print_error "Unsupported board profile for kernel FIQ patch: $board_profile"
+            exit 1
+            ;;
+    esac
+    case "$boot_medium" in
+        sd)   sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
+        *)
+            print_error "Unsupported boot medium for kernel FIQ patch: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="$LUCKFOX_SDK_DIR/project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    if [[ ! -f "$board_config" && -L "$LUCKFOX_SDK_DIR/.BoardConfig.mk" ]]; then
+        board_config="$(readlink -f "$LUCKFOX_SDK_DIR/.BoardConfig.mk")"
+    fi
+    if [[ ! -f "$board_config" ]]; then
+        print_error "Board config file not found for kernel FIQ patch: $board_config"
+        exit 1
+    fi
+
+    local kernel_defconfig
+    kernel_defconfig="$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$board_config" | head -n1)"
+    [[ -n "$kernel_defconfig" ]] || kernel_defconfig="luckfox_rv1106_linux_defconfig"
+
+    local kernel_cfg_file="$LUCKFOX_SDK_DIR/sysdrv/source/kernel/arch/arm/configs/$kernel_defconfig"
+    if [[ ! -f "$kernel_cfg_file" ]]; then
+        print_error "Kernel defconfig not found for FIQ patch: $kernel_cfg_file"
+        exit 1
+    fi
+
+    print_step "Disabling FIQ debugger in kernel defconfig ($kernel_defconfig)"
+    sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$kernel_cfg_file"
+    echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$kernel_cfg_file"
+
+    # Ensure DesignWare 8250 UART driver path is enabled for RV1106 UARTs.
+    sed -i -E '/^CONFIG_SERIAL_8250(=|_)/d;/^# CONFIG_SERIAL_8250 is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_SERIAL_8250_DW(=|_)/d;/^# CONFIG_SERIAL_8250_DW is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_SERIAL_OF_PLATFORM(=|_)/d;/^# CONFIG_SERIAL_OF_PLATFORM is not set$/d' "$kernel_cfg_file"
+    {
+        echo 'CONFIG_SERIAL_8250=y'
+        echo 'CONFIG_SERIAL_8250_DW=y'
+        echo 'CONFIG_SERIAL_OF_PLATFORM=y'
+    } >> "$kernel_cfg_file"
+
+    if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$kernel_cfg_file"; then
+        print_error "Kernel FIQ debugger disable verification failed in: $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_8250=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_8250 in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_8250_DW=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_8250_DW in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_SERIAL_OF_PLATFORM=y$' "$kernel_cfg_file"; then
+        print_error "Kernel serial driver enable verification failed: CONFIG_SERIAL_OF_PLATFORM in $kernel_cfg_file"
+        exit 1
+    fi
+    print_success "Kernel FIQ debugger disabled and serial drivers enabled in: $kernel_cfg_file"
+}
+
 resolve_rootfs_dir() {
     local pattern="$LUCKFOX_SDK_DIR/output/out/rootfs_uclibc_*"
     local matches=( $pattern )
@@ -604,6 +871,9 @@ build_profile_artifacts() {
 
     # Some SDK clean paths may reset board context; force board selection again.
     select_board_profile "$board_profile" "$boot_medium"
+    apply_uart2_console_config "$board_profile" "$boot_medium"
+    apply_uart2_console_dts_patch "$board_profile"
+    apply_uart2_fiq_kernel_patch "$board_profile" "$boot_medium"
 
     print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
     ensure_buildroot_tree
@@ -618,7 +888,39 @@ build_profile_artifacts() {
 
     print_step "Updating pyzbar Configuration"
     if [[ -f "$PYZBAR_PATCH" ]]; then
-        sed -i 's|path = ".*/site-packages/zbar.so"|path = "/usr/lib/python3.11/site-packages/zbar.so"|' "$PYZBAR_PATCH"
+        local python_ver
+        python_ver=$(grep -oP 'BR2_PACKAGE_PYTHON3_VERSION="\K[^"]+' "$BUILDROOT_DIR/.config" 2>/dev/null || true)
+        if [[ -z "$python_ver" ]]; then
+            python_ver="$DEFAULT_PYTHON_VERSION"
+            print_info "Python version not found in Buildroot config; using default: $python_ver"
+        else
+            print_info "Detected Python version from Buildroot config: $python_ver"
+        fi
+        sed -i "s|path = \".*/site-packages/zbar.so\"|path = \"/usr/lib/python${python_ver}/site-packages/zbar.so\"|" "$PYZBAR_PATCH"
+    fi
+
+    # Normalize python-pyzbar download source for Buildroot mirror compatibility.
+    # Keep the same upstream content/hash, but force a deterministic tag tarball URL.
+    local pyzbar_mk="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.mk"
+    local pyzbar_hash="${PACKAGE_DIR}/python-pyzbar/python-pyzbar-ss.hash"
+    if [[ -f "$pyzbar_mk" ]]; then
+        local pyzbar_ver
+        local pyzbar_src
+        pyzbar_ver=$(sed -n 's/^PYTHON_PYZBAR_VERSION[[:space:]]*=[[:space:]]*//p' "$pyzbar_mk" | head -n 1 | tr -d '[:space:]')
+        pyzbar_src="v${pyzbar_ver}.tar.gz"
+        sed -i "s|^PYTHON_PYZBAR_SITE[[:space:]]*=.*|PYTHON_PYZBAR_SITE = https://github.com/SeedSigner/pyzbar/archive/refs/tags|" "$pyzbar_mk"
+        if grep -q '^PYTHON_PYZBAR_SOURCE[[:space:]]*=' "$pyzbar_mk"; then
+            sed -i "s|^PYTHON_PYZBAR_SOURCE[[:space:]]*=.*|PYTHON_PYZBAR_SOURCE = ${pyzbar_src}|" "$pyzbar_mk"
+        else
+            sed -i "/^PYTHON_PYZBAR_SITE[[:space:]]*=/a PYTHON_PYZBAR_SOURCE = ${pyzbar_src}" "$pyzbar_mk"
+        fi
+        sed -i '/^PYTHON_PYZBAR_SITE_METHOD[[:space:]]*=/d' "$pyzbar_mk"
+        print_info "Normalized python-pyzbar source to ${pyzbar_src}"
+
+        if [[ -f "$pyzbar_hash" ]]; then
+            sed -i -E "/^(sha256|md5)[[:space:]]/ s/[[:space:]][^[:space:]]+$/ ${pyzbar_src}/" "$pyzbar_hash"
+            print_info "Updated python-pyzbar hash filename to ${pyzbar_src}"
+        fi
     fi
 
     print_step "Adding SeedSigner Menu to Buildroot"
@@ -709,6 +1011,7 @@ CONFIGMENU
 
     print_step "Packaging Firmware"
     ./build.sh firmware
+    debug_uart_bootargs_outputs
 
     cd "$LUCKFOX_SDK_DIR/output/image"
 
