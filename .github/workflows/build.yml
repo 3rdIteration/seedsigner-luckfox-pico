@@ -449,6 +449,7 @@ jobs:
         	source "package/python-pyqrcode/Config.in"
         	source "package/python-pyscard/Config.in"
         	source "package/python-pysatochip/Config.in"
+        	source "package/ccid-sec1210/Config.in"
         endmenu
         EOF
         fi
@@ -584,6 +585,10 @@ jobs:
         cp -v ../seedsigner-luckfox-pico/buildroot/files/nv12_converter "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
+        mkdir -p "$ROOTFS_DIR/etc/reader.conf.d"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/sec1210 "$ROOTFS_DIR/etc/reader.conf.d/sec1210"
+        mkdir -p "$ROOTFS_DIR/etc/readers.d"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/sec1210 "$ROOTFS_DIR/etc/readers.d/sec1210"
         
         # Install rkaiq camera ISP service script (manual start only, no boot autostart)
         echo "🔧 Installing rkaiq service script..."

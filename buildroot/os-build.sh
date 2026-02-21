@@ -639,6 +639,7 @@ menu "SeedSigner"
         source "package/python-pyqrcode/Config.in"
         source "package/python-pyscard/Config.in"
         source "package/python-pysatochip/Config.in"
+        source "package/ccid-sec1210/Config.in"
 endmenu
 CONFIGMENU
     fi
@@ -696,6 +697,12 @@ CONFIGMENU
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+    if [[ -f "/build/files/sec1210" ]]; then
+        mkdir -p "$ROOTFS_DIR/etc/reader.conf.d"
+        cp -v "/build/files/sec1210" "$ROOTFS_DIR/etc/reader.conf.d/sec1210"
+        mkdir -p "$ROOTFS_DIR/etc/readers.d"
+        cp -v "/build/files/sec1210" "$ROOTFS_DIR/etc/readers.d/sec1210"
+    fi
     
     # Install rkaiq camera ISP service script (manual start only, no boot autostart)
     if [[ -f "/build/files/rkaiq-service" ]]; then
