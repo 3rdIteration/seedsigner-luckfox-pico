@@ -21,6 +21,41 @@ print_warning() { echo -e "${YELLOW}[WARNING] $1${NC}"; }
 print_error() { echo -e "${RED}[ERROR] $1${NC}"; }
 print_info() { echo -e "${YELLOW}[INFO] $1${NC}"; }
 
+debug_uart_bootargs_file() {
+    local file_path="$1"
+    local label="$2"
+    print_info "UART bootargs debug (${label}): $file_path"
+    if [ -f "$file_path" ]; then
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$file_path" || echo "  (no matching bootarg tokens)"
+    else
+        echo "  (file not found)"
+    fi
+}
+
+debug_uart_bootargs_outputs() {
+    local image_dir="$WORK_DIR/luckfox-pico/output/image"
+    print_info "UART bootargs debug (output image files): $image_dir"
+    if [ ! -d "$image_dir" ]; then
+        echo "  (output image directory not found)"
+        return 0
+    fi
+
+    local found=false
+    local f
+    for f in "$image_dir"/*.txt "$image_dir"/*.cfg "$image_dir"/*.ini "$image_dir"/parameter*; do
+        if [ ! -e "$f" ]; then
+            continue
+        fi
+        found=true
+        echo "  checking: $(basename "$f")"
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$f" || echo "    (no matching bootarg tokens)"
+    done
+
+    if [ "$found" != "true" ]; then
+        echo "  (no text-like image metadata files found)"
+    fi
+}
+
 show_usage() {
     cat << 'USAGE'
 SeedSigner Local Build System (No Docker)
@@ -485,7 +520,9 @@ apply_uart2_console_config() {
     fi
 
     print_info "Updating board config: $board_config"
+    debug_uart_bootargs_file "$board_config" "before patch"
     sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+    debug_uart_bootargs_file "$board_config" "after patch"
 
     if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$board_config"; then
         print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present in $board_config"
@@ -702,6 +739,7 @@ package_firmware() {
     cd "$WORK_DIR/luckfox-pico"
     
     ./build.sh firmware
+    debug_uart_bootargs_outputs
     
     print_success "Firmware packaged"
 }

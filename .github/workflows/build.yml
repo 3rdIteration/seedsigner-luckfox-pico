@@ -395,7 +395,11 @@ jobs:
             exit 1
           fi
 
+          echo "UART bootargs debug (before patch):"
+          grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$BOARD_CONFIG" || echo "  (no matching bootarg tokens)"
           sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$BOARD_CONFIG"
+          echo "UART bootargs debug (after patch):"
+          grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$BOARD_CONFIG" || echo "  (no matching bootarg tokens)"
 
           if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$BOARD_CONFIG"; then
             echo "ERROR: Failed to remove UART2 console argument from $BOARD_CONFIG"
@@ -641,6 +645,19 @@ jobs:
       run: |
         cd luckfox-pico
         ./build.sh firmware
+
+        echo "UART bootargs debug (post-firmware image metadata):"
+        FOUND_UART_FILES=false
+        for f in output/image/*.txt output/image/*.cfg output/image/*.ini output/image/parameter*; do
+          if [ -e "$f" ]; then
+            FOUND_UART_FILES=true
+            echo "==> $f"
+            grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$f" || echo "  (no matching bootarg tokens)"
+          fi
+        done
+        if [ "$FOUND_UART_FILES" != "true" ]; then
+          echo "No text-like image metadata files found under output/image"
+        fi
 
     - name: Create flashable SD image
       if: matrix.boot == 'SD_CARD'

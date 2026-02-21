@@ -46,6 +46,39 @@ print_success() { echo -e "\n${GREEN}[SUCCESS] $1${NC}\n"; }
 print_error() { echo -e "\n${RED}[ERROR] $1${NC}\n"; }
 print_info() { echo -e "\n${YELLOW}[INFO] $1${NC}\n"; }
 
+debug_uart_bootargs_file() {
+    local file_path="$1"
+    local label="$2"
+    print_info "UART bootargs debug (${label}): $file_path"
+    if [[ -f "$file_path" ]]; then
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$file_path" || echo "  (no matching bootarg tokens)"
+    else
+        echo "  (file not found)"
+    fi
+}
+
+debug_uart_bootargs_outputs() {
+    local image_dir="$LUCKFOX_SDK_DIR/output/image"
+    print_info "UART bootargs debug (output image files): $image_dir"
+    if [[ ! -d "$image_dir" ]]; then
+        echo "  (output image directory not found)"
+        return
+    fi
+
+    local found=false
+    local f
+    for f in "$image_dir"/*.txt "$image_dir"/*.cfg "$image_dir"/*.ini "$image_dir"/parameter*; do
+        [[ -e "$f" ]] || continue
+        found=true
+        echo "  checking: $(basename "$f")"
+        grep -nE 'ttyFIQ0|console=|earlycon=|user_debug=|CMDLINE|BOOTARGS' "$f" || echo "    (no matching bootarg tokens)"
+    done
+
+    if [[ "$found" == "false" ]]; then
+        echo "  (no text-like image metadata files found)"
+    fi
+}
+
 show_usage() {
     echo "SeedSigner Self-Contained Build System"
     echo "Usage: $0 [auto|auto-nand|auto-nand-only|interactive|shell|clone-only]"
@@ -418,7 +451,9 @@ apply_uart2_console_config() {
         exit 1
     fi
 
+    debug_uart_bootargs_file "$board_config" "before patch"
     sed -i 's/\<console=ttyFIQ0[^ "]*\>//g; s/\<earlycon=uart8250,[^ "]*\>//g; s/\<user_debug=[^ "]*\>//g' "$board_config"
+    debug_uart_bootargs_file "$board_config" "after patch"
 
     if grep -Eq '(^|[[:space:]])console=ttyFIQ0([^[:space:]]*)?([[:space:]]|$)' "$board_config"; then
         print_error "UART2 console debug removal verification failed: console=ttyFIQ0 still present in $board_config"
@@ -772,6 +807,7 @@ CONFIGMENU
 
     print_step "Packaging Firmware"
     ./build.sh firmware
+    debug_uart_bootargs_outputs
 
     cd "$LUCKFOX_SDK_DIR/output/image"
 
