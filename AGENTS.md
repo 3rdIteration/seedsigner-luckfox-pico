@@ -413,7 +413,7 @@ ls -l buildroot/external-packages/
 
 ### Detailed Documentation
 
-All detailed documentation is in `buildroot/configs/`:
+All detailed investigation documentation is in `docs/investigations/`:
 
 - `SMARTCARD_BUILD_FIX.md` - External package integration fix
 - `SMARTCARD_PACKAGES.md` - Smartcard package details
@@ -423,7 +423,7 @@ All detailed documentation is in `buildroot/configs/`:
 - `MINI_NAND_FIX.md` - Mini SPI-NAND partition fix
 - `MINI_NAND_BUILD_FAILURE_ANALYSIS.md` - Build failure investigation
 - `IMPLEMENTATION_SUMMARY.md` - Patch system overview
-- `enabled_packages_analysis.txt` - Current package list with sizes
+- `buildroot/configs/enabled_packages_analysis.txt` - Current package list with sizes
 
 ### External Package Examples
 

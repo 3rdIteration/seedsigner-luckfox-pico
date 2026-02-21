@@ -139,6 +139,6 @@ git checkout -- project/cfg/BoardConfig_IPC/
 
 ## References
 
-- Root cause analysis: `buildroot/configs/MINI_NAND_FIX.md`
+- Root cause analysis: `docs/investigations/MINI_NAND_FIX.md`
 - Failed build: https://github.com/3rdIteration/seedsigner-luckfox-pico/actions/runs/22099146285
 - UBIFS documentation: https://www.kernel.org/doc/html/latest/filesystems/ubifs.html
