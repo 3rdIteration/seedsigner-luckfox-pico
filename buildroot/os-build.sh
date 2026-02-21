@@ -481,6 +481,7 @@ apply_uart2_console_config() {
     case "$board_profile" in
         mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
         max) sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi) sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
         *)
             print_error "Unsupported board profile for UART2 console config: $board_profile"
             exit 1
@@ -491,6 +492,7 @@ apply_uart2_console_config() {
     case "$boot_medium" in
         sd) sdk_boot_medium="SD_CARD" ;;
         nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
         *)
             print_error "Unsupported boot medium for UART2 console config: $boot_medium"
             exit 1
@@ -545,6 +547,64 @@ apply_uart2_console_dts_patch() {
     done
 
     print_success "UART2 console debug disabled in DTS sources: $dts_file, $dtsi_file"
+}
+
+apply_uart2_fiq_kernel_patch() {
+    local board_profile="$1"
+    local boot_medium="$2"
+
+    if [[ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]]; then
+        return
+    fi
+
+    local sdk_hardware sdk_boot_medium
+    case "$board_profile" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max)  sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi)   sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
+        *)
+            print_error "Unsupported board profile for kernel FIQ patch: $board_profile"
+            exit 1
+            ;;
+    esac
+    case "$boot_medium" in
+        sd)   sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
+        *)
+            print_error "Unsupported boot medium for kernel FIQ patch: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="$LUCKFOX_SDK_DIR/project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    if [[ ! -f "$board_config" && -L "$LUCKFOX_SDK_DIR/.BoardConfig.mk" ]]; then
+        board_config="$(readlink -f "$LUCKFOX_SDK_DIR/.BoardConfig.mk")"
+    fi
+    if [[ ! -f "$board_config" ]]; then
+        print_error "Board config file not found for kernel FIQ patch: $board_config"
+        exit 1
+    fi
+
+    local kernel_defconfig
+    kernel_defconfig="$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$board_config" | head -n1)"
+    [[ -n "$kernel_defconfig" ]] || kernel_defconfig="luckfox_rv1106_linux_defconfig"
+
+    local kernel_cfg_file="$LUCKFOX_SDK_DIR/sysdrv/source/kernel/arch/arm/configs/$kernel_defconfig"
+    if [[ ! -f "$kernel_cfg_file" ]]; then
+        print_error "Kernel defconfig not found for FIQ patch: $kernel_cfg_file"
+        exit 1
+    fi
+
+    print_step "Disabling FIQ debugger in kernel defconfig ($kernel_defconfig)"
+    sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$kernel_cfg_file"
+    echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$kernel_cfg_file"
+
+    if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$kernel_cfg_file"; then
+        print_error "Kernel FIQ debugger disable verification failed in: $kernel_cfg_file"
+        exit 1
+    fi
+    print_success "Kernel FIQ debugger disabled in: $kernel_cfg_file"
 }
 
 resolve_rootfs_dir() {
@@ -779,6 +839,7 @@ build_profile_artifacts() {
     select_board_profile "$board_profile" "$boot_medium"
     apply_uart2_console_config "$board_profile" "$boot_medium"
     apply_uart2_console_dts_patch "$board_profile"
+    apply_uart2_fiq_kernel_patch "$board_profile" "$boot_medium"
 
     print_step "Preparing Buildroot Configuration (${board_profile}/${boot_medium})"
     ensure_buildroot_tree

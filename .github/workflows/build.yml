@@ -460,6 +460,48 @@ jobs:
           echo "UART2 console debug remains enabled in DTS"
         fi
 
+    - name: Configure UART2 FIQ debugger in kernel defconfig
+      run: |
+        cd luckfox-pico
+
+        DISABLE_UART2_CONSOLE_DEBUG="${{ github.event.inputs.disable_uart2_console_debug }}"
+        if [ -z "$DISABLE_UART2_CONSOLE_DEBUG" ]; then
+          DISABLE_UART2_CONSOLE_DEBUG="true"
+        fi
+
+        if [ "$DISABLE_UART2_CONSOLE_DEBUG" = "true" ]; then
+          BOARD_CONFIG="$BOARD_CONFIG_PATH"
+          if [ ! -f "$BOARD_CONFIG" ] && [ -L ".BoardConfig.mk" ]; then
+            BOARD_CONFIG="$(readlink -f .BoardConfig.mk)"
+          fi
+          if [ ! -f "$BOARD_CONFIG" ]; then
+            echo "ERROR: Board config file not found for kernel FIQ patch: $BOARD_CONFIG"
+            exit 1
+          fi
+
+          KERNEL_DEFCONFIG=$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$BOARD_CONFIG" | head -n1)
+          if [ -z "$KERNEL_DEFCONFIG" ]; then
+            KERNEL_DEFCONFIG="luckfox_rv1106_linux_defconfig"
+          fi
+          KERNEL_CFG_FILE="sysdrv/source/kernel/arch/arm/configs/${KERNEL_DEFCONFIG}"
+          if [ ! -f "$KERNEL_CFG_FILE" ]; then
+            echo "ERROR: Kernel defconfig file not found for FIQ patch: $KERNEL_CFG_FILE"
+            exit 1
+          fi
+
+          echo "Disabling FIQ debugger in kernel defconfig: $KERNEL_CFG_FILE"
+          sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$KERNEL_CFG_FILE"
+          echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$KERNEL_CFG_FILE"
+
+          if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$KERNEL_CFG_FILE"; then
+            echo "ERROR: Failed to disable FIQ debugger in $KERNEL_CFG_FILE"
+            exit 1
+          fi
+          grep -nE 'FIQ_DEBUGGER' "$KERNEL_CFG_FILE" || true
+        else
+          echo "UART2 FIQ debugger configuration remains enabled"
+        fi
+
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
       run: |

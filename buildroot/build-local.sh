@@ -475,6 +475,9 @@ apply_mini_cma_config() {
         max)
             sdk_hardware="RV1106_Luckfox_Pico_Pro_Max"
             ;;
+        pi)
+            sdk_hardware="RV1106_Luckfox_Pico_Pi"
+            ;;
         *)
             print_error "Unknown hardware type: $hardware"
             exit 1
@@ -560,6 +563,9 @@ apply_uart2_console_config() {
         nand)
             sdk_boot_medium="SPI_NAND"
             ;;
+        emmc)
+            sdk_boot_medium="EMMC"
+            ;;
         *)
             print_error "Unknown boot medium: $boot_medium"
             exit 1
@@ -614,6 +620,65 @@ apply_uart2_console_dts_patch() {
     done
 
     print_success "UART2 console debug disabled in DTS sources: $dts_file, $dtsi_file"
+}
+
+apply_uart2_fiq_kernel_patch() {
+    local hardware="$1"
+    local boot_medium="$2"
+
+    if [ "$DISABLE_UART2_CONSOLE_DEBUG" != "1" ]; then
+        return 0
+    fi
+
+    print_header "Disabling FIQ Debugger in Kernel Defconfig"
+
+    local sdk_hardware sdk_boot_medium
+    case "$hardware" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max)  sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi)   sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
+        *)
+            print_error "Unknown hardware type for kernel FIQ patch: $hardware"
+            exit 1
+            ;;
+    esac
+    case "$boot_medium" in
+        sd)   sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
+        *)
+            print_error "Unknown boot medium for kernel FIQ patch: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    if [ ! -f "$board_config" ] && [ -L ".BoardConfig.mk" ]; then
+        board_config="$(readlink -f .BoardConfig.mk)"
+    fi
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found for kernel FIQ patch: $board_config"
+        exit 1
+    fi
+
+    local kernel_defconfig
+    kernel_defconfig="$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$board_config" | head -n1)"
+    [ -n "$kernel_defconfig" ] || kernel_defconfig="luckfox_rv1106_linux_defconfig"
+
+    local kernel_cfg_file="sysdrv/source/kernel/arch/arm/configs/${kernel_defconfig}"
+    if [ ! -f "$kernel_cfg_file" ]; then
+        print_error "Kernel defconfig not found for FIQ patch: $kernel_cfg_file"
+        exit 1
+    fi
+
+    sed -i -E '/^CONFIG_FIQ_DEBUGGER(=|_)/d;/^# CONFIG_FIQ_DEBUGGER is not set$/d' "$kernel_cfg_file"
+    echo '# CONFIG_FIQ_DEBUGGER is not set' >> "$kernel_cfg_file"
+
+    if grep -Eq '^CONFIG_FIQ_DEBUGGER(=|_)' "$kernel_cfg_file"; then
+        print_error "Kernel FIQ debugger disable verification failed in: $kernel_cfg_file"
+        exit 1
+    fi
+    print_success "Kernel FIQ debugger disabled in: $kernel_cfg_file"
 }
 
 prepare_buildroot() {
@@ -1092,6 +1157,7 @@ main() {
     configure_board "$hardware" "$boot_medium"
     apply_uart2_console_config "$hardware" "$boot_medium"
     apply_uart2_console_dts_patch "$hardware"
+    apply_uart2_fiq_kernel_patch "$hardware" "$boot_medium"
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages
