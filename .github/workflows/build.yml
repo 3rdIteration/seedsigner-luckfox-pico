@@ -581,7 +581,18 @@ jobs:
         fi
         
         # Copy configuration files
-        cp -v ../seedsigner-luckfox-pico/buildroot/files/luckfox.cfg "$ROOTFS_DIR/etc/luckfox.cfg"
+        if [[ "$HARDWARE" == *"Mini"* ]]; then
+          LUCKFOX_CFG_TEMPLATE="../seedsigner-luckfox-pico/buildroot/files/luckfox-mini.cfg"
+        elif [[ "$HARDWARE" == *"Max"* ]]; then
+          LUCKFOX_CFG_TEMPLATE="../seedsigner-luckfox-pico/buildroot/files/luckfox-max.cfg"
+        elif [[ "$HARDWARE" == *"Pico_Pi"* ]]; then
+          LUCKFOX_CFG_TEMPLATE="../seedsigner-luckfox-pico/buildroot/files/luckfox-pi.cfg"
+        else
+          LUCKFOX_CFG_TEMPLATE="../seedsigner-luckfox-pico/buildroot/files/luckfox.cfg"
+          echo "WARNING: Unknown hardware '$HARDWARE', using fallback luckfox.cfg"
+        fi
+
+        cp -v "$LUCKFOX_CFG_TEMPLATE" "$ROOTFS_DIR/etc/luckfox.cfg"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/nv12_converter "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S60pcscd "$ROOTFS_DIR/etc/init.d/"

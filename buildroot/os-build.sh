@@ -693,7 +693,13 @@ CONFIGMENU
     print_success "Cleaned up non-essential files"
 
     print_step "Installing SeedSigner Support Files"
-    [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
+    local luckfox_cfg_template="/build/files/luckfox-${board_profile}.cfg"
+    if [[ -f "$luckfox_cfg_template" ]]; then
+        cp -v "$luckfox_cfg_template" "$ROOTFS_DIR/etc/luckfox.cfg"
+    elif [[ -f "/build/files/luckfox.cfg" ]]; then
+        print_info "Variant template not found for ${board_profile}, falling back to /build/files/luckfox.cfg"
+        cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
+    fi
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
     [[ -f "/build/files/S60pcscd" ]] && cp -v "/build/files/S60pcscd" "$ROOTFS_DIR/etc/init.d/"
