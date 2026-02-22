@@ -696,7 +696,10 @@ CONFIGMENU
     [[ -f "/build/files/luckfox.cfg" ]] && cp -v "/build/files/luckfox.cfg" "$ROOTFS_DIR/etc/luckfox.cfg"
     [[ -f "/build/files/nv12_converter" ]] && cp -v "/build/files/nv12_converter" "$ROOTFS_DIR/"
     [[ -f "/build/files/start-seedsigner.sh" ]] && cp -v "/build/files/start-seedsigner.sh" "$ROOTFS_DIR/"
+    [[ -f "/build/files/S60pcscd" ]] && cp -v "/build/files/S60pcscd" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+    [[ -f "$ROOTFS_DIR/etc/init.d/S60pcscd" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S60pcscd"
+    [[ -f "$ROOTFS_DIR/etc/init.d/S99seedsigner" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S99seedsigner"
     if [[ -f "/build/files/sec1210" ]]; then
         mkdir -p "$ROOTFS_DIR/etc/reader.conf.d"
         cp -v "/build/files/sec1210" "$ROOTFS_DIR/etc/reader.conf.d/sec1210"
