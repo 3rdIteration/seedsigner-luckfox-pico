@@ -19,7 +19,7 @@ start_supervisor() {
             if ! pidof pcscd >/dev/null 2>&1; then
                 mkdir -p /run/pcscd
                 rm -f /run/pcscd/pcscd.comm
-                pcscd --force-reader-polling >>"$PCSCD_LOG_FILE" 2>&1 || true
+                pcscd >>"$PCSCD_LOG_FILE" 2>&1 || true
             fi
             sleep 2
         done
