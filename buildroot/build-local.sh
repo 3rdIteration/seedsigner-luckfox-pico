@@ -614,7 +614,13 @@ install_seedsigner_app() {
     
     # Copy configuration files
     print_info "Copying configuration files..."
-    cp -v "$SCRIPT_DIR/files/luckfox.cfg" "$rootfs_dir/etc/luckfox.cfg"
+    local luckfox_cfg_template="$SCRIPT_DIR/files/luckfox-${hardware}.cfg"
+    if [ -f "$luckfox_cfg_template" ]; then
+        cp -v "$luckfox_cfg_template" "$rootfs_dir/etc/luckfox.cfg"
+    else
+        print_warning "Variant template not found for ${hardware}, falling back to $SCRIPT_DIR/files/luckfox.cfg"
+        cp -v "$SCRIPT_DIR/files/luckfox.cfg" "$rootfs_dir/etc/luckfox.cfg"
+    fi
     cp -v "$SCRIPT_DIR/files/nv12_converter" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/start-seedsigner.sh" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/S60pcscd" "$rootfs_dir/etc/init.d/"
