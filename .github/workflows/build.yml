@@ -592,6 +592,10 @@ jobs:
         cp -v ../seedsigner-luckfox-pico/buildroot/files/sec1210 "$ROOTFS_DIR/etc/reader.conf.d/sec1210"
         mkdir -p "$ROOTFS_DIR/etc/readers.d"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/sec1210 "$ROOTFS_DIR/etc/readers.d/sec1210"
+        if [[ -d "$ROOTFS_DIR/usr/lib/pcsc/drivers/ifd-ccid.bundle" ]]; then
+          echo "Removing USB CCID bundle as temporary workaround for pcscd SIGTERM issue"
+          rm -rf "$ROOTFS_DIR/usr/lib/pcsc/drivers/ifd-ccid.bundle"
+        fi
         
         # Install rkaiq camera ISP service script (manual start only, no boot autostart)
         echo "🔧 Installing rkaiq service script..."

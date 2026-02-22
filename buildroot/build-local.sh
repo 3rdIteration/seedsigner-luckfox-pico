@@ -625,6 +625,10 @@ install_seedsigner_app() {
     cp -v "$SCRIPT_DIR/files/sec1210" "$rootfs_dir/etc/reader.conf.d/sec1210"
     mkdir -p "$rootfs_dir/etc/readers.d"
     cp -v "$SCRIPT_DIR/files/sec1210" "$rootfs_dir/etc/readers.d/sec1210"
+    if [[ -d "$rootfs_dir/usr/lib/pcsc/drivers/ifd-ccid.bundle" ]]; then
+        print_warning "Removing USB CCID bundle as temporary workaround for pcscd SIGTERM issue"
+        rm -rf "$rootfs_dir/usr/lib/pcsc/drivers/ifd-ccid.bundle"
+    fi
     
     # Install rkaiq camera ISP service script (manual start only, no boot autostart)
     if [[ -f "$SCRIPT_DIR/files/rkaiq-service" ]]; then

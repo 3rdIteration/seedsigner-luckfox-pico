@@ -706,6 +706,10 @@ CONFIGMENU
         mkdir -p "$ROOTFS_DIR/etc/readers.d"
         cp -v "/build/files/sec1210" "$ROOTFS_DIR/etc/readers.d/sec1210"
     fi
+    if [[ -d "$ROOTFS_DIR/usr/lib/pcsc/drivers/ifd-ccid.bundle" ]]; then
+        print_warning "Removing USB CCID bundle as temporary workaround for pcscd SIGTERM issue"
+        rm -rf "$ROOTFS_DIR/usr/lib/pcsc/drivers/ifd-ccid.bundle"
+    fi
     
     # Install rkaiq camera ISP service script (manual start only, no boot autostart)
     if [[ -f "/build/files/rkaiq-service" ]]; then
