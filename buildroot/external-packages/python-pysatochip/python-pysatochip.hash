@@ -1,2 +1,2 @@
 # md5, sha256 from https://github.com/3rdIteration/pysatochip/releases
-sha256 49714d0dce76ae0a5fa70f256835a11c56aff5cd912be577443ab6240cdb9687  python-pysatochip-0.5-alpha.tar.gz
+sha256 a8e40bd9b3b5334bf90e06621d1746202837071589cea0470f485b8c892f16c1  python-pysatochip-0.5-alpha-pycryptodome.tar.gz
