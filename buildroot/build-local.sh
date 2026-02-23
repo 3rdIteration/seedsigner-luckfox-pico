@@ -773,6 +773,7 @@ menu "SeedSigner"
 	source "package/python-pyqrcode/Config.in"
 	source "package/python-pyscard/Config.in"
 	source "package/python-pysatochip/Config.in"
+	source "package/ccid-sec1210/Config.in"
 endmenu
 EOF
     fi
@@ -922,10 +923,27 @@ install_seedsigner_app() {
     
     # Copy configuration files
     print_info "Copying configuration files..."
-    cp -v "$SCRIPT_DIR/files/luckfox.cfg" "$rootfs_dir/etc/luckfox.cfg"
+    local luckfox_cfg_template="$SCRIPT_DIR/files/luckfox-${hardware}.cfg"
+    if [ -f "$luckfox_cfg_template" ]; then
+        cp -v "$luckfox_cfg_template" "$rootfs_dir/etc/luckfox.cfg"
+    else
+        print_warning "Variant template not found for ${hardware}, falling back to $SCRIPT_DIR/files/luckfox.cfg"
+        cp -v "$SCRIPT_DIR/files/luckfox.cfg" "$rootfs_dir/etc/luckfox.cfg"
+    fi
     cp -v "$SCRIPT_DIR/files/nv12_converter" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/start-seedsigner.sh" "$rootfs_dir/"
+    cp -v "$SCRIPT_DIR/files/S60pcscd" "$rootfs_dir/etc/init.d/"
     cp -v "$SCRIPT_DIR/files/S99seedsigner" "$rootfs_dir/etc/init.d/"
+    chmod +x "$rootfs_dir/etc/init.d/S60pcscd"
+    chmod +x "$rootfs_dir/etc/init.d/S99seedsigner"
+    mkdir -p "$rootfs_dir/etc/reader.conf.d"
+    cp -v "$SCRIPT_DIR/files/sec1210" "$rootfs_dir/etc/reader.conf.d/sec1210"
+    mkdir -p "$rootfs_dir/etc/readers.d"
+    cp -v "$SCRIPT_DIR/files/sec1210" "$rootfs_dir/etc/readers.d/sec1210"
+    if [[ -d "$rootfs_dir/usr/lib/pcsc/drivers/ifd-ccid.bundle" ]]; then
+        print_warning "Removing USB CCID bundle as temporary workaround for pcscd SIGTERM issue"
+        rm -rf "$rootfs_dir/usr/lib/pcsc/drivers/ifd-ccid.bundle"
+    fi
     
     # Install rkaiq camera ISP service script (manual start only, no boot autostart)
     if [[ -f "$SCRIPT_DIR/files/rkaiq-service" ]]; then
