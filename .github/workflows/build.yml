@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main, develop, master ]
   pull_request:
-    branches: [ main, develop, master ]
   workflow_dispatch:
     inputs:
       hardware_type:
