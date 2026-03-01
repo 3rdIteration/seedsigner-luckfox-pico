@@ -856,7 +856,7 @@ build_system() {
     ./build.sh media
     
     # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
-    print_info "Keeping RkLunch.sh rkipc autostart enabled"
+    # rkipc autostart will be disabled during rootfs customization below.
     
     print_info "Building Applications..."
     ./build.sh app
@@ -880,6 +880,39 @@ install_seedsigner_app() {
     fi
     
     print_info "Using rootfs: $rootfs_dir"
+
+    # Disable rkipc autostart in RkLunch.sh - SeedSigner only needs rkaiq_3A_server
+    # for camera auto-exposure, not the full IP camera server.
+    print_info "Disabling rkipc autostart in RkLunch.sh..."
+    local rklunch="$rootfs_dir/oem/usr/bin/RkLunch.sh"
+    if [ -f "$rklunch" ]; then
+        sed -i 's|^\([^#]*rkipc\)|#\1  # Disabled: SeedSigner uses rkaiq_3A_server instead|' "$rklunch"
+        print_success "Disabled rkipc autostart in RkLunch.sh"
+    else
+        print_info "RkLunch.sh not found at $rklunch (may be generated later by firmware step)"
+    fi
+
+    # Remove unnecessary services from rootfs to reduce image bloat.
+    # SeedSigner is an air-gapped device and does not need network file sharing,
+    # Android debugging, or the full IP camera stack.
+    print_info "Removing unnecessary services from rootfs..."
+    # Samba / SMB file sharing (not needed on air-gapped device)
+    for f in smbd nmbd smbpasswd smbcontrol smbstatus testparm; do
+        rm -f "$rootfs_dir/usr/sbin/$f" "$rootfs_dir/usr/bin/$f" 2>/dev/null || true
+    done
+    rm -rf "$rootfs_dir/etc/samba" 2>/dev/null || true
+    # adbd - Android Debug Bridge daemon (not needed)
+    rm -f "$rootfs_dir/usr/bin/adbd" 2>/dev/null || true
+    # Disable unnecessary init.d services that may ship with the default SDK
+    for svc in S50samba S50smbd S98_lunch_init; do
+        if [ -f "$rootfs_dir/etc/init.d/$svc" ]; then
+            print_info "Removing unnecessary init script: $svc"
+            rm -f "$rootfs_dir/etc/init.d/$svc"
+        fi
+    done
+    # Remove rkipc binary from rootfs if present (only rkaiq_3A_server is needed)
+    rm -f "$rootfs_dir/usr/bin/rkipc" 2>/dev/null || true
+    print_success "Removed unnecessary services"
     
     # Copy SeedSigner code
     print_info "Copying SeedSigner application..."

@@ -970,13 +970,43 @@ CONFIGMENU
     print_step "Building Media Support"
     ./build.sh media
 
-    # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
-    print_info "Keeping RkLunch.sh rkipc autostart enabled"
-
     print_step "Building Applications"
     ./build.sh app
 
     resolve_rootfs_dir
+
+    # Disable rkipc autostart in RkLunch.sh - SeedSigner only needs rkaiq_3A_server
+    # for camera auto-exposure, not the full IP camera server.
+    print_step "Disabling rkipc autostart in RkLunch.sh"
+    local rklunch="$ROOTFS_DIR/oem/usr/bin/RkLunch.sh"
+    if [[ -f "$rklunch" ]]; then
+        sed -i 's|^\([^#]*rkipc\)|#\1  # Disabled: SeedSigner uses rkaiq_3A_server instead|' "$rklunch"
+        print_success "Disabled rkipc autostart in RkLunch.sh"
+    else
+        print_info "RkLunch.sh not found at $rklunch (may be generated later by firmware step)"
+    fi
+
+    # Remove unnecessary services from rootfs to reduce image bloat.
+    # SeedSigner is an air-gapped device and does not need network file sharing,
+    # Android debugging, or the full IP camera stack.
+    print_step "Removing unnecessary services from rootfs"
+    # Samba / SMB file sharing (not needed on air-gapped device)
+    for f in smbd nmbd smbpasswd smbcontrol smbstatus testparm; do
+        rm -f "$ROOTFS_DIR/usr/sbin/$f" "$ROOTFS_DIR/usr/bin/$f" 2>/dev/null || true
+    done
+    rm -rf "$ROOTFS_DIR/etc/samba" 2>/dev/null || true
+    # adbd - Android Debug Bridge daemon (not needed)
+    rm -f "$ROOTFS_DIR/usr/bin/adbd" 2>/dev/null || true
+    # Disable unnecessary init.d services that may ship with the default SDK
+    for svc in S50samba S50smbd S98_lunch_init; do
+        if [[ -f "$ROOTFS_DIR/etc/init.d/$svc" ]]; then
+            print_info "Removing unnecessary init script: $svc"
+            rm -f "$ROOTFS_DIR/etc/init.d/$svc"
+        fi
+    done
+    # Remove rkipc binary from rootfs if present (only rkaiq_3A_server is needed)
+    rm -f "$ROOTFS_DIR/usr/bin/rkipc" 2>/dev/null || true
+    print_success "Removed unnecessary services"
 
     print_step "Installing SeedSigner Code"
     cp -rv "$SEEDSIGNER_CODE_DIR/src/" "$ROOTFS_DIR/seedsigner"
