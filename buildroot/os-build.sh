@@ -970,13 +970,67 @@ CONFIGMENU
     print_step "Building Media Support"
     ./build.sh media
 
-    # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
-    print_info "Keeping RkLunch.sh rkipc autostart enabled"
-
     print_step "Building Applications"
     ./build.sh app
 
     resolve_rootfs_dir
+
+    # Disable rkipc autostart in RkLunch.sh - SeedSigner only needs rkaiq_3A_server
+    # for camera auto-exposure, not the full IP camera server.
+    print_step "Disabling rkipc autostart in RkLunch.sh"
+    local rklunch="$ROOTFS_DIR/oem/usr/bin/RkLunch.sh"
+    if [[ -f "$rklunch" ]]; then
+        sed -i 's|^\([^#]*rkipc\)|#\1  # Disabled: SeedSigner uses rkaiq_3A_server instead|' "$rklunch"
+        print_success "Disabled rkipc autostart in RkLunch.sh"
+    else
+        print_info "RkLunch.sh not found at $rklunch (may be generated later by firmware step)"
+    fi
+
+    # Remove unnecessary services that the upstream LuckFox SDK includes automatically.
+    # These are NOT user-added packages from the defconfig — they come from the SDK's
+    # ./build.sh app, ./build.sh media, and default OEM image.
+    # SeedSigner is an air-gapped signing device and only needs rkaiq_3A_server
+    # from the SDK's camera stack.
+    print_step "Removing unnecessary SDK-provided services from rootfs"
+
+    # --- Network services (SDK-provided, not needed on air-gapped device) ---
+    # Samba / SMB file sharing
+    for f in smbd nmbd smbpasswd smbcontrol smbstatus testparm; do
+        rm -f "$ROOTFS_DIR/usr/sbin/$f" "$ROOTFS_DIR/usr/bin/$f" 2>/dev/null || true
+    done
+    rm -rf "$ROOTFS_DIR/etc/samba" 2>/dev/null || true
+    # WiFi management tools (SDK wifi_app component)
+    for f in wpa_supplicant wpa_cli hostapd hostapd_cli; do
+        rm -f "$ROOTFS_DIR/usr/sbin/$f" "$ROOTFS_DIR/usr/bin/$f" 2>/dev/null || true
+    done
+
+    # --- SDK debugging/development tools ---
+    # adbd - Android Debug Bridge daemon
+    rm -f "$ROOTFS_DIR/usr/bin/adbd" 2>/dev/null || true
+    # Rockchip test utilities
+    rm -rf "$ROOTFS_DIR/rockchip_test" 2>/dev/null || true
+    rm -rf "$ROOTFS_DIR/oem/rockchip_test" 2>/dev/null || true
+
+    # --- SDK IPC/camera applications (only rkaiq_3A_server is needed) ---
+    # rkipc - full IP camera server
+    rm -f "$ROOTFS_DIR/usr/bin/rkipc" 2>/dev/null || true
+    rm -f "$ROOTFS_DIR/oem/usr/bin/rkipc" 2>/dev/null || true
+    # IPC web interface
+    rm -rf "$ROOTFS_DIR/oem/usr/www" 2>/dev/null || true
+    # Smart door demo app
+    rm -f "$ROOTFS_DIR/oem/usr/bin/rk_smart_door" 2>/dev/null || true
+    # UVC camera application
+    rm -f "$ROOTFS_DIR/oem/usr/bin/uvc_app" 2>/dev/null || true
+
+    # --- SDK init.d scripts ---
+    for svc in S50samba S50smbd S98_lunch_init S50usbdevice; do
+        if [[ -f "$ROOTFS_DIR/etc/init.d/$svc" ]]; then
+            print_info "Removing unnecessary SDK init script: $svc"
+            rm -f "$ROOTFS_DIR/etc/init.d/$svc"
+        fi
+    done
+
+    print_success "Removed unnecessary SDK-provided services"
 
     print_step "Installing SeedSigner Code"
     cp -rv "$SEEDSIGNER_CODE_DIR/src/" "$ROOTFS_DIR/seedsigner"
