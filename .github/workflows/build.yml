@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main, develop, master ]
   pull_request:
-    branches: [ main, develop, master ]
   workflow_dispatch:
     inputs:
       hardware_type:
@@ -98,10 +97,10 @@ jobs:
         echo "Validating build combination: $HARDWARE / $BOOT"
 
         case "$HARDWARE:$BOOT" in
-          "RV1103_Luckfox_Pico_Mini:SD_CARD"|
-          "RV1103_Luckfox_Pico_Mini:SPI_NAND"|
-          "RV1106_Luckfox_Pico_Pro_Max:SD_CARD"|
-          "RV1106_Luckfox_Pico_Pro_Max:SPI_NAND"|
+          "RV1103_Luckfox_Pico_Mini:SD_CARD" | \
+          "RV1103_Luckfox_Pico_Mini:SPI_NAND" | \
+          "RV1106_Luckfox_Pico_Pro_Max:SD_CARD" | \
+          "RV1106_Luckfox_Pico_Pro_Max:SPI_NAND" | \
           "RV1106_Luckfox_Pico_Pi:EMMC")
             echo "✅ Valid combination"
             ;;
