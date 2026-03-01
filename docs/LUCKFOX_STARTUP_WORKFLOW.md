@@ -47,16 +47,24 @@ Observed unreliable behavior:
 
 ## Disabled services
 
-The following unnecessary services are removed or disabled during the build to
-reduce image bloat and improve boot time on this air-gapped device:
+The following services come from the **upstream LuckFox SDK** (not from our
+buildroot defconfig) and are removed or disabled during the build to reduce
+image bloat and improve boot time on this air-gapped device:
 
 - **rkipc** – Full IP camera server. Autostart in `RkLunch.sh` is commented out
-  because SeedSigner only needs `rkaiq_3A_server` for camera auto-exposure.
-- **Samba (smbd/nmbd)** – Network file sharing binaries and configuration
-  removed from rootfs.
-- **adbd** – Android Debug Bridge daemon removed from rootfs.
-- **Unnecessary init.d scripts** – Any default SDK init scripts for samba or
-  lunch-init are removed.
+  and the binary is removed. SeedSigner only needs `rkaiq_3A_server` for camera
+  auto-exposure.
+- **Samba (smbd/nmbd)** – Network file sharing binaries and `/etc/samba`
+  configuration removed.
+- **WiFi tools (hostapd/wpa_supplicant)** – WiFi management daemons from the
+  SDK's `wifi_app` component removed.
+- **adbd** – Android Debug Bridge daemon removed.
+- **rockchip_test** – SDK test utilities directory removed.
+- **IPC web interface** – Web UI files from the SDK's `ipcweb` component removed
+  from the OEM partition.
+- **Demo applications** – `rk_smart_door` and `uvc_app` removed from OEM.
+- **SDK init.d scripts** – `S50samba`, `S50smbd`, `S98_lunch_init`, and
+  `S50usbdevice` removed if present.
 
 ## No boot autostart for camera service
 
