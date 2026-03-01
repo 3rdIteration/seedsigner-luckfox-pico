@@ -4,7 +4,6 @@ on:
   push:
     branches: [ main, develop, master ]
   pull_request:
-    branches: [ main, develop, master ]
   workflow_dispatch:
     inputs:
       hardware_type:
@@ -66,6 +65,7 @@ on:
 
 jobs:
   build:
+    name: Build (${{ matrix.hardware }} / ${{ matrix.boot }})
     runs-on: ubuntu-22.04
     timeout-minutes: 180  # 3 hours max
     permissions:
@@ -88,6 +88,31 @@ jobs:
       uses: actions/checkout@v4
       with:
         path: seedsigner-luckfox-pico
+
+    - name: Validate build combination
+      run: |
+        HARDWARE="${{ matrix.hardware }}"
+        BOOT="${{ matrix.boot }}"
+
+        echo "Validating build combination: $HARDWARE / $BOOT"
+
+        case "$HARDWARE:$BOOT" in
+          "RV1103_Luckfox_Pico_Mini:SD_CARD" | \
+          "RV1103_Luckfox_Pico_Mini:SPI_NAND" | \
+          "RV1106_Luckfox_Pico_Pro_Max:SD_CARD" | \
+          "RV1106_Luckfox_Pico_Pro_Max:SPI_NAND" | \
+          "RV1106_Luckfox_Pico_Pi:EMMC")
+            echo "✅ Valid combination"
+            ;;
+          *)
+            echo "❌ Invalid combination: $HARDWARE / $BOOT"
+            echo "Valid combinations are:"
+            echo "  - RV1103_Luckfox_Pico_Mini: SD_CARD or SPI_NAND"
+            echo "  - RV1106_Luckfox_Pico_Pro_Max: SD_CARD or SPI_NAND"
+            echo "  - RV1106_Luckfox_Pico_Pi: EMMC"
+            exit 1
+            ;;
+        esac
 
     - name: Free up disk space
       run: |
