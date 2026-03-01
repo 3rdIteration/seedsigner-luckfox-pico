@@ -700,8 +700,8 @@ jobs:
         ./build.sh rootfs
         ./build.sh media
         
-        # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
         # rkipc autostart will be disabled during rootfs customization below.
+        # Only rkaiq_3A_server is needed for camera auto-exposure.
         ./build.sh app
 
     - name: Install SeedSigner application

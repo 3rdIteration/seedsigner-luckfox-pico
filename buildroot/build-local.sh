@@ -855,8 +855,8 @@ build_system() {
     print_info "Building Media..."
     ./build.sh media
     
-    # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
     # rkipc autostart will be disabled during rootfs customization below.
+    # Only rkaiq_3A_server is needed for camera auto-exposure.
     
     print_info "Building Applications..."
     ./build.sh app
