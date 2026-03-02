@@ -725,7 +725,7 @@ apply_pi_i2c_pinctrl_fix() {
     local dtsi_file
     dtsi_file="$(resolve_dtsi_path_for_hardware "$hardware")"
 
-    print_header "Fixing Pi I2C Pinctrl Conflicts with GPIO Button Pins"
+    print_header "Fixing Pi Pinctrl Conflicts with GPIO Button Pins"
 
     # Remove i2c3m2_xfer from i2c3's pinctrl-0.
     # i2c3m2_xfer maps GPIO3_D1 (KEY_UP) and GPIO3_D2 (KEY_LEFT) to open-drain
@@ -745,7 +745,17 @@ apply_pi_i2c_pinctrl_fix() {
         exit 1
     fi
 
-    print_success "Pi I2C pinctrl conflicts fixed in: $dtsi_file"
+    # Remove pwm1m2_pins from pwm1's pinctrl-0.
+    # pwm1m2_pins maps GPIO3_D3 (KEY2) to PWM1_M2 push-pull output mode.
+    # A push-pull output actively drives the pin low when idle, so external
+    # pull-up resistors cannot restore the correct HIGH (unpressed) state.
+    sed -i 's/[[:space:]]*\&pwm1m2_pins//' "$dtsi_file"
+    if grep -q 'pwm1m2_pins' "$dtsi_file"; then
+        print_error "Failed to remove pwm1m2_pins from Pi DTSI: $dtsi_file"
+        exit 1
+    fi
+
+    print_success "Pi GPIO button pinctrl conflicts fixed in: $dtsi_file"
 }
 
 prepare_buildroot() {

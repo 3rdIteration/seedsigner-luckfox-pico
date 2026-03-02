@@ -536,7 +536,7 @@ jobs:
           echo "UART2 FIQ debugger configuration remains enabled"
         fi
 
-    - name: Fix Pi I2C pinctrl conflicts with GPIO button pins
+    - name: Fix Pi pinctrl conflicts with GPIO button pins
       if: matrix.hardware == 'RV1106_Luckfox_Pico_Pi'
       run: |
         cd luckfox-pico
@@ -564,8 +564,18 @@ jobs:
           exit 1
         fi
 
-        echo "Pi I2C pinctrl conflicts fixed in: $DTSI_FILE"
-        grep -n "i2c1\|i2c3" "$DTSI_FILE" | grep pinctrl || true
+        # Remove pwm1m2_pins from pwm1's pinctrl-0.
+        # pwm1m2_pins maps GPIO3_D3 (KEY2) to PWM1_M2 push-pull output mode.
+        # A push-pull output actively drives the pin low when idle, so external
+        # pull-up resistors cannot restore the correct HIGH (unpressed) state.
+        sed -i 's/[[:space:]]*\&pwm1m2_pins//' "$DTSI_FILE"
+        if grep -q 'pwm1m2_pins' "$DTSI_FILE"; then
+          echo "ERROR: Failed to remove pwm1m2_pins from Pi DTSI: $DTSI_FILE"
+          exit 1
+        fi
+
+        echo "Pi GPIO button pinctrl conflicts fixed in: $DTSI_FILE"
+        grep -n "i2c1\|i2c3\|pwm1" "$DTSI_FILE" | grep pinctrl || true
 
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
