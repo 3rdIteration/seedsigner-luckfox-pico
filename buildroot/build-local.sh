@@ -745,13 +745,32 @@ apply_pi_i2c_pinctrl_fix() {
         exit 1
     fi
 
-    # Remove pwm1m2_pins from pwm1's pinctrl-0.
-    # pwm1m2_pins maps GPIO3_D3 (KEY2) to PWM1_M2 push-pull output mode.
-    # A push-pull output actively drives the pin low when idle, so external
-    # pull-up resistors cannot restore the correct HIGH (unpressed) state.
-    sed -i 's/[[:space:]]*\&pwm1m2_pins//' "$dtsi_file"
-    if grep -q 'pwm1m2_pins' "$dtsi_file"; then
-        print_error "Failed to remove pwm1m2_pins from Pi DTSI: $dtsi_file"
+    # Remove the entire pinctrl-0 line from &pwm1.
+    # pwm1m1_pins maps GPIO4_C1 (KEY1) and pwm1m2_pins maps GPIO3_D3 (KEY2)
+    # to PWM push-pull output mode. Push-pull outputs actively drive the pin
+    # low when idle; external pull-up resistors cannot restore the HIGH state.
+    # Expected line (tab-indented): pinctrl-0 = <&pwm1m1_pins &pwm1m2_pins>;
+    sed -i '/pinctrl-0 = <&pwm1m1_pins &pwm1m2_pins>;/d' "$dtsi_file"
+    if grep -Eq 'pwm1m[12]_pins' "$dtsi_file"; then
+        print_error "Failed to remove pwm1 pinctrl-0 from Pi DTSI: $dtsi_file"
+        exit 1
+    fi
+
+    # Remove uart0m0_xfer from uart0's pinctrl-0.
+    # uart0m0_xfer maps GPIO0_A0 (KEY_RIGHT) and GPIO0_A1 (KEY_DOWN) to
+    # UART0 RX/TX. UART TX actively drives the pin; button presses on KEY_DOWN
+    # fight against the TX driver and may not register.
+    sed -i 's/\&uart0m0_xfer[[:space:]]*//' "$dtsi_file"
+    if grep -q 'uart0m0_xfer' "$dtsi_file"; then
+        print_error "Failed to remove uart0m0_xfer from Pi DTSI: $dtsi_file"
+        exit 1
+    fi
+
+    # Remove pwm2m0_pins from pwm2's pinctrl-0.
+    # pwm2m0_pins maps GPIO0_A1 (KEY_DOWN) to PWM2_M0 push-pull output mode.
+    sed -i 's/\&pwm2m0_pins[[:space:]]*//' "$dtsi_file"
+    if grep -q 'pwm2m0_pins' "$dtsi_file"; then
+        print_error "Failed to remove pwm2m0_pins from Pi DTSI: $dtsi_file"
         exit 1
     fi
 
