@@ -715,6 +715,39 @@ apply_uart2_fiq_kernel_patch() {
     print_success "Kernel FIQ debugger disabled and serial drivers enabled in: $kernel_cfg_file"
 }
 
+apply_pi_i2c_pinctrl_fix() {
+    local hardware="$1"
+
+    if [ "$hardware" != "pi" ]; then
+        return 0
+    fi
+
+    local dtsi_file
+    dtsi_file="$(resolve_dtsi_path_for_hardware "$hardware")"
+
+    print_header "Fixing Pi I2C Pinctrl Conflicts with GPIO Button Pins"
+
+    # Remove i2c3m2_xfer from i2c3's pinctrl-0.
+    # i2c3m2_xfer maps GPIO3_D1 (KEY_UP) and GPIO3_D2 (KEY_LEFT) to open-drain
+    # I2C mode with no pull-up, causing those buttons to read as constantly pressed.
+    sed -i 's/[[:space:]]*\&i2c3m2_xfer//' "$dtsi_file"
+    if grep -q 'i2c3m2_xfer' "$dtsi_file"; then
+        print_error "Failed to remove i2c3m2_xfer from Pi DTSI: $dtsi_file"
+        exit 1
+    fi
+
+    # Remove i2c1m1_xfer from i2c1's pinctrl-0.
+    # Removing this reference causes i2c1m1-xfer to be omitted from the compiled
+    # DTB (via /omit-if-no-ref/), ensuring those pins are not muxed to I2C mode.
+    sed -i '/pinctrl-0 = <&i2c1m1_xfer>;/d' "$dtsi_file"
+    if grep -q 'i2c1m1_xfer' "$dtsi_file"; then
+        print_error "Failed to remove i2c1m1_xfer from Pi DTSI: $dtsi_file"
+        exit 1
+    fi
+
+    print_success "Pi I2C pinctrl conflicts fixed in: $dtsi_file"
+}
+
 prepare_buildroot() {
     print_header "Preparing Buildroot Source Tree"
     
@@ -1234,6 +1267,7 @@ main() {
     apply_uart2_console_config "$hardware" "$boot_medium"
     apply_uart2_console_dts_patch "$hardware"
     apply_uart2_fiq_kernel_patch "$hardware" "$boot_medium"
+    apply_pi_i2c_pinctrl_fix "$hardware"
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages

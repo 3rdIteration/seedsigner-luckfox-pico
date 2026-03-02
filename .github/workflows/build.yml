@@ -536,6 +536,37 @@ jobs:
           echo "UART2 FIQ debugger configuration remains enabled"
         fi
 
+    - name: Fix Pi I2C pinctrl conflicts with GPIO button pins
+      if: matrix.hardware == 'RV1106_Luckfox_Pico_Pi'
+      run: |
+        cd luckfox-pico
+        DTSI_FILE="sysdrv/source/kernel/arch/arm/boot/dts/rv1106-luckfox-pico-pi-ipc.dtsi"
+        if [ ! -f "$DTSI_FILE" ]; then
+          echo "ERROR: Pi DTSI file not found: $DTSI_FILE"
+          exit 1
+        fi
+
+        # Remove i2c3m2_xfer from i2c3's pinctrl-0.
+        # i2c3m2_xfer maps GPIO3_D1 (KEY_UP) and GPIO3_D2 (KEY_LEFT) to open-drain
+        # I2C mode with no pull-up, causing those buttons to read as constantly pressed.
+        sed -i 's/[[:space:]]*\&i2c3m2_xfer//' "$DTSI_FILE"
+        if grep -q 'i2c3m2_xfer' "$DTSI_FILE"; then
+          echo "ERROR: Failed to remove i2c3m2_xfer from Pi DTSI: $DTSI_FILE"
+          exit 1
+        fi
+
+        # Remove i2c1m1_xfer from i2c1's pinctrl-0.
+        # Removing this reference causes i2c1m1-xfer to be omitted from the compiled
+        # DTB (via /omit-if-no-ref/), ensuring those pins are not muxed to I2C mode.
+        sed -i '/pinctrl-0 = <&i2c1m1_xfer>;/d' "$DTSI_FILE"
+        if grep -q 'i2c1m1_xfer' "$DTSI_FILE"; then
+          echo "ERROR: Failed to remove i2c1m1_xfer from Pi DTSI: $DTSI_FILE"
+          exit 1
+        fi
+
+        echo "Pi I2C pinctrl conflicts fixed in: $DTSI_FILE"
+        grep -n "i2c1\|i2c3" "$DTSI_FILE" | grep pinctrl || true
+
     - name: Apply CMA memory configuration for Mini
       if: matrix.hardware == 'RV1103_Luckfox_Pico_Mini'
       run: |
