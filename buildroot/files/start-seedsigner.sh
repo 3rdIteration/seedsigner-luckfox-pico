@@ -68,58 +68,75 @@ release_conflicting_gpio_lines() {
 }
 
 reset_pi_stuck_gpio_pins() {
-    # On LuckFox Pico Pi, GPIO3_D2 (KEY_LEFT) and GPIO3_D3 (KEY2) receive ghost
-    # inputs because the I2C3 and PWM1 hardware controllers are left running by
-    # the boot ROM / U-Boot with their output transistors still active.  Switching
-    # the IOMUX to GPIO mode (iomux 3 26 0 / iomux 3 27 0) is not sufficient on
-    # its own because the peripheral output drivers can bypass the IOMUX on this
-    # silicon.  We must disable each controller via its control register first so
-    # it releases the pad, then re-assert GPIO mode.
+    # On LuckFox Pico Pi, U-Boot leaves GPIO3_D2 (KEY_LEFT) in I2C3_M2_SDA mode
+    # (IOMUX func 3) and GPIO3_D3 (KEY2) in PWM1_M2 mode (IOMUX func 2).  Both
+    # i2c3 and pwm1 have status="disabled" in the compiled DTB, so the kernel
+    # never probes them and never resets their pinctrl.  U-Boot's IOMUX settings
+    # therefore persist: the pads remain connected to peripheral output drivers
+    # that pull them LOW, causing ghost button presses regardless of pull-ups.
     #
-    # GPIO3_D1 (KEY_UP / I2C3_M2_SCL): the IOMUX func-2 workaround (UART5_RTS)
-    # routes that pin to an idle-HIGH output, overriding the brief SCL pulses.
+    # Fix: write to the RV1106 IOC IOMUX register for the GPIO3_D pin group to
+    # switch GPIO3_D2 and GPIO3_D3 to GPIO mode (function 0), then clear the
+    # GPIO bank direction bits so the lines are sampled as inputs.
     #
-    # Register map (RV1106):
-    #   I2C3  base 0xff460000  – CON  register at offset 0x00 → 0xff460000
-    #   PWM1  channel base 0xff350010 (PWM block 0xff350000 + channel-1 * 0x10)
-    #         CTRL register at channel offset 0x0C → 0xff35001C
+    # Register layout (confirmed from pinctrl-rockchip.c and rv1106.dtsi):
+    #   IOC base (rockchip,grf = <&ioc>): 0xff538000
+    #     reg = <0xff538000 0x40000>
+    #   GPIO3 IOMUX group-D register (IOMUX_WIDTH_4BIT offset 0x20058):
+    #     Address : 0xff558058
+    #     Format  : write-with-mask — bits[31:16] = enable-mask, bits[15:0] = value
+    #     GPIO3_D2 field: bits[11:8]   mask 0x0F00  → func 0 = GPIO
+    #     GPIO3_D3 field: bits[15:12]  mask 0xF000  → func 0 = GPIO
+    #     Combined write: 0xFF000000  (mask 0xFF00, value 0x0000)
+    #   GPIO3 bank base: 0xff550000
+    #   GPIO3 direction register (GPIO_SWPORT_DDR): 0xff550004
+    #     Bit 26 = GPIO3_D2, bit 27 = GPIO3_D3; 0 = input, 1 = output
     if ! grep -qi "luckfox.*pico.*pi" /proc/device-tree/model 2>/dev/null; then
         return 0
     fi
 
-    log_message "Pi: resetting I2C3 and PWM1 controllers to release button pins..."
+    log_message "Pi: switching GPIO3_D2 (KEY_LEFT) and GPIO3_D3 (KEY2) to GPIO input mode..."
 
-    python3 - <<'PYEOF' 2>/dev/null || true
+    python3 - 2>>"${LOG_FILE:-/tmp/startup.log}" <<'PYEOF'
 import mmap, struct
 
-def write32(addr, val):
-    page = addr & ~0xFFF
-    off  = addr &  0xFFF
-    with open('/dev/mem', 'r+b', buffering=0) as f:
-        m = mmap.mmap(f.fileno(), 0x1000, offset=page)
-        struct.pack_into('<I', m, off, val)
+def devmem_read32(addr):
+    page_base = addr & ~0xFFF
+    page_off  = addr &  0xFFF
+    with open('/dev/mem', 'rb', buffering=0) as fd:
+        m = mmap.mmap(fd.fileno(), 0x1000, offset=page_base, access=mmap.ACCESS_READ)
+        val = struct.unpack_from('<I', m, page_off)[0]
+        m.close()
+    return val
+
+def devmem_write32(addr, val):
+    page_base = addr & ~0xFFF
+    page_off  = addr &  0xFFF
+    with open('/dev/mem', 'r+b', buffering=0) as fd:
+        m = mmap.mmap(fd.fileno(), 0x1000, offset=page_base)
+        struct.pack_into('<I', m, page_off, val)
         m.close()
 
-# Disable I2C3 master to release GPIO3_D2 (I2C3_M2_SDA / KEY_LEFT).
-# Writing 0 to I2C_CON clears the enable and any pending START/STOP bits,
-# stopping the state machine and turning off the open-drain SDA transistor.
-write32(0xff460000, 0)
+# Step 1: Set GPIO3_D2 and GPIO3_D3 to GPIO function (func 0) via the IOC
+# IOMUX register.  The write-with-mask format means the upper 16 bits select
+# which bits to update; writing 0xFF000000 enables the D2 (bits[11:8]) and
+# D3 (bits[15:12]) fields and sets them both to 0 (GPIO mode).
+devmem_write32(0xff558058, 0xFF000000)
 
-# Disable PWM1 output to release GPIO3_D3 (PWM1_M2 / KEY2).
-# PWM_CTRL bit-0 = timer enable, bit-3 = output enable; clearing both stops
-# the PWM signal and tristates the push-pull output driver.
-write32(0xff35001C, 0)
+# Step 2: Ensure GPIO3_D2 (bit 26) and GPIO3_D3 (bit 27) are configured as
+# inputs in the GPIO bank direction register.  Read-modify-write so we do not
+# disturb other GPIO3 lines.
+ddr = devmem_read32(0xff550004)
+ddr &= ~((1 << 26) | (1 << 27))
+devmem_write32(0xff550004, ddr)
 PYEOF
 
-    # Restore GPIO mode on the now-released pads.
-    iomux 3 26 0 2>/dev/null || true   # GPIO3_D2 → GPIO (KEY_LEFT)
-    iomux 3 27 0 2>/dev/null || true   # GPIO3_D3 → GPIO (KEY2)
-
-    # KEY_UP (GPIO3_D1 / I2C3_M2_SCL): route to UART5_RTS (func 2).
-    # UART5 is unused so RTS idles HIGH, overriding brief I2C SCL pulses.
-    iomux 3 25 2 2>/dev/null || true
-
-    log_message "Pi: button pin reset complete"
+    local rc=$?
+    if [ "$rc" -eq 0 ]; then
+        log_message "Pi: button pin GPIO mode reset succeeded"
+    else
+        log_message "Pi: Warning: /dev/mem write failed (exit $rc) — button pins may still be stuck"
+    fi
 }
 
 start_camera_service_later() {
