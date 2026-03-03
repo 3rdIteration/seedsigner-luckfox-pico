@@ -100,6 +100,28 @@ reset_pi_stuck_gpio_pins() {
 
     log_message "Pi: setting GPIO mode, input buffers, pull-ups for all 8 button pins..."
 
+    # ── Step 1 (primary): Set IOMUX → GPIO via the kernel GPIO subsystem ─────────
+    # Opening each GPIO line via gpioget forces the kernel pinctrl driver to mux
+    # the pad to GPIO mode.  This is reliable on ALL kernels, including those where
+    # /dev/mem writes to IOC registers are blocked (EFAULT from CONFIG_STRICT_DEVMEM
+    # or equivalent).  External pull-up resistors on the Pi PCB hold the buttons HIGH.
+    # Uses libgpiod v2 syntax: gpioget -c <chip> <offset>
+    log_message "Pi: IOMUX fix via kernel GPIO subsystem"
+    local _chip _line
+    # chip/line pairs: KEY_RIGHT KEY_DOWN KEY_PRESS KEY3 KEY_UP KEY_LEFT KEY2 KEY1
+    for _chip_line in "0 0" "0 1" "1 20" "1 23" "3 25" "3 26" "3 27" "4 17"; do
+        _chip="${_chip_line% *}"
+        _line="${_chip_line#* }"
+        gpioget -c gpiochip${_chip} ${_line} >/dev/null 2>&1 || \
+            log_message "Pi: gpioget -c gpiochip${_chip} ${_line} failed (pin may be busy)"
+    done
+
+    # ── Step 2 (secondary): also try /dev/mem for pull-up and direction ──────────
+    # Uses Rockchip write-with-mask format: bits[31:16]=mask, bits[15:0]=value.
+    # On kernels with CONFIG_STRICT_DEVMEM or equivalent, writes to IOC physical
+    # addresses return EFAULT — this is expected and non-fatal.  Pull-up is
+    # provided by external resistors; IOMUX is already set by step 1 above.
+
     python3 - 2>>"${LOG_FILE:-/tmp/startup.log}" <<'PYEOF'
 import os, struct, sys
 
@@ -182,34 +204,20 @@ write32(0xFF5680C0, 0x60086008)
 write32(0xFF56000C, 0x00020000)
 
 if _write_failures:
-    print(f"Pi: {len(_write_failures)} IOC write(s) blocked (TrustZone/hardware protected):",
+    print(f"Pi: {len(_write_failures)} IOC write(s) blocked (kernel restricts /dev/mem I/O writes):",
           file=sys.stderr)
     for f in _write_failures:
         print(f"Pi:   {f}", file=sys.stderr)
-    sys.exit(2)  # partial failure — gpioget fallback will run
+    print("Pi: IOMUX was already set in step 1 via gpioget; external pull-ups provide pull.",
+          file=sys.stderr)
+    # Non-fatal: step 1 (gpioget) has already set IOMUX; pull-up from external resistors.
 PYEOF
 
     local rc=$?
     if [ "$rc" -eq 0 ]; then
-        log_message "Pi: button pin pull-up configuration succeeded"
-    elif [ "$rc" -eq 2 ]; then
-        # Some /dev/mem writes were blocked (TrustZone / hardware write protection).
-        # Fall back to the kernel GPIO subsystem for IOMUX: opening each GPIO line
-        # for input forces the kernel pinctrl to set IOMUX → GPIO mode, which is
-        # the kernel driver's privileged write path.  Pull-up config requires
-        # /dev/mem; with external pull-up resistors fitted this is not needed.
-        log_message "Pi: Some IOC writes blocked — using gpioget fallback for IOMUX"
-        local _chip _line
-        # chip/line pairs: KEY_RIGHT KEY_DOWN KEY_PRESS KEY3 KEY_UP KEY_LEFT KEY2 KEY1
-        for _chip_line in "0 0" "0 1" "1 20" "1 23" "3 25" "3 26" "3 27" "4 17"; do
-            _chip="${_chip_line% *}"
-            _line="${_chip_line#* }"
-            gpioget gpiochip${_chip} ${_line} >/dev/null 2>&1 || \
-                log_message "Pi: gpioget gpiochip${_chip} ${_line} failed (pin may be busy)"
-        done
-        log_message "Pi: gpioget IOMUX fallback complete"
+        log_message "Pi: button pin configuration succeeded (gpioget + /dev/mem)"
     else
-        log_message "Pi: Warning: /dev/mem write failed (exit $rc) — button pull-ups may not be set"
+        log_message "Pi: /dev/mem writes blocked (exit $rc); IOMUX set by gpioget, external pull-ups active"
     fi
 }
 

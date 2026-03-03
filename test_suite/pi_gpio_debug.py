@@ -275,24 +275,53 @@ def apply_fix():
 # gpioget via subprocess
 # ─────────────────────────────────────────────────────────────────────────────
 
+_GPIOGET_NOT_FOUND = 'gpioget not available'
+
+
+def _gpioget_run(chip, line, timeout=2):
+    """Run gpioget for a single chip/line.  Tries libgpiod v2 syntax first
+    (gpioget -c gpiochipN offset), then v1 (gpioget gpiochipN offset).
+    Returns (returncode, stdout, stderr).
+    """
+    # libgpiod v2: -c/--chip selects the chip; line is a numeric offset.
+    # libgpiod v1: positional chip-name then offset.
+    cmds = [
+        ['gpioget', '-c', f'gpiochip{chip}', str(line)],  # v2
+        ['gpioget', f'gpiochip{chip}', str(line)],          # v1
+    ]
+    last_rc, last_out, last_err = 1, '', _GPIOGET_NOT_FOUND
+    for cmd in cmds:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+            last_rc, last_out, last_err = r.returncode, r.stdout, r.stderr
+            if r.returncode == 0:
+                return r.returncode, r.stdout, r.stderr
+            err = r.stderr.strip() or r.stdout.strip()
+            # v2 "unknown option" → try v1 syntax
+            if any(k in err.lower() for k in ('unknown option', 'unrecognized', 'invalid option')):
+                continue
+            # Any other error (e.g. "device busy") is definitive — stop trying
+            return r.returncode, r.stdout, r.stderr
+        except FileNotFoundError:
+            return 1, '', _GPIOGET_NOT_FOUND
+        except Exception as e:
+            return 1, '', f'gpioget exception: {e}'
+    return last_rc, last_out, last_err
+
+
 def gpioget_level(chip, line):
-    """Read a GPIO line via the gpioget CLI tool (libgpiod). Returns 'HIGH'/'LOW'/error string."""
-    try:
-        result = subprocess.run(
-            ['gpioget', f'gpiochip{chip}', str(line)],
-            capture_output=True, text=True, timeout=2
-        )
-        val = result.stdout.strip()
+    """Read a GPIO line via the gpioget CLI tool (libgpiod v1 and v2).
+    Returns 'HIGH', 'LOW', or an error string."""
+    rc, out, err = _gpioget_run(chip, line)
+    if rc == 0:
+        val = out.strip()
         if val == '1':
             return 'HIGH'
         elif val == '0':
             return 'LOW'
         else:
-            return f'gpioget error: {result.stderr.strip() or val}'
-    except FileNotFoundError:
-        return 'gpioget not available'
-    except Exception as e:
-        return f'gpioget exception: {e}'
+            return f'gpioget error: unexpected output: {val!r}'
+    return f'gpioget error: {err.strip() or out.strip()}'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -425,20 +454,17 @@ def main():
     else:
         for pin in iomux_fallback_needed:
             name, chip, line = pin[0], pin[1], pin[2]
-            result = subprocess.run(
-                ['gpioget', f'gpiochip{chip}', str(line)],
-                capture_output=True, text=True, timeout=3
-            )
+            rc, out, err = _gpioget_run(chip, line, timeout=3)
             # Re-read IOMUX to see if gpioget helped
             post_state = read_pin_state(pin)
             iomux_now = post_state['iomux']
-            if result.returncode == 0 and iomux_now == 0:
+            if rc == 0 and iomux_now == 0:
                 print(f'  {name:12s}  ✓ IOMUX now GPIO after gpioget')
                 after_fix[name] = post_state  # update for subsequent sections
-            elif result.returncode != 0:
-                err = result.stderr.strip() or result.stdout.strip()
-                print(f'  {name:12s}  ✗ gpioget failed ({err})')
-                if 'busy' in err.lower() or 'device' in err.lower():
+            elif rc != 0:
+                err_msg = err.strip() or out.strip()
+                print(f'  {name:12s}  ✗ gpioget failed ({err_msg})')
+                if 'busy' in err_msg.lower() or 'device' in err_msg.lower():
                     print(f'               → pin is owned by a kernel driver (I2C/PWM/UART)')
                     print(f'               → DTB fix (apply_pi_i2c_pinctrl_fix) did not run')
             else:
@@ -570,28 +596,38 @@ def main():
     print('    0xFF5680C0 → bits[14:13] = 0b11=3=up, bit[3]=1 → 0x6008')
     print()
     print('  Check startup log for the fix result:')
-    print('    cat /tmp/startup.log | grep -i "pull\\|gpio\\|pin\\|sigbus\\|bus error"')
+    print('    cat /tmp/startup.log | grep -i "pull\\|gpio\\|pin\\|sigbus\\|bus error\\|efault"')
     print()
     print('  List all GPIO lines with kernel state:')
     print('    gpioinfo')
     print()
-    print('  Read a single GPIO line:')
-    print('    gpioget gpiochip0 0   # KEY_RIGHT')
-    print('    gpioget gpiochip0 1   # KEY_DOWN')
-    print('    gpioget gpiochip1 20  # KEY_PRESS')
-    print('    gpioget gpiochip1 23  # KEY3')
-    print('    gpioget gpiochip3 25  # KEY_UP')
-    print('    gpioget gpiochip3 26  # KEY_LEFT')
-    print('    gpioget gpiochip3 27  # KEY2')
-    print('    gpioget gpiochip4 17  # KEY1')
+    print('  Read a single GPIO line (libgpiod v2 syntax; v1 omits -c):')
+    print('    gpioget -c gpiochip0 0   # KEY_RIGHT')
+    print('    gpioget -c gpiochip0 1   # KEY_DOWN')
+    print('    gpioget -c gpiochip1 20  # KEY_PRESS')
+    print('    gpioget -c gpiochip1 23  # KEY3')
+    print('    gpioget -c gpiochip3 25  # KEY_UP')
+    print('    gpioget -c gpiochip3 26  # KEY_LEFT')
+    print('    gpioget -c gpiochip3 27  # KEY2')
+    print('    gpioget -c gpiochip4 17  # KEY1')
+    print()
+    print('  Force IOMUX → GPIO for all button pins via kernel pinctrl:')
+    print('    gpioget -c gpiochip0 0 1')
+    print('    gpioget -c gpiochip1 20 23')
+    print('    gpioget -c gpiochip3 25 26 27')
+    print('    gpioget -c gpiochip4 17')
+    print()
+    print('  If /dev/mem writes return EFAULT (errno 14) the kernel blocks I/O region')
+    print('  writes from userspace (CONFIG_STRICT_DEVMEM or similar). Reads still work.')
+    print('  The gpioget approach above sets IOMUX via the kernel pinctrl driver which')
+    print('  has direct ioremap access. Pull-up configuration still requires /dev/mem.')
     print()
     print('  Check DTB for leftover conflicting pinctrl (should return no output):')
     print('    fdtget /proc/device-tree/i2c3 pinctrl-0 2>/dev/null')
     print('    fdtget /proc/device-tree/pwm1 pinctrl-0 2>/dev/null')
     print('    fdtget /proc/device-tree/uart0 pinctrl-0 2>/dev/null')
     print()
-    print('  If writes are blocked (TrustZone), check if the pinctrl debug sysfs')
-    print('  shows pins in use by another driver:')
+    print('  Check pinctrl debug sysfs to see which driver owns each pin:')
     print('    cat /sys/kernel/debug/pinctrl/pinctrl-rockchip/pinmux-pins 2>/dev/null \\')
     print('      | grep -E "GPIO3_D[123]|GPIO0_A[01]|GPIO1_C[47]|GPIO4_C1"')
     print()
