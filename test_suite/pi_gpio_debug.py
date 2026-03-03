@@ -14,12 +14,24 @@ What it checks:
        - Input buffer enable
        - Pull configuration
        - Direction
-    3. Applies the /dev/mem fix and reads registers back to verify writes worked
-    4. Reads actual hardware pin level via GPIO EXT_PORT register
-    5. Reads pin levels via gpioget (libgpiod CLI tool)
-    6. Opens lines with python-periphery then re-reads registers to detect
+    3. Applies the /dev/mem fix (writes); reports individual write failures
+       without crashing — hardware-protected registers (e.g. TrustZone IOC
+       blocks) return OSError rather than SIGBUS with the file-based approach
+    4. Reads all registers back to show post-fix state
+    4b. For any pin whose IOMUX write failed, tries gpioget to ask the kernel
+        pinctrl to set IOMUX to GPIO mode, then re-reads IOMUX
+    5. Reads actual hardware pin level via GPIO EXT_PORT register
+    6. Reads pin levels via gpioget (libgpiod CLI tool)
+    7. Opens lines with python-periphery then re-reads registers to detect
        whether the kernel pinctrl re-muxes pins when a line is claimed
-    7. Prints a per-pin PASS/FAIL verdict
+    8. Prints a per-pin PASS/FAIL verdict
+
+NOTE: write32 uses os.lseek + os.write rather than mmap + struct.pack_into.
+    mmap writes to hardware-protected physical addresses cause a hardware
+    data-abort that the kernel delivers as SIGBUS, which crashes the process
+    with no Python exception.  The file-based path goes through the kernel's
+    write_mem() handler which returns an errno (converted to OSError), so
+    individual failures can be caught and reported while the rest continue.
 
 All 8 Pi button pins (from io_config.md FOX_PI profile):
     KEY_RIGHT = GPIO0_A0  gpiochip0/0
@@ -63,13 +75,25 @@ def read32(addr):
     return val
 
 def write32(addr, val):
-    """Write a 32-bit Rockchip write-with-mask value to /dev/mem."""
-    page_base = addr & ~0xFFF
-    page_off  = addr &  0xFFF
-    with open('/dev/mem', 'r+b', buffering=0) as fd:
-        m = mmap.mmap(fd.fileno(), 0x1000, offset=page_base)
-        struct.pack_into('<I', m, page_off, val)
-        m.close()
+    """Write a 32-bit Rockchip write-with-mask value to /dev/mem.
+
+    Uses os.lseek + os.write rather than mmap + struct.pack_into.  When a
+    physical address is write-protected by hardware (e.g. a TrustZone-guarded
+    IOC block), a mmap write causes a hardware data-abort that the kernel
+    converts to SIGBUS — an unrecoverable crash with no Python exception path.
+    The file-based write goes through the kernel's write_mem() handler, which
+    returns a normal errno (OSError) so callers can catch and handle it.
+    """
+    fd = None
+    try:
+        fd = os.open('/dev/mem', os.O_RDWR | os.O_SYNC)
+        os.lseek(fd, addr, os.SEEK_SET)
+        os.write(fd, struct.pack('<I', val))
+    except OSError:
+        raise
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 def get_field(reg_val, hi, lo):
     """Extract bit field [hi:lo] from a register read value."""
@@ -208,28 +232,43 @@ def print_pin_state(pin, state, label=''):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def apply_fix():
-    # GPIO0: KEY_RIGHT (A0) + KEY_DOWN (A1)
-    write32(0xFF388000, 0x00770000)  # IOMUX → GPIO
-    write32(0xFF388030, 0x00030003)  # input buffer enable
-    write32(0xFF388038, 0x000F0005)  # pull-up
-    write32(0xFF380008, 0x00030000)  # direction → input
+    """Apply the /dev/mem register fix.
 
-    # GPIO1: KEY_PRESS (C4) + KEY3 (C7)
-    write32(0xFF538014, 0x70070000)  # IOMUX → GPIO
-    write32(0xFF538188, 0x00900090)  # input buffer enable
-    write32(0xFF5381C8, 0xC3004100)  # pull-up
-    write32(0xFF53000C, 0x00900000)  # direction → input
+    Each write is attempted independently; if a write is blocked by the
+    hardware (e.g. TrustZone-protected IOC region), OSError is caught and
+    recorded instead of crashing the process.
 
-    # GPIO3: KEY_UP (D1) + KEY_LEFT (D2) + KEY2 (D3)
-    write32(0xFF558058, 0x77700000)  # IOMUX → GPIO
-    write32(0xFF5581AC, 0x000E000E)  # input buffer enable
-    write32(0xFF5581EC, 0x00FC0054)  # pull-up
-    write32(0xFF55000C, 0x0E000000)  # direction → input
-
-    # GPIO4: KEY1 (C1)  — high-drive pad, pull encoding: 3=pullup
-    write32(0xFF568010, 0x00700000)  # IOMUX → GPIO
-    write32(0xFF5680C0, 0x60086008)  # pull-up (bits[14:13]=3) + input buffer enable (bit3)
-    write32(0xFF56000C, 0x00020000)  # direction → input
+    Returns a list of (addr, val, description, error_string) for every write
+    that failed.  An empty list means all writes succeeded.
+    """
+    writes = [
+        # GPIO0: KEY_RIGHT (A0) + KEY_DOWN (A1)
+        (0xFF388000, 0x00770000, 'GPIO0 IOMUX → GPIO'),
+        (0xFF388030, 0x00030003, 'GPIO0 input buffer enable'),
+        (0xFF388038, 0x000F0005, 'GPIO0 pull-up'),
+        (0xFF380008, 0x00030000, 'GPIO0 direction → input'),
+        # GPIO1: KEY_PRESS (C4) + KEY3 (C7)
+        (0xFF538014, 0x70070000, 'GPIO1 IOMUX → GPIO'),
+        (0xFF538188, 0x00900090, 'GPIO1 input buffer enable'),
+        (0xFF5381C8, 0xC3004100, 'GPIO1 pull-up'),
+        (0xFF53000C, 0x00900000, 'GPIO1 direction → input'),
+        # GPIO3: KEY_UP (D1) + KEY_LEFT (D2) + KEY2 (D3)
+        (0xFF558058, 0x77700000, 'GPIO3 IOMUX → GPIO'),
+        (0xFF5581AC, 0x000E000E, 'GPIO3 input buffer enable'),
+        (0xFF5581EC, 0x00FC0054, 'GPIO3 pull-up'),
+        (0xFF55000C, 0x0E000000, 'GPIO3 direction → input'),
+        # GPIO4: KEY1 (C1) — high-drive pad, pull encoding: 3=pullup
+        (0xFF568010, 0x00700000, 'GPIO4 IOMUX → GPIO'),
+        (0xFF5680C0, 0x60086008, 'GPIO4 pull-up + input buffer enable'),
+        (0xFF56000C, 0x00020000, 'GPIO4 direction → input'),
+    ]
+    failures = []
+    for addr, val, desc in writes:
+        try:
+            write32(addr, val)
+        except OSError as e:
+            failures.append((addr, val, desc, str(e)))
+    return failures
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -345,12 +384,26 @@ def main():
 
     # ── 3. Apply fix ─────────────────────────────────────────────────────────
     print(f'\n── 3. Applying /dev/mem fix ────────────────────────────────────────────')
-    try:
-        apply_fix()
-        print('  Fix applied (no exception)')
-    except Exception as e:
-        print(f'  ✗ Fix failed with exception: {e}')
-        sys.exit(1)
+    print('  (Using os.lseek+os.write — failed writes return OSError, not SIGBUS)')
+    write_failures = apply_fix()
+    if not write_failures:
+        print('  All writes succeeded')
+    else:
+        print(f'  {len(write_failures)} write(s) blocked by hardware (OSError):')
+        for addr, val, desc, err in write_failures:
+            print(f'    ✗ {addr:#010x} = {val:#010x}  ({desc})')
+            print(f'               error: {err}')
+        failed_regions = set()
+        for addr, val, desc, err in write_failures:
+            if 'GPIO0' in desc:  failed_regions.add('GPIO0 IOC (0xFF388xxx)')
+            if 'GPIO1' in desc:  failed_regions.add('GPIO1 IOC (0xFF538xxx)')
+            if 'GPIO3' in desc:  failed_regions.add('GPIO3 IOC (0xFF558xxx)')
+            if 'GPIO4' in desc:  failed_regions.add('GPIO4 IOC (0xFF568xxx)')
+        if failed_regions:
+            print(f'  Blocked region(s): {", ".join(sorted(failed_regions))}')
+            print('  These IOC regions appear to be TrustZone/hardware write-protected.')
+            print('  Reads still work; only writes are blocked.')
+            print('  Step 4b will try the kernel GPIO subsystem as a fallback for IOMUX.')
 
     # ── 4. Register state AFTER fix ──────────────────────────────────────────
     print('\n── 4. IOC register state AFTER applying /dev/mem fix ───────────────────')
@@ -360,6 +413,37 @@ def main():
         print()
         print_pin_state(pin, after_fix[pin[0]], 'AFTER FIX')
 
+    # ── 4b. Fallback: use gpioget to trigger kernel pinctrl IOMUX for pins ────
+    #        whose IOMUX write failed or whose IOMUX is still not in GPIO mode.
+    print('\n── 4b. Kernel GPIO subsystem IOMUX fallback ────────────────────────────')
+    print('  For pins still in peripheral mode, gpioget asks the kernel pinctrl to')
+    print('  set IOMUX → GPIO (the kernel driver has the hardware access we lack).')
+    print('  If "device busy" appears, another kernel driver still owns that pin.')
+    iomux_fallback_needed = [p for p in PINS if after_fix[p[0]]['iomux'] != 0]
+    if not iomux_fallback_needed:
+        print('  All pins already in GPIO mode — no fallback needed')
+    else:
+        for pin in iomux_fallback_needed:
+            name, chip, line = pin[0], pin[1], pin[2]
+            result = subprocess.run(
+                ['gpioget', f'gpiochip{chip}', str(line)],
+                capture_output=True, text=True, timeout=3
+            )
+            # Re-read IOMUX to see if gpioget helped
+            post_state = read_pin_state(pin)
+            iomux_now = post_state['iomux']
+            if result.returncode == 0 and iomux_now == 0:
+                print(f'  {name:12s}  ✓ IOMUX now GPIO after gpioget')
+                after_fix[name] = post_state  # update for subsequent sections
+            elif result.returncode != 0:
+                err = result.stderr.strip() or result.stdout.strip()
+                print(f'  {name:12s}  ✗ gpioget failed ({err})')
+                if 'busy' in err.lower() or 'device' in err.lower():
+                    print(f'               → pin is owned by a kernel driver (I2C/PWM/UART)')
+                    print(f'               → DTB fix (apply_pi_i2c_pinctrl_fix) did not run')
+            else:
+                print(f'  {name:12s}  ✗ gpioget ran but IOMUX still func {iomux_now}')
+
     # ── 5. Summary: did the writes take effect? ───────────────────────────────
     print('\n── 5. /dev/mem write verification ──────────────────────────────────────')
     all_wrote_ok = True
@@ -367,7 +451,7 @@ def main():
         name = pin[0]
         s = after_fix[name]
         ok = is_configured_ok(s)
-        status = '✓ writes took effect' if ok else '✗ writes did NOT take effect'
+        status = '✓ configured correctly' if ok else '✗ still needs fix'
         if not ok:
             all_wrote_ok = False
         print(f'  {name:12s}  {status}')
@@ -447,8 +531,11 @@ def main():
     else:
         print('  ✗ Problems detected:')
         if not all_wrote_ok:
-            print('    • /dev/mem writes did not take effect — check address mapping')
-            print('      or whether /dev/mem is accessible to this process.')
+            print('    • Some pins are still not fully configured.')
+            if write_failures:
+                print('      /dev/mem writes were blocked by hardware (TrustZone/MPU).')
+                print('      If gpioget succeeded in step 4b, IOMUX is now GPIO mode.')
+                print('      Pull configuration requires the /dev/mem writes to work.')
         if any_remuxed:
             print('    • Kernel re-muxed pins after periphery opened lines.')
             print('      The DTB pinctrl fix (apply_pi_i2c_pinctrl_fix) may not')
@@ -456,17 +543,19 @@ def main():
         if not levels_ok:
             pins_low = [name for name, v in readable_levels.items() if v == 'LOW']
             print(f'    • These pins read LOW with no button pressed: {pins_low}')
-            print('      If pull-ups show correct in registers but pins still read')
-            print('      LOW, check for shorts to GND or external circuitry pulling')
-            print('      the line down.')
+            print('      If IOMUX is GPIO, direction is input, and external pull-ups')
+            print('      are installed, but pins still read LOW, check for:')
+            print('        - Another kernel driver actively driving the pin (I2C, UART)')
+            print('        - A short to GND in the button circuit')
+            print('        - The internal pull-down fighting a weak external pull-up')
 
     print()
     print('── Tips for further debugging ──────────────────────────────────────────')
     print()
-    print('  Read any IOC register:')
-    print('    python3 -c "import mmap,struct; fd=open(\'/dev/mem\',\'rb\'); '
-          'm=mmap.mmap(fd.fileno(),0x1000,offset=0xFF388000); '
-          'print(hex(struct.unpack_from(\'<I\',m,0x38)[0]))"')
+    print('  Test whether /dev/mem WRITES work for a specific IOC region:')
+    print('    python3 -c "import os,struct; fd=os.open(\'/dev/mem\',os.O_RDWR|os.O_SYNC); \\')
+    print('      os.lseek(fd,0xFF558058,0); os.write(fd,struct.pack(\'<I\',0x77700000)); \\')
+    print('      os.close(fd); print(\'GPIO3 IOMUX write succeeded\')"')
     print()
     print('  Quick register read with the io tool (if available):')
     print('    io -4 0xFF388038   # GPIO0_A0/A1 pull register')
@@ -481,7 +570,7 @@ def main():
     print('    0xFF5680C0 → bits[14:13] = 0b11=3=up, bit[3]=1 → 0x6008')
     print()
     print('  Check startup log for the fix result:')
-    print('    cat /tmp/startup.log | grep -i "pull\\|gpio\\|pin"')
+    print('    cat /tmp/startup.log | grep -i "pull\\|gpio\\|pin\\|sigbus\\|bus error"')
     print()
     print('  List all GPIO lines with kernel state:')
     print('    gpioinfo')
@@ -500,6 +589,11 @@ def main():
     print('    fdtget /proc/device-tree/i2c3 pinctrl-0 2>/dev/null')
     print('    fdtget /proc/device-tree/pwm1 pinctrl-0 2>/dev/null')
     print('    fdtget /proc/device-tree/uart0 pinctrl-0 2>/dev/null')
+    print()
+    print('  If writes are blocked (TrustZone), check if the pinctrl debug sysfs')
+    print('  shows pins in use by another driver:')
+    print('    cat /sys/kernel/debug/pinctrl/pinctrl-rockchip/pinmux-pins 2>/dev/null \\')
+    print('      | grep -E "GPIO3_D[123]|GPIO0_A[01]|GPIO1_C[47]|GPIO4_C1"')
     print()
 
 

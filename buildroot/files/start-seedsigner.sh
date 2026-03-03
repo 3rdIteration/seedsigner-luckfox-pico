@@ -101,16 +101,31 @@ reset_pi_stuck_gpio_pins() {
     log_message "Pi: setting GPIO mode, input buffers, pull-ups for all 8 button pins..."
 
     python3 - 2>>"${LOG_FILE:-/tmp/startup.log}" <<'PYEOF'
-import mmap, struct
+import os, struct, sys
+
+_write_failures = []
 
 def write32(addr, val):
-    """Write a 32-bit value to a /dev/mem mapped register."""
-    page_base = addr & ~0xFFF
-    page_off  = addr &  0xFFF
-    with open('/dev/mem', 'r+b', buffering=0) as fd:
-        m = mmap.mmap(fd.fileno(), 0x1000, offset=page_base)
-        struct.pack_into('<I', m, page_off, val)
-        m.close()
+    """Write a 32-bit Rockchip write-with-mask value to /dev/mem.
+
+    Uses os.lseek+os.write instead of mmap+struct.pack_into.  When a physical
+    address is write-protected by hardware (e.g. a TrustZone-guarded IOC
+    block), a mmap write triggers a hardware data-abort that the kernel
+    delivers as SIGBUS — an unrecoverable crash with no Python exception path.
+    The file-based write goes through the kernel write_mem() handler which
+    returns a normal errno, so OSError can be caught per-write.
+    """
+    global _write_failures
+    fd = None
+    try:
+        fd = os.open('/dev/mem', os.O_RDWR | os.O_SYNC)
+        os.lseek(fd, addr, os.SEEK_SET)
+        os.write(fd, struct.pack('<I', val))
+    except OSError as e:
+        _write_failures.append(f'{addr:#010x}={val:#010x}: {e}')
+    finally:
+        if fd is not None:
+            os.close(fd)
 
 # All writes use Rockchip write-with-mask: bits[31:16]=mask, bits[15:0]=value.
 
@@ -165,11 +180,34 @@ write32(0xFF568010, 0x00700000)
 write32(0xFF5680C0, 0x60086008)
 # Direction → input (GPIO4_DDR_H): C1 bit[1]  mask=0x0002 value=0x0000
 write32(0xFF56000C, 0x00020000)
+
+if _write_failures:
+    print(f"Pi: {len(_write_failures)} IOC write(s) blocked (TrustZone/hardware protected):",
+          file=sys.stderr)
+    for f in _write_failures:
+        print(f"Pi:   {f}", file=sys.stderr)
+    sys.exit(2)  # partial failure — gpioget fallback will run
 PYEOF
 
     local rc=$?
     if [ "$rc" -eq 0 ]; then
         log_message "Pi: button pin pull-up configuration succeeded"
+    elif [ "$rc" -eq 2 ]; then
+        # Some /dev/mem writes were blocked (TrustZone / hardware write protection).
+        # Fall back to the kernel GPIO subsystem for IOMUX: opening each GPIO line
+        # for input forces the kernel pinctrl to set IOMUX → GPIO mode, which is
+        # the kernel driver's privileged write path.  Pull-up config requires
+        # /dev/mem; with external pull-up resistors fitted this is not needed.
+        log_message "Pi: Some IOC writes blocked — using gpioget fallback for IOMUX"
+        local _chip _line
+        # chip/line pairs: KEY_RIGHT KEY_DOWN KEY_PRESS KEY3 KEY_UP KEY_LEFT KEY2 KEY1
+        for _chip_line in "0 0" "0 1" "1 20" "1 23" "3 25" "3 26" "3 27" "4 17"; do
+            _chip="${_chip_line% *}"
+            _line="${_chip_line#* }"
+            gpioget gpiochip${_chip} ${_line} >/dev/null 2>&1 || \
+                log_message "Pi: gpioget gpiochip${_chip} ${_line} failed (pin may be busy)"
+        done
+        log_message "Pi: gpioget IOMUX fallback complete"
     else
         log_message "Pi: Warning: /dev/mem write failed (exit $rc) — button pull-ups may not be set"
     fi
