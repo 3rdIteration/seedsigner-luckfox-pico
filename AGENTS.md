@@ -458,20 +458,26 @@ even after the pin is muxed to GPIO mode.
 Standard pads (GPIO0–3): `0=none, 1=pullup, 2=pulldown`
 GPIO4 high-drive pads:   `0=none, 1=pulldown, 3=pullup`
 
-**4. LuckFox Pico Pi button pin map (all addresses from the manual)**
+**4. LuckFox Pico Pi button pin map (from io_config.md, addresses from this manual)**
 
-| Button   | GPIO Pin  | Problem (U-Boot leaves in…) | Fixed by                        |
-|----------|-----------|------------------------------|---------------------------------|
-| KEY_RIGHT| GPIO0_A0  | UART0 RX mode                | `start-seedsigner.sh` `/dev/mem`|
-| KEY_DOWN | GPIO0_A1  | UART0 TX / PWM2 output mode  | `start-seedsigner.sh` `/dev/mem`|
-| KEY_UP   | GPIO3_D1  | I2C3_M2_SCL mode             | `start-seedsigner.sh` `/dev/mem`|
-| KEY_LEFT | GPIO3_D2  | I2C3_M2_SDA mode             | `start-seedsigner.sh` `/dev/mem`|
-| KEY2     | GPIO3_D3  | PWM1_M2 output mode          | `start-seedsigner.sh` `/dev/mem`|
-| KEY1     | GPIO4_C1  | PWM1_M1 output mode          | `start-seedsigner.sh` `/dev/mem`|
+python-periphery's `pull_up` flag uses `GPIO_V2_LINE_FLAG_BIAS_PULL_UP` but the
+RV1106 pinctrl driver does not implement `gpio_set_config` for bias — it is
+silently ignored for every pin. Pull-ups must be set via `/dev/mem` instead.
+
+| Button    | GPIO Pin  | gpiochip / line   | U-Boot leaves in…           | Fixed by                         |
+|-----------|-----------|-------------------|-----------------------------|----------------------------------|
+| KEY_RIGHT | GPIO0_A0  | gpiochip0 line 0  | UART0 RX mode               | `start-seedsigner.sh` `/dev/mem` |
+| KEY_DOWN  | GPIO0_A1  | gpiochip0 line 1  | UART0 TX / PWM2 output mode | `start-seedsigner.sh` `/dev/mem` |
+| KEY_PRESS | GPIO1_C4  | gpiochip1 line 20 | (peripheral mode)           | `start-seedsigner.sh` `/dev/mem` |
+| KEY3      | GPIO1_C7  | gpiochip1 line 23 | (peripheral mode)           | `start-seedsigner.sh` `/dev/mem` |
+| KEY_UP    | GPIO3_D1  | gpiochip3 line 25 | I2C3_M2_SCL mode            | `start-seedsigner.sh` `/dev/mem` |
+| KEY_LEFT  | GPIO3_D2  | gpiochip3 line 26 | I2C3_M2_SDA mode            | `start-seedsigner.sh` `/dev/mem` |
+| KEY2      | GPIO3_D3  | gpiochip3 line 27 | PWM1_M2 output mode         | `start-seedsigner.sh` `/dev/mem` |
+| KEY1      | GPIO4_C1  | gpiochip4 line 17 | PWM1_M1 output mode         | `start-seedsigner.sh` `/dev/mem` |
 
 The runtime fix (`reset_pi_stuck_gpio_pins` in `buildroot/files/start-seedsigner.sh`)
 writes the correct IOMUX, Input Buffer Enable, Pull-up, and Direction registers for
-all six pins at boot using `/dev/mem`.
+all eight pins at boot using `/dev/mem`.
 
 The compile-time fix (`apply_pi_i2c_pinctrl_fix` in `buildroot/os-build.sh`) removes
 the conflicting peripheral pinctrl references from the Pi DTB so the kernel does not

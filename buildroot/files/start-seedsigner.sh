@@ -68,50 +68,43 @@ release_conflicting_gpio_lines() {
 }
 
 reset_pi_stuck_gpio_pins() {
-    # On LuckFox Pico Pi, U-Boot leaves GPIO3_D2 (KEY_LEFT) in I2C3_M2_SDA mode
-    # (IOMUX func 3) and GPIO3_D3 (KEY2) in PWM1_M2 mode (IOMUX func 2).  Both
-    # i2c3 and pwm1 have status="disabled" in the compiled DTB, so the kernel
-    # never probes them and never resets their pinctrl.  The pads remain muxed to
-    # peripheral output drivers that pull them LOW, causing ghost button presses.
+    # python-periphery requests pull_up via GPIO_V2_LINE_FLAG_BIAS_PULL_UP, but
+    # the RV1106 pinctrl driver does not implement gpio_set_config for bias so
+    # the kernel request is silently ignored for every pin.  Additionally, U-Boot
+    # leaves several button pins muxed to peripheral functions (UART, I2C, PWM)
+    # whose output drivers actively pull the pad LOW, causing ghost presses.
     #
-    # All IOC and GPIO bank registers on RV1106 use a write-with-mask format:
+    # Fix: write IOMUX, input-buffer-enable, pull-up, and direction directly to
+    # the IOC and GPIO bank registers via /dev/mem for all 8 button pins.
+    # Register addresses from docs/RV1106_GPIO_User_Manual.txt (extracted from
+    # Rockchip_RV1106_User_Manual_GPIO.pdf).
+    #
+    # All IOC and GPIO bank registers use Rockchip write-with-mask format:
     #   bits[31:16] = write-enable mask for bits[15:0]
-    #   bits[15:0]  = value to write into the enabled bit positions
-    # A raw read-modify-write will NOT work: reading returns bits[15:0] only, so
-    # writing back sets mask=0 in bits[31:16] and nothing is changed.
+    #   bits[15:0]  = value to write
+    # A raw read-modify-write SILENTLY FAILS: reading returns bits[15:0] with
+    # the mask field as 0; writing back sets mask=0 so nothing changes.
     #
-    # Register addresses verified against Rockchip_RV1106_User_Manual_GPIO.pdf:
-    #
-    # IOC GPIO3_D IOMUX register (IOC base 0xFF538000 + offset 0x20058):
-    #   0xFF558058  bits[10:8]  = GPIO3_D2 mux  (func 0 = GPIO, func 3 = I2C3_SDA_M2)
-    #   0xFF558058  bits[14:12] = GPIO3_D3 mux  (func 0 = GPIO, func 2 = PWM1_M2)
-    #   Combined GPIO mode write: mask=0xFF00, value=0x0000 → 0xFF000000
-    #
-    # IOC GPIO3_D input-buffer control register:
-    #   0xFF5581AC  bit[2] = GPIO3_D2 input enable  (1 = enabled)
-    #   0xFF5581AC  bit[3] = GPIO3_D3 input enable  (1 = enabled)
-    #   Combined enable write: mask=0x000C, value=0x000C → 0x000C000C
-    #
-    # IOC GPIO3_D pull register:
-    #   0xFF5581EC  bits[5:4] = GPIO3_D2 pull  (0=none, 1=up, 2=down)
-    #   0xFF5581EC  bits[7:6] = GPIO3_D3 pull  (0=none, 1=up, 2=down)
-    #   Combined pull-up write: mask=0x00F0, value=0x0050 → 0x00F00050
-    #
-    # GPIO3 bank direction register (GPIO_SWPORT_DDR_H, offset 0x0C from bank base):
-    #   0xFF55000C  bit[10] = GPIO3_D2 direction  (0 = input)  [pin 26 - 16 = 10]
-    #   0xFF55000C  bit[11] = GPIO3_D3 direction  (0 = input)  [pin 27 - 16 = 11]
-    #   Combined input write: mask=0x0C00, value=0x0000 → 0x0C000000
+    # Pin map (from io_config.md in the seedsigner repo):
+    #   KEY_RIGHT = GPIO0_A0  gpiochip0 line  0   IOC base 0xFF388000  bank base 0xFF380000
+    #   KEY_DOWN  = GPIO0_A1  gpiochip0 line  1   IOC base 0xFF388000  bank base 0xFF380000
+    #   KEY_PRESS = GPIO1_C4  gpiochip1 line 20   IOC base 0xFF538000  bank base 0xFF530000
+    #   KEY3      = GPIO1_C7  gpiochip1 line 23   IOC base 0xFF538000  bank base 0xFF530000
+    #   KEY_UP    = GPIO3_D1  gpiochip3 line 25   IOC base 0xFF558000  bank base 0xFF550000
+    #   KEY_LEFT  = GPIO3_D2  gpiochip3 line 26   IOC base 0xFF558000  bank base 0xFF550000
+    #   KEY2      = GPIO3_D3  gpiochip3 line 27   IOC base 0xFF558000  bank base 0xFF550000
+    #   KEY1      = GPIO4_C1  gpiochip4 line 17   IOC base 0xFF568000  bank base 0xFF560000
     if ! grep -qi "luckfox.*pico.*pi" /proc/device-tree/model 2>/dev/null; then
         return 0
     fi
 
-    log_message "Pi: switching GPIO3_D2 (KEY_LEFT) and GPIO3_D3 (KEY2) to GPIO input mode..."
+    log_message "Pi: setting GPIO mode, input buffers, pull-ups for all 8 button pins..."
 
     python3 - 2>>"${LOG_FILE:-/tmp/startup.log}" <<'PYEOF'
 import mmap, struct
 
 def write32(addr, val):
-    """Write a 32-bit value using /dev/mem with page-aligned mmap."""
+    """Write a 32-bit value to a /dev/mem mapped register."""
     page_base = addr & ~0xFFF
     page_off  = addr &  0xFFF
     with open('/dev/mem', 'r+b', buffering=0) as fd:
@@ -119,37 +112,66 @@ def write32(addr, val):
         struct.pack_into('<I', m, page_off, val)
         m.close()
 
-# All writes use the Rockchip write-with-mask format:
-#   bits[31:16] = enable-mask for bits[15:0], bits[15:0] = value
+# All writes use Rockchip write-with-mask: bits[31:16]=mask, bits[15:0]=value.
 
-# Step 1: IOMUX — switch GPIO3_D2 and GPIO3_D3 to GPIO mode (func 0).
-# mask=0xFF00 covers both the D2 field (bits[10:8]) and D3 field (bits[14:12]).
-# value=0x0000 selects func 0 = GPIO for both.
-write32(0xFF558058, 0xFF000000)
+# ── GPIO0: KEY_RIGHT (A0, gpiochip0/0) + KEY_DOWN (A1, gpiochip0/1) ──────────
+# U-Boot may leave A0/A1 in UART0 RX/TX mode; TX actively drives LOW.
+# IOC GPIO0 base: 0xFF388000   GPIO0 bank base: 0xFF380000
 
-# Step 2: Input buffer — enable the input receiver for GPIO3_D2 (bit 2) and
-# GPIO3_D3 (bit 3).  When in I2C/PWM mode the input buffer is bypassed; after
-# switching to GPIO mode it must be explicitly re-enabled or reads return 0.
-# mask=0x000C (bits 2 and 3), value=0x000C (both enabled).
-write32(0xFF5581AC, 0x000C000C)
+# IOMUX → GPIO: A0 bits[2:0], A1 bits[6:4]  mask=0x0077 value=0x0000
+write32(0xFF388000, 0x00770000)
+# Input buffer enable: A0 bit[0], A1 bit[1]  mask=0x0003 value=0x0003
+write32(0xFF388030, 0x00030003)
+# Pull-up: A0 bits[1:0]=01, A1 bits[3:2]=01  mask=0x000F value=0x0005
+write32(0xFF388038, 0x000F0005)
+# Direction → input (GPIO0_DDR_L): A0 bit[0], A1 bit[1]  mask=0x0003 value=0x0000
+write32(0xFF380008, 0x00030000)
 
-# Step 3: Pull — enable internal pull-ups on GPIO3_D2 (bits[5:4]=01) and
-# GPIO3_D3 (bits[7:6]=01) as a belt-and-suspenders complement to the external
-# pull-ups already on the board.
-# mask=0x00F0 (bits 4-7), value=0x0050 (D2 pullup=01, D3 pullup=01).
-write32(0xFF5581EC, 0x00F00050)
+# ── GPIO1: KEY_PRESS (C4, gpiochip1/20) + KEY3 (C7, gpiochip1/23) ────────────
+# IOC GPIO1 base: 0xFF538000   GPIO1 bank base: 0xFF530000
 
-# Step 4: Direction — configure GPIO3_D2 (bit 10) and GPIO3_D3 (bit 11) as
-# inputs in the GPIO bank direction register (GPIO_SWPORT_DDR_H at offset 0x0C).
-# mask=0x0C00 (bits 10 and 11), value=0x0000 (input = 0).
-write32(0xFF55000C, 0x0C000000)
+# IOMUX → GPIO: C4 bits[2:0] of reg 0xFF538014, C7 bits[14:12]  mask=0x7007 value=0x0000
+write32(0xFF538014, 0x70070000)
+# Input buffer enable: C4 bit[4], C7 bit[7]  mask=0x0090 value=0x0090
+write32(0xFF538188, 0x00900090)
+# Pull-up: C4 bits[9:8]=01, C7 bits[15:14]=01  mask=0xC300 value=0x4100
+write32(0xFF5381C8, 0xC3004100)
+# Direction → input (GPIO1_DDR_H): C4 bit[4], C7 bit[7]  mask=0x0090 value=0x0000
+write32(0xFF53000C, 0x00900000)
+
+# ── GPIO3: KEY_UP (D1, gpiochip3/25), KEY_LEFT (D2, /26), KEY2 (D3, /27) ─────
+# U-Boot leaves D1 in I2C3_M2_SCL, D2 in I2C3_M2_SDA, D3 in PWM1_M2 — all
+# peripheral output drivers that pull the pad LOW.
+# IOC GPIO3 base: 0xFF558000   GPIO3 bank base: 0xFF550000
+
+# IOMUX → GPIO: D1 bits[6:4], D2 bits[10:8], D3 bits[14:12]  mask=0x7770 value=0x0000
+write32(0xFF558058, 0x77700000)
+# Input buffer enable: D1 bit[1], D2 bit[2], D3 bit[3]  mask=0x000E value=0x000E
+write32(0xFF5581AC, 0x000E000E)
+# Pull-up: D1 bits[3:2]=01, D2 bits[5:4]=01, D3 bits[7:6]=01  mask=0x00FC value=0x0054
+write32(0xFF5581EC, 0x00FC0054)
+# Direction → input (GPIO3_DDR_H): D1 bit[9], D2 bit[10], D3 bit[11]  mask=0x0E00 value=0x0000
+write32(0xFF55000C, 0x0E000000)
+
+# ── GPIO4: KEY1 (C1, gpiochip4/17) ───────────────────────────────────────────
+# GPIO4 uses high-drive pads with a different pull encoding: 0=none 1=down 3=up.
+# U-Boot may leave C1 in PWM1_M1 push-pull output mode.
+# IOC GPIO4 base: 0xFF568000   GPIO4 bank base: 0xFF560000
+
+# IOMUX → GPIO: C1 bits[6:4] of reg 0xFF568010  mask=0x0070 value=0x0000
+write32(0xFF568010, 0x00700000)
+# Pull-up (bits[14:13]=11=3) + input buffer enable (bit[3]=1) on same reg 0xFF5680C0
+# mask=0x6008 value=0x6008
+write32(0xFF5680C0, 0x60086008)
+# Direction → input (GPIO4_DDR_H): C1 bit[1]  mask=0x0002 value=0x0000
+write32(0xFF56000C, 0x00020000)
 PYEOF
 
     local rc=$?
     if [ "$rc" -eq 0 ]; then
-        log_message "Pi: button pin GPIO mode reset succeeded"
+        log_message "Pi: button pin pull-up configuration succeeded"
     else
-        log_message "Pi: Warning: /dev/mem write failed (exit $rc) — button pins may still be stuck"
+        log_message "Pi: Warning: /dev/mem write failed (exit $rc) — button pull-ups may not be set"
     fi
 }
 

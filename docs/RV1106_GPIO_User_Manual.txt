@@ -39,41 +39,63 @@ PULL FIELD ENCODING (GPIO4 high-drive pads — different!)
 
 LUCKFOX PICO PI BUTTON PIN QUICK REFERENCE
 ------------------------------------------
+Pin map confirmed from io_config.md in the seedsigner repo.
 All addresses from this manual; register format verified working.
-These 4-step sequences (IOMUX → Input Ctrl → Pull → Direction) fix
-U-Boot peripheral-mode leftovers that prevent pull-ups from working.
+NOTE: python-periphery pull_up is silently ignored on RV1106 because the
+pinctrl driver doesn't implement gpio_set_config for bias. Use /dev/mem
+(see reset_pi_stuck_gpio_pins in buildroot/files/start-seedsigner.sh).
 
-GPIO0_A0 (KEY_RIGHT) — IOC GPIO0 base 0xFF388000:
+The 4-step sequence per pin group: IOMUX → Input Ctrl → Pull → Direction
+
+GPIO0_A0 (KEY_RIGHT, gpiochip0 line 0) — IOC GPIO0 base 0xFF388000:
   IOMUX   0xFF388000 bits[2:0]   GPIO=0  write32(0xFF388000, 0x00070000)
   InCtrl  0xFF388030 bit[0]      en=1    write32(0xFF388030, 0x00010001)
   Pull    0xFF388038 bits[1:0]   up=1    write32(0xFF388038, 0x00030001)
   DDR_L   0xFF380008 bit[0]      in=0    write32(0xFF380008, 0x00010000)
 
-GPIO0_A1 (KEY_DOWN) — shares GPIO0 IOC registers:
+GPIO0_A1 (KEY_DOWN, gpiochip0 line 1) — shares GPIO0 IOC registers:
   IOMUX   0xFF388000 bits[6:4]   GPIO=0  write32(0xFF388000, 0x00700000)
   InCtrl  0xFF388030 bit[1]      en=1    write32(0xFF388030, 0x00020002)
   Pull    0xFF388038 bits[3:2]   up=1    write32(0xFF388038, 0x000C0004)
   DDR_L   0xFF380008 bit[1]      in=0    write32(0xFF380008, 0x00020000)
 
-  Combined write for both A0+A1:
+  Combined write for A0+A1:
     write32(0xFF388000, 0x00770000)  # IOMUX: mask=0x0077, value=0x0000
     write32(0xFF388030, 0x00030003)  # InCtrl: mask=0x0003, value=0x0003
     write32(0xFF388038, 0x000F0005)  # Pull-up: mask=0x000F, value=0x0005
     write32(0xFF380008, 0x00030000)  # DDR_L input: mask=0x0003, value=0x0000
 
-GPIO3_D1 (KEY_UP) — IOC GPIO3 base 0xFF558000:
+GPIO1_C4 (KEY_PRESS, gpiochip1 line 20) — IOC GPIO1 base 0xFF538000:
+  IOMUX   0xFF538014 bits[2:0]   GPIO=0  write32(0xFF538014, 0x00070000)
+  InCtrl  0xFF538188 bit[4]      en=1    write32(0xFF538188, 0x00100010)
+  Pull    0xFF5381C8 bits[9:8]   up=1    write32(0xFF5381C8, 0x03000100)
+  DDR_H   0xFF53000C bit[4]      in=0    write32(0xFF53000C, 0x00100000)
+
+GPIO1_C7 (KEY3, gpiochip1 line 23) — shares GPIO1 IOC registers:
+  IOMUX   0xFF538014 bits[14:12] GPIO=0  write32(0xFF538014, 0x70000000)
+  InCtrl  0xFF538188 bit[7]      en=1    write32(0xFF538188, 0x00800080)
+  Pull    0xFF5381C8 bits[15:14] up=1    write32(0xFF5381C8, 0xC0004000)
+  DDR_H   0xFF53000C bit[7]      in=0    write32(0xFF53000C, 0x00800000)
+
+  Combined write for C4+C7:
+    write32(0xFF538014, 0x70070000)  # IOMUX: mask=0x7007, value=0x0000
+    write32(0xFF538188, 0x00900090)  # InCtrl: mask=0x0090, value=0x0090
+    write32(0xFF5381C8, 0xC3004100)  # Pull-up: mask=0xC300, value=0x4100
+    write32(0xFF53000C, 0x00900000)  # DDR_H input: mask=0x0090, value=0x0000
+
+GPIO3_D1 (KEY_UP, gpiochip3 line 25) — IOC GPIO3 base 0xFF558000:
   IOMUX   0xFF558058 bits[6:4]   GPIO=0  write32(0xFF558058, 0x00700000)
   InCtrl  0xFF5581AC bit[1]      en=1    write32(0xFF5581AC, 0x00020002)
   Pull    0xFF5581EC bits[3:2]   up=1    write32(0xFF5581EC, 0x000C0004)
   DDR_H   0xFF55000C bit[9]      in=0    write32(0xFF55000C, 0x02000000)
 
-GPIO3_D2 (KEY_LEFT) — shares GPIO3 IOC registers:
+GPIO3_D2 (KEY_LEFT, gpiochip3 line 26) — shares GPIO3 IOC registers:
   IOMUX   0xFF558058 bits[10:8]  GPIO=0  write32(0xFF558058, 0x07000000)
   InCtrl  0xFF5581AC bit[2]      en=1    write32(0xFF5581AC, 0x00040004)
   Pull    0xFF5581EC bits[5:4]   up=1    write32(0xFF5581EC, 0x00300010)
   DDR_H   0xFF55000C bit[10]     in=0    write32(0xFF55000C, 0x04000000)
 
-GPIO3_D3 (KEY2) — shares GPIO3 IOC registers:
+GPIO3_D3 (KEY2, gpiochip3 line 27) — shares GPIO3 IOC registers:
   IOMUX   0xFF558058 bits[14:12] GPIO=0  write32(0xFF558058, 0x70000000)
   InCtrl  0xFF5581AC bit[3]      en=1    write32(0xFF5581AC, 0x00080008)
   Pull    0xFF5581EC bits[7:6]   up=1    write32(0xFF5581EC, 0x00C00040)
@@ -85,12 +107,13 @@ GPIO3_D3 (KEY2) — shares GPIO3 IOC registers:
     write32(0xFF5581EC, 0x00FC0054)  # Pull-up: mask=0x00FC, value=0x0054
     write32(0xFF55000C, 0x0E000000)  # DDR_H input: mask=0x0E00, value=0x0000
 
-GPIO4_C1 (KEY1) — IOC GPIO4 base 0xFF568000 (high-drive pad, different encoding):
+GPIO4_C1 (KEY1, gpiochip4 line 17) — IOC GPIO4 base 0xFF568000:
+  High-drive pad: pull encoding is 0=none 1=pulldown 3=pullup (not 1=pullup!)
   IOMUX   0xFF568010 bits[6:4]   GPIO=0   write32(0xFF568010, 0x00700000)
-  Pull+InCtrl on same register 0xFF5680C0:
-    bits[14:13] = pull (0=none, 1=down, 3=up)
+  Pull+InCtrl share register 0xFF5680C0:
+    bits[14:13] = pull field  (3=pullup)
     bit[3]      = input buffer enable
-    Combined write: write32(0xFF5680C0, 0x60086008)  # mask=0x6008, value=0x6008
+    Combined:                           write32(0xFF5680C0, 0x60086008)
   DDR_H   0xFF56000C bit[1]      in=0     write32(0xFF56000C, 0x00020000)
 
 ==============================================================================
