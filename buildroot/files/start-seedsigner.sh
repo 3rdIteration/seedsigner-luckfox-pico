@@ -71,26 +71,36 @@ reset_pi_stuck_gpio_pins() {
     # On LuckFox Pico Pi, U-Boot leaves GPIO3_D2 (KEY_LEFT) in I2C3_M2_SDA mode
     # (IOMUX func 3) and GPIO3_D3 (KEY2) in PWM1_M2 mode (IOMUX func 2).  Both
     # i2c3 and pwm1 have status="disabled" in the compiled DTB, so the kernel
-    # never probes them and never resets their pinctrl.  U-Boot's IOMUX settings
-    # therefore persist: the pads remain connected to peripheral output drivers
-    # that pull them LOW, causing ghost button presses regardless of pull-ups.
+    # never probes them and never resets their pinctrl.  The pads remain muxed to
+    # peripheral output drivers that pull them LOW, causing ghost button presses.
     #
-    # Fix: write to the RV1106 IOC IOMUX register for the GPIO3_D pin group to
-    # switch GPIO3_D2 and GPIO3_D3 to GPIO mode (function 0), then clear the
-    # GPIO bank direction bits so the lines are sampled as inputs.
+    # All IOC and GPIO bank registers on RV1106 use a write-with-mask format:
+    #   bits[31:16] = write-enable mask for bits[15:0]
+    #   bits[15:0]  = value to write into the enabled bit positions
+    # A raw read-modify-write will NOT work: reading returns bits[15:0] only, so
+    # writing back sets mask=0 in bits[31:16] and nothing is changed.
     #
-    # Register layout (confirmed from pinctrl-rockchip.c and rv1106.dtsi):
-    #   IOC base (rockchip,grf = <&ioc>): 0xff538000
-    #     reg = <0xff538000 0x40000>
-    #   GPIO3 IOMUX group-D register (IOMUX_WIDTH_4BIT offset 0x20058):
-    #     Address : 0xff558058
-    #     Format  : write-with-mask — bits[31:16] = enable-mask, bits[15:0] = value
-    #     GPIO3_D2 field: bits[11:8]   mask 0x0F00  → func 0 = GPIO
-    #     GPIO3_D3 field: bits[15:12]  mask 0xF000  → func 0 = GPIO
-    #     Combined write: 0xFF000000  (mask 0xFF00, value 0x0000)
-    #   GPIO3 bank base: 0xff550000
-    #   GPIO3 direction register (GPIO_SWPORT_DDR): 0xff550004
-    #     Bit 26 = GPIO3_D2, bit 27 = GPIO3_D3; 0 = input, 1 = output
+    # Register addresses verified against Rockchip_RV1106_User_Manual_GPIO.pdf:
+    #
+    # IOC GPIO3_D IOMUX register (IOC base 0xFF538000 + offset 0x20058):
+    #   0xFF558058  bits[10:8]  = GPIO3_D2 mux  (func 0 = GPIO, func 3 = I2C3_SDA_M2)
+    #   0xFF558058  bits[14:12] = GPIO3_D3 mux  (func 0 = GPIO, func 2 = PWM1_M2)
+    #   Combined GPIO mode write: mask=0xFF00, value=0x0000 → 0xFF000000
+    #
+    # IOC GPIO3_D input-buffer control register:
+    #   0xFF5581AC  bit[2] = GPIO3_D2 input enable  (1 = enabled)
+    #   0xFF5581AC  bit[3] = GPIO3_D3 input enable  (1 = enabled)
+    #   Combined enable write: mask=0x000C, value=0x000C → 0x000C000C
+    #
+    # IOC GPIO3_D pull register:
+    #   0xFF5581EC  bits[5:4] = GPIO3_D2 pull  (0=none, 1=up, 2=down)
+    #   0xFF5581EC  bits[7:6] = GPIO3_D3 pull  (0=none, 1=up, 2=down)
+    #   Combined pull-up write: mask=0x00F0, value=0x0050 → 0x00F00050
+    #
+    # GPIO3 bank direction register (GPIO_SWPORT_DDR_H, offset 0x0C from bank base):
+    #   0xFF55000C  bit[10] = GPIO3_D2 direction  (0 = input)  [pin 26 - 16 = 10]
+    #   0xFF55000C  bit[11] = GPIO3_D3 direction  (0 = input)  [pin 27 - 16 = 11]
+    #   Combined input write: mask=0x0C00, value=0x0000 → 0x0C000000
     if ! grep -qi "luckfox.*pico.*pi" /proc/device-tree/model 2>/dev/null; then
         return 0
     fi
@@ -100,16 +110,8 @@ reset_pi_stuck_gpio_pins() {
     python3 - 2>>"${LOG_FILE:-/tmp/startup.log}" <<'PYEOF'
 import mmap, struct
 
-def devmem_read32(addr):
-    page_base = addr & ~0xFFF
-    page_off  = addr &  0xFFF
-    with open('/dev/mem', 'rb', buffering=0) as fd:
-        m = mmap.mmap(fd.fileno(), 0x1000, offset=page_base, access=mmap.ACCESS_READ)
-        val = struct.unpack_from('<I', m, page_off)[0]
-        m.close()
-    return val
-
-def devmem_write32(addr, val):
+def write32(addr, val):
+    """Write a 32-bit value using /dev/mem with page-aligned mmap."""
     page_base = addr & ~0xFFF
     page_off  = addr &  0xFFF
     with open('/dev/mem', 'r+b', buffering=0) as fd:
@@ -117,18 +119,30 @@ def devmem_write32(addr, val):
         struct.pack_into('<I', m, page_off, val)
         m.close()
 
-# Step 1: Set GPIO3_D2 and GPIO3_D3 to GPIO function (func 0) via the IOC
-# IOMUX register.  The write-with-mask format means the upper 16 bits select
-# which bits to update; writing 0xFF000000 enables the D2 (bits[11:8]) and
-# D3 (bits[15:12]) fields and sets them both to 0 (GPIO mode).
-devmem_write32(0xff558058, 0xFF000000)
+# All writes use the Rockchip write-with-mask format:
+#   bits[31:16] = enable-mask for bits[15:0], bits[15:0] = value
 
-# Step 2: Ensure GPIO3_D2 (bit 26) and GPIO3_D3 (bit 27) are configured as
-# inputs in the GPIO bank direction register.  Read-modify-write so we do not
-# disturb other GPIO3 lines.
-ddr = devmem_read32(0xff550004)
-ddr &= ~((1 << 26) | (1 << 27))
-devmem_write32(0xff550004, ddr)
+# Step 1: IOMUX — switch GPIO3_D2 and GPIO3_D3 to GPIO mode (func 0).
+# mask=0xFF00 covers both the D2 field (bits[10:8]) and D3 field (bits[14:12]).
+# value=0x0000 selects func 0 = GPIO for both.
+write32(0xFF558058, 0xFF000000)
+
+# Step 2: Input buffer — enable the input receiver for GPIO3_D2 (bit 2) and
+# GPIO3_D3 (bit 3).  When in I2C/PWM mode the input buffer is bypassed; after
+# switching to GPIO mode it must be explicitly re-enabled or reads return 0.
+# mask=0x000C (bits 2 and 3), value=0x000C (both enabled).
+write32(0xFF5581AC, 0x000C000C)
+
+# Step 3: Pull — enable internal pull-ups on GPIO3_D2 (bits[5:4]=01) and
+# GPIO3_D3 (bits[7:6]=01) as a belt-and-suspenders complement to the external
+# pull-ups already on the board.
+# mask=0x00F0 (bits 4-7), value=0x0050 (D2 pullup=01, D3 pullup=01).
+write32(0xFF5581EC, 0x00F00050)
+
+# Step 4: Direction — configure GPIO3_D2 (bit 10) and GPIO3_D3 (bit 11) as
+# inputs in the GPIO bank direction register (GPIO_SWPORT_DDR_H at offset 0x0C).
+# mask=0x0C00 (bits 10 and 11), value=0x0000 (input = 0).
+write32(0xFF55000C, 0x0C000000)
 PYEOF
 
     local rc=$?
