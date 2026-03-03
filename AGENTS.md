@@ -409,6 +409,82 @@ ls -l buildroot/external-packages/
 
 ---
 
+## RV1106 IO / GPIO Reference
+
+### ⚠️ CONSULT THIS FOR ANYTHING RELATED TO IO, GPIO, PINS, PULL-UPS OR PERIPHERAL MUX
+
+The official Rockchip RV1106 GPIO User Manual has been extracted and stored at:
+
+```
+docs/RV1106_GPIO_User_Manual.txt
+```
+
+**Always read this file before:**
+- Writing any `/dev/mem` register access code
+- Debugging pull-up resistor or pin-state issues
+- Changing IOMUX, pull, drive-strength, input-buffer, or direction settings
+- Interpreting `io -4` shell commands found in any script or log
+
+### Critical IO Rules (from the manual)
+
+**1. Write-with-mask format — DO NOT read-modify-write**
+
+Every IOC and GPIO bank register on RV1106 uses Rockchip's write-with-mask format:
+- `bits[31:16]` = write-enable mask for `bits[15:0]`
+- `bits[15:0]`  = new value for the enabled bits
+
+Reading the register returns only `bits[15:0]` with the mask field reading as 0.
+Writing that value back sets mask=0, so **nothing is changed** — silently.
+
+```python
+# ✅ CORRECT — pure write with (mask << 16) | value
+write32(0xFF5581EC, 0x00FC0054)   # pull-up all three GPIO3_D1/D2/D3
+
+# ❌ WRONG — read-modify-write silently does nothing
+val = read32(0xFF5581EC)
+val |= 0x0054
+write32(0xFF5581EC, val)          # mask field = 0 → no effect
+```
+
+**2. Each pad has four independent control registers**
+
+In order: IOMUX → Input Buffer Enable → Pull → Direction
+
+Skipping any step (especially Input Buffer Enable) means GPIO reads return 0
+even after the pin is muxed to GPIO mode.
+
+**3. GPIO4 high-drive pads use different pull encoding**
+
+Standard pads (GPIO0–3): `0=none, 1=pullup, 2=pulldown`
+GPIO4 high-drive pads:   `0=none, 1=pulldown, 3=pullup`
+
+**4. LuckFox Pico Pi button pin map (all addresses from the manual)**
+
+| Button   | GPIO Pin  | Problem (U-Boot leaves in…) | Fixed by                        |
+|----------|-----------|------------------------------|---------------------------------|
+| KEY_RIGHT| GPIO0_A0  | UART0 RX mode                | `start-seedsigner.sh` `/dev/mem`|
+| KEY_DOWN | GPIO0_A1  | UART0 TX / PWM2 output mode  | `start-seedsigner.sh` `/dev/mem`|
+| KEY_UP   | GPIO3_D1  | I2C3_M2_SCL mode             | `start-seedsigner.sh` `/dev/mem`|
+| KEY_LEFT | GPIO3_D2  | I2C3_M2_SDA mode             | `start-seedsigner.sh` `/dev/mem`|
+| KEY2     | GPIO3_D3  | PWM1_M2 output mode          | `start-seedsigner.sh` `/dev/mem`|
+| KEY1     | GPIO4_C1  | PWM1_M1 output mode          | `start-seedsigner.sh` `/dev/mem`|
+
+The runtime fix (`reset_pi_stuck_gpio_pins` in `buildroot/files/start-seedsigner.sh`)
+writes the correct IOMUX, Input Buffer Enable, Pull-up, and Direction registers for
+all six pins at boot using `/dev/mem`.
+
+The compile-time fix (`apply_pi_i2c_pinctrl_fix` in `buildroot/os-build.sh`) removes
+the conflicting peripheral pinctrl references from the Pi DTB so the kernel does not
+re-mux the pins after the runtime fix.
+
+### Quick Register Lookup
+
+See `docs/RV1106_GPIO_User_Manual.txt` — the "LUCKFOX PICO PI BUTTON PIN QUICK
+REFERENCE" section near the top gives the exact `write32()` calls for each pin.
+The full 37-page manual follows for any other pin lookups.
+
+---
+
 ## Additional Resources
 
 ### Detailed Documentation
@@ -424,6 +500,11 @@ All detailed documentation is in `buildroot/configs/`:
 - `MINI_NAND_BUILD_FAILURE_ANALYSIS.md` - Build failure investigation
 - `IMPLEMENTATION_SUMMARY.md` - Patch system overview
 - `enabled_packages_analysis.txt` - Current package list with sizes
+
+IO / Hardware documentation in `docs/`:
+
+- `RV1106_GPIO_User_Manual.txt` - **Consult for any IO/GPIO/pin work** — full
+  Rockchip RV1106 GPIO register reference with LuckFox Pi button quick-reference
 
 ### External Package Examples
 
@@ -464,8 +545,9 @@ Look in `buildroot/external-packages/` for examples:
 2. Never change upstream repos/branches ✓
 3. Compare with seedsigner-os for patterns ✓
 4. Check detailed documentation in buildroot/configs/ ✓
-5. Add comprehensive debugging output ✓
-6. Test verification logic ✓
+5. **For any IO/GPIO/pin issue: read `docs/RV1106_GPIO_User_Manual.txt` first** ✓
+6. Add comprehensive debugging output ✓
+7. Test verification logic ✓
 
 ### Remember
 
@@ -482,4 +564,4 @@ Look in `buildroot/external-packages/` for examples:
 
 *This file was created from learnings during extensive work on external package integration, partition optimization, and build system debugging. It represents real-world solutions to real problems encountered.*
 
-*Last updated: 2026-02-17*
+*Last updated: 2026-03-03*
