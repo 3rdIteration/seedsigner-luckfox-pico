@@ -67,6 +67,61 @@ release_conflicting_gpio_lines() {
     done
 }
 
+reset_pi_stuck_gpio_pins() {
+    # On LuckFox Pico Pi, GPIO3_D2 (KEY_LEFT) and GPIO3_D3 (KEY2) receive ghost
+    # inputs because the I2C3 and PWM1 hardware controllers are left running by
+    # the boot ROM / U-Boot with their output transistors still active.  Switching
+    # the IOMUX to GPIO mode (iomux 3 26 0 / iomux 3 27 0) is not sufficient on
+    # its own because the peripheral output drivers can bypass the IOMUX on this
+    # silicon.  We must disable each controller via its control register first so
+    # it releases the pad, then re-assert GPIO mode.
+    #
+    # GPIO3_D1 (KEY_UP / I2C3_M2_SCL): the IOMUX func-2 workaround (UART5_RTS)
+    # routes that pin to an idle-HIGH output, overriding the brief SCL pulses.
+    #
+    # Register map (RV1106):
+    #   I2C3  base 0xff460000  – CON  register at offset 0x00 → 0xff460000
+    #   PWM1  channel base 0xff350010 (PWM block 0xff350000 + channel-1 * 0x10)
+    #         CTRL register at channel offset 0x0C → 0xff35001C
+    if ! grep -qi "luckfox.*pico.*pi" /proc/device-tree/model 2>/dev/null; then
+        return 0
+    fi
+
+    log_message "Pi: resetting I2C3 and PWM1 controllers to release button pins..."
+
+    python3 - <<'PYEOF' 2>/dev/null || true
+import mmap, struct
+
+def write32(addr, val):
+    page = addr & ~0xFFF
+    off  = addr &  0xFFF
+    with open('/dev/mem', 'r+b', buffering=0) as f:
+        m = mmap.mmap(f.fileno(), 0x1000, offset=page)
+        struct.pack_into('<I', m, off, val)
+        m.close()
+
+# Disable I2C3 master to release GPIO3_D2 (I2C3_M2_SDA / KEY_LEFT).
+# Writing 0 to I2C_CON clears the enable and any pending START/STOP bits,
+# stopping the state machine and turning off the open-drain SDA transistor.
+write32(0xff460000, 0)
+
+# Disable PWM1 output to release GPIO3_D3 (PWM1_M2 / KEY2).
+# PWM_CTRL bit-0 = timer enable, bit-3 = output enable; clearing both stops
+# the PWM signal and tristates the push-pull output driver.
+write32(0xff35001C, 0)
+PYEOF
+
+    # Restore GPIO mode on the now-released pads.
+    iomux 3 26 0 2>/dev/null || true   # GPIO3_D2 → GPIO (KEY_LEFT)
+    iomux 3 27 0 2>/dev/null || true   # GPIO3_D3 → GPIO (KEY2)
+
+    # KEY_UP (GPIO3_D1 / I2C3_M2_SCL): route to UART5_RTS (func 2).
+    # UART5 is unused so RTS idles HIGH, overriding brief I2C SCL pulses.
+    iomux 3 25 2 2>/dev/null || true
+
+    log_message "Pi: button pin reset complete"
+}
+
 start_camera_service_later() {
     local target_pid="$1"
     local post_spi_delay="$2"
@@ -142,6 +197,7 @@ while [ $retry_count -lt $MAX_RETRIES ]; do
     killall rkipc 2>/dev/null || true
     stop_camera_service
     release_conflicting_gpio_lines
+    reset_pi_stuck_gpio_pins
     
     # Start SeedSigner first. On Mini, camera ISP start before display init can
     # exhaust memory and cause SPI open failures.
