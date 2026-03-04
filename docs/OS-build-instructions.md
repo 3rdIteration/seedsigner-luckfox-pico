@@ -16,7 +16,7 @@ The workflow automatically:
 - Installs all required build dependencies on Ubuntu 22.04
 - Clones all required repositories:
   - `luckfox-pico` SDK (customized fork with SeedSigner modifications)
-  - `seedsigner` code (luckfox-staging-portability branch)
+  - `seedsigner` code (dev branch)
   - `seedsigner-os` packages
 - Configures buildroot with SeedSigner-specific packages
 - Builds for both hardware targets:
@@ -176,7 +176,7 @@ git clone https://github.com/3rdIteration/luckfox-pico.git --depth=1 --single-br
 git clone https://github.com/3rdIteration/seedsigner-os.git --depth=1 --single-branch
 
 # Clone SeedSigner application code
-git clone https://github.com/3rdIteration/seedsigner.git --depth=1 -b luckfox-staging-portability --single-branch --recurse-submodules
+git clone https://github.com/3rdIteration/seedsigner.git --depth=1 -b dev --single-branch --recurse-submodules
 
 # Clone this repository (if not already)
 git clone https://github.com/3rdIteration/seedsigner-luckfox-pico.git --depth=1 --single-branch
@@ -413,7 +413,7 @@ git clone https://github.com/3rdIteration/seedsigner-os.git \
 Clone the Seedsigner repo:
 ```bash
 git clone https://github.com/3rdIteration/seedsigner.git \
-    --depth=1 -b luckfox-staging-portability --single-branch --recurse-submodules
+    --depth=1 -b dev --single-branch --recurse-submodules
 ```
 
 

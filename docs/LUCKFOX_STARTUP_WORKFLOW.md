@@ -132,7 +132,7 @@ Pin-to-button mappings for each variant come from the SeedSigner
 `io_config.json`:
 
 > **`src/seedsigner/hardware/io_config.json`** in the
-> [seedsigner repo](https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability)
+> [seedsigner repo](https://github.com/3rdIteration/seedsigner/tree/dev)
 
 ## No boot autostart for camera service
 

@@ -33,7 +33,7 @@ These rules must **NEVER** be violated unless explicitly instructed by the user:
 **DO NOT change these repositories or branches unless explicitly instructed:**
 
 - **seedsigner repository:** `https://github.com/3rdIteration/seedsigner`
-  - Branch: `luckfox-staging-portability`
+  - Branch: `dev`
   - This is a carefully selected version with specific patches
 
 - **seedsigner-os repository:** `https://github.com/3rdIteration/seedsigner-os`
@@ -428,7 +428,7 @@ ls -l buildroot/external-packages/
 - **Seedsigner `io_config.json`** — Pin-to-button mapping for each hardware profile
   (`FOX_22`, `FOX_40`, `FOX_PI`). Located at
   `src/seedsigner/hardware/io_config.json` in the
-  [seedsigner repo](https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability).
+  [seedsigner repo](https://github.com/3rdIteration/seedsigner/tree/dev).
 
 **Key facts about RV1106 GPIO:**
 - All IOC and GPIO registers use Rockchip write-with-mask format: bits[31:16]=mask, bits[15:0]=value.
@@ -458,7 +458,7 @@ Look in `buildroot/external-packages/` for examples:
 
 ### Related Repositories
 
-- **seedsigner:** https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability
+- **seedsigner:** https://github.com/3rdIteration/seedsigner/tree/dev
 - **seedsigner-os:** https://github.com/3rdIteration/seedsigner-os
 - **luckfox-pico:** https://github.com/3rdIteration/luckfox-pico
 
