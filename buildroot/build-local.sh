@@ -715,6 +715,107 @@ apply_uart2_fiq_kernel_patch() {
     print_success "Kernel FIQ debugger disabled and serial drivers enabled in: $kernel_cfg_file"
 }
 
+apply_hwrng_crypto_kernel_patch() {
+    local hardware="$1"
+    local boot_medium="$2"
+
+    print_header "Enabling HWRNG and Hardware Crypto in Kernel Defconfig"
+
+    local sdk_hardware sdk_boot_medium
+    case "$hardware" in
+        mini) sdk_hardware="RV1103_Luckfox_Pico_Mini" ;;
+        max)  sdk_hardware="RV1106_Luckfox_Pico_Pro_Max" ;;
+        pi)   sdk_hardware="RV1106_Luckfox_Pico_Pi" ;;
+        *)
+            print_error "Unknown hardware type for HWRNG/crypto kernel patch: $hardware"
+            exit 1
+            ;;
+    esac
+    case "$boot_medium" in
+        sd)   sdk_boot_medium="SD_CARD" ;;
+        nand) sdk_boot_medium="SPI_NAND" ;;
+        emmc) sdk_boot_medium="EMMC" ;;
+        *)
+            print_error "Unknown boot medium for HWRNG/crypto kernel patch: $boot_medium"
+            exit 1
+            ;;
+    esac
+
+    local board_config="project/cfg/BoardConfig_IPC/BoardConfig-${sdk_boot_medium}-Buildroot-${sdk_hardware}-IPC.mk"
+    if [ ! -f "$board_config" ] && [ -L ".BoardConfig.mk" ]; then
+        board_config="$(readlink -f .BoardConfig.mk)"
+    fi
+    if [ ! -f "$board_config" ]; then
+        print_error "Board config file not found for HWRNG/crypto kernel patch: $board_config"
+        exit 1
+    fi
+
+    local kernel_defconfig
+    kernel_defconfig="$(sed -n 's/^export RK_KERNEL_DEFCONFIG="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$board_config" | head -n1)"
+    [ -n "$kernel_defconfig" ] || kernel_defconfig="luckfox_rv1106_linux_defconfig"
+
+    local kernel_cfg_file="sysdrv/source/kernel/arch/arm/configs/${kernel_defconfig}"
+    if [ ! -f "$kernel_cfg_file" ]; then
+        print_error "Kernel defconfig not found for HWRNG/crypto patch: $kernel_cfg_file"
+        exit 1
+    fi
+
+    # Enable hardware random number generator
+    sed -i -E '/^CONFIG_HW_RANDOM(=|_)/d;/^# CONFIG_HW_RANDOM is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_HW_RANDOM_ROCKCHIP(=|_)/d;/^# CONFIG_HW_RANDOM_ROCKCHIP is not set$/d' "$kernel_cfg_file"
+    {
+        echo 'CONFIG_HW_RANDOM=y'
+        echo 'CONFIG_HW_RANDOM_ROCKCHIP=y'
+    } >> "$kernel_cfg_file"
+
+    # Enable Rockchip hardware crypto (crypto v3 for RV1106/RV1103)
+    sed -i -E '/^CONFIG_CRYPTO_DEV_ROCKCHIP(=|_)/d;/^# CONFIG_CRYPTO_DEV_ROCKCHIP is not set$/d' "$kernel_cfg_file"
+    sed -i -E '/^CONFIG_CRYPTO_DEV_ROCKCHIP_DEV(=|_)/d;/^# CONFIG_CRYPTO_DEV_ROCKCHIP_DEV is not set$/d' "$kernel_cfg_file"
+    {
+        echo 'CONFIG_CRYPTO_DEV_ROCKCHIP=y'
+        echo 'CONFIG_CRYPTO_DEV_ROCKCHIP_DEV=y'
+    } >> "$kernel_cfg_file"
+
+    if ! grep -Eq '^CONFIG_HW_RANDOM=y$' "$kernel_cfg_file"; then
+        print_error "Kernel HWRNG enable verification failed: CONFIG_HW_RANDOM in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_HW_RANDOM_ROCKCHIP=y$' "$kernel_cfg_file"; then
+        print_error "Kernel HWRNG enable verification failed: CONFIG_HW_RANDOM_ROCKCHIP in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_CRYPTO_DEV_ROCKCHIP=y$' "$kernel_cfg_file"; then
+        print_error "Kernel crypto enable verification failed: CONFIG_CRYPTO_DEV_ROCKCHIP in $kernel_cfg_file"
+        exit 1
+    fi
+    if ! grep -Eq '^CONFIG_CRYPTO_DEV_ROCKCHIP_DEV=y$' "$kernel_cfg_file"; then
+        print_error "Kernel crypto enable verification failed: CONFIG_CRYPTO_DEV_ROCKCHIP_DEV in $kernel_cfg_file"
+        exit 1
+    fi
+    print_success "HWRNG and hardware crypto enabled in kernel defconfig: $kernel_cfg_file"
+}
+
+apply_crypto_dts_patch() {
+    local hardware="$1"
+
+    print_header "Enabling Crypto DTS Node"
+
+    local dts_file
+    dts_file="$(resolve_dts_path_for_hardware "$hardware")"
+
+    if grep -Eq '&crypto[[:space:]]*\{' "$dts_file"; then
+        sed -i '/&crypto[[:space:]]*{/,/};/ s/status[[:space:]]*=[[:space:]]*"[^"]*"/status = "okay"/' "$dts_file"
+    else
+        printf '\n&crypto {\n\tstatus = "okay";\n};\n' >> "$dts_file"
+    fi
+
+    if ! awk '/&crypto[[:space:]]*\{/{found=1} found && /status[[:space:]]*=[[:space:]]*"okay"/{ok=1} /\};/{if(found)exit} END{exit !ok}' "$dts_file"; then
+        print_error "Crypto DTS node enable verification failed in: $dts_file"
+        exit 1
+    fi
+    print_success "Crypto DTS node enabled in: $dts_file"
+}
+
 prepare_buildroot() {
     print_header "Preparing Buildroot Source Tree"
     
@@ -1236,6 +1337,8 @@ main() {
     apply_uart2_console_config "$hardware" "$boot_medium"
     apply_uart2_console_dts_patch "$hardware"
     apply_uart2_fiq_kernel_patch "$hardware" "$boot_medium"
+    apply_hwrng_crypto_kernel_patch "$hardware" "$boot_medium"
+    apply_crypto_dts_patch "$hardware"
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages
