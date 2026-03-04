@@ -142,7 +142,14 @@ while [ $retry_count -lt $MAX_RETRIES ]; do
     killall rkipc 2>/dev/null || true
     stop_camera_service
     release_conflicting_gpio_lines
-    
+
+    # Configure GPIO button pins (IOMUX, pull-up, input, IE) for detected variant
+    if [ -x /usr/bin/configure-gpio.sh ]; then
+        /usr/bin/configure-gpio.sh 2>&1 | tee -a "$LOG_FILE" || log_message "WARNING: GPIO configuration failed — buttons may not work correctly. Check $LOG_FILE for details."
+    else
+        log_message "WARNING: /usr/bin/configure-gpio.sh not found or not executable"
+    fi
+
     # Start SeedSigner first. On Mini, camera ISP start before display init can
     # exhaust memory and cause SPI open failures.
     python main.py &

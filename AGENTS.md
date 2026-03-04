@@ -411,6 +411,31 @@ ls -l buildroot/external-packages/
 
 ## Additional Resources
 
+### GPIO Configuration Reference
+
+**For any task related to GPIO pin configuration on the RV1106**, consult:
+
+- **`docs/Rockchip_RV1106_User_Manual_GPIO.pdf`** — The authoritative register-level
+  reference for all RV1106 GPIO pins. Contains exact register addresses, bit positions,
+  and ready-to-use `io` commands for IOMUX, pull-up/down, input enable, direction, drive
+  strength, and Schmitt trigger for every GPIO pin.
+  ([Original source](https://github.com/user-attachments/files/16725839/Rockchip_RV1106_User_Manual_GPIO.pdf))
+
+- **`buildroot/files/configure-gpio.sh`** — Startup script that uses the `io` command to
+  configure all button GPIO pins (IOMUX → GPIO, pull-up, input, input-buffer enable) for
+  each LuckFox Pico variant. Auto-detects the variant from `/proc/device-tree/model`.
+
+- **Seedsigner `io_config.json`** — Pin-to-button mapping for each hardware profile
+  (`FOX_22`, `FOX_40`, `FOX_PI`). Located at
+  `src/seedsigner/hardware/io_config.json` in the
+  [seedsigner repo](https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability).
+
+**Key facts about RV1106 GPIO:**
+- All IOC and GPIO registers use Rockchip write-with-mask format: bits[31:16]=mask, bits[15:0]=value.
+- `python-periphery` `pull_up` bias is silently ignored on RV1106 — use `io` command writes instead.
+- GPIO4 (VCCIO6 domain) uses a different pull encoding: 0=normal, 1=pull-down, 3=pull-up.
+- The `io` (busybox raw memory I/O utility) is the correct tool for register writes.
+
 ### Detailed Documentation
 
 All detailed documentation is in `buildroot/configs/`:

@@ -788,6 +788,8 @@ jobs:
         cp -v "$LUCKFOX_CFG_TEMPLATE" "$ROOTFS_DIR/etc/luckfox.cfg"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/nv12_converter "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/configure-gpio.sh "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
+        chmod +x "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S60pcscd "$ROOTFS_DIR/etc/init.d/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
         chmod +x "$ROOTFS_DIR/etc/init.d/S60pcscd"

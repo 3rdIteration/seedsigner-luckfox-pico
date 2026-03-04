@@ -932,6 +932,8 @@ install_seedsigner_app() {
     fi
     cp -v "$SCRIPT_DIR/files/nv12_converter" "$rootfs_dir/"
     cp -v "$SCRIPT_DIR/files/start-seedsigner.sh" "$rootfs_dir/"
+    cp -v "$SCRIPT_DIR/files/configure-gpio.sh" "$rootfs_dir/usr/bin/configure-gpio.sh"
+    chmod +x "$rootfs_dir/usr/bin/configure-gpio.sh"
     cp -v "$SCRIPT_DIR/files/S60pcscd" "$rootfs_dir/etc/init.d/"
     cp -v "$SCRIPT_DIR/files/S99seedsigner" "$rootfs_dir/etc/init.d/"
     chmod +x "$rootfs_dir/etc/init.d/S60pcscd"
