@@ -32,7 +32,7 @@ log_msg() {
 # Silently skip if the io command is not available.
 # ---------------------------------------------------------------------------
 io_write() {
-    io -4 "$1" "$2" 2>/dev/null || log_msg "WARN: io write failed: io -4 $1 $2"
+    io -4 "$1" "$2" 2>/dev/null || log_msg "WARN: io write failed for $3: io -4 $1 $2"
 }
 
 # ---------------------------------------------------------------------------
@@ -48,130 +48,130 @@ io_write() {
 
 configure_GPIO0_A0() {
     log_msg "  GPIO0_A0 (gpiochip0 line 0)"
-    io_write 0xFF388000 0x00070000    # IOMUX = GPIO
-    io_write 0xFF388038 0x00030001    # Pull  = pull-up
-    io_write 0xFF380008 0x00010000    # Dir   = input
-    io_write 0xFF388030 0x00010001    # IE    = enable
+    io_write 0xFF388000 0x00070000 GPIO0_A0    # IOMUX = GPIO
+    io_write 0xFF388038 0x00030001 GPIO0_A0    # Pull  = pull-up
+    io_write 0xFF380008 0x00010000 GPIO0_A0    # Dir   = input
+    io_write 0xFF388030 0x00010001 GPIO0_A0    # IE    = enable
 }
 
 configure_GPIO0_A1() {
     log_msg "  GPIO0_A1 (gpiochip0 line 1)"
-    io_write 0xFF388000 0x00700000    # IOMUX = GPIO
-    io_write 0xFF388038 0x000C0004    # Pull  = pull-up
-    io_write 0xFF380008 0x00020000    # Dir   = input
-    io_write 0xFF388030 0x00020002    # IE    = enable
+    io_write 0xFF388000 0x00700000 GPIO0_A1    # IOMUX = GPIO
+    io_write 0xFF388038 0x000C0004 GPIO0_A1    # Pull  = pull-up
+    io_write 0xFF380008 0x00020000 GPIO0_A1    # Dir   = input
+    io_write 0xFF388030 0x00020002 GPIO0_A1    # IE    = enable
 }
 
 configure_GPIO0_A4() {
     log_msg "  GPIO0_A4 (gpiochip0 line 4)"
-    io_write 0xFF388004 0x00070000    # IOMUX = GPIO
-    io_write 0xFF388038 0x03000100    # Pull  = pull-up
-    io_write 0xFF380008 0x00100000    # Dir   = input
-    io_write 0xFF388030 0x00100010    # IE    = enable
+    io_write 0xFF388004 0x00070000 GPIO0_A4    # IOMUX = GPIO
+    io_write 0xFF388038 0x03000100 GPIO0_A4    # Pull  = pull-up
+    io_write 0xFF380008 0x00100000 GPIO0_A4    # Dir   = input
+    io_write 0xFF388030 0x00100010 GPIO0_A4    # IE    = enable
 }
 
 configure_GPIO1_B2() {
     log_msg "  GPIO1_B2 (gpiochip1 line 10)"
-    io_write 0xFF538008 0x07000000    # IOMUX = GPIO
-    io_write 0xFF5381C4 0x00300010    # Pull  = pull-up
-    io_write 0xFF530008 0x04000000    # Dir   = input
-    io_write 0xFF538184 0x00040004    # IE    = enable
+    io_write 0xFF538008 0x07000000 GPIO1_B2    # IOMUX = GPIO
+    io_write 0xFF5381C4 0x00300010 GPIO1_B2    # Pull  = pull-up
+    io_write 0xFF530008 0x04000000 GPIO1_B2    # Dir   = input
+    io_write 0xFF538184 0x00040004 GPIO1_B2    # IE    = enable
 }
 
 configure_GPIO1_B3() {
     log_msg "  GPIO1_B3 (gpiochip1 line 11)"
-    io_write 0xFF538008 0x70000000    # IOMUX = GPIO
-    io_write 0xFF5381C4 0x00C00040    # Pull  = pull-up
-    io_write 0xFF530008 0x08000000    # Dir   = input
-    io_write 0xFF538184 0x00080008    # IE    = enable
+    io_write 0xFF538008 0x70000000 GPIO1_B3    # IOMUX = GPIO
+    io_write 0xFF5381C4 0x00C00040 GPIO1_B3    # Pull  = pull-up
+    io_write 0xFF530008 0x08000000 GPIO1_B3    # Dir   = input
+    io_write 0xFF538184 0x00080008 GPIO1_B3    # IE    = enable
 }
 
 configure_GPIO1_C4() {
     log_msg "  GPIO1_C4 (gpiochip1 line 20)"
-    io_write 0xFF538014 0x00070000    # IOMUX = GPIO
-    io_write 0xFF5381C8 0x03000100    # Pull  = pull-up
-    io_write 0xFF53000C 0x00100000    # Dir   = input
-    io_write 0xFF538188 0x00100010    # IE    = enable
+    io_write 0xFF538014 0x00070000 GPIO1_C4    # IOMUX = GPIO
+    io_write 0xFF5381C8 0x03000100 GPIO1_C4    # Pull  = pull-up
+    io_write 0xFF53000C 0x00100000 GPIO1_C4    # Dir   = input
+    io_write 0xFF538188 0x00100010 GPIO1_C4    # IE    = enable
 }
 
 configure_GPIO1_C5() {
     log_msg "  GPIO1_C5 (gpiochip1 line 21)"
-    io_write 0xFF538014 0x00700000    # IOMUX = GPIO
-    io_write 0xFF5381C8 0x0C000400    # Pull  = pull-up
-    io_write 0xFF53000C 0x00200000    # Dir   = input
-    io_write 0xFF538188 0x00200020    # IE    = enable
+    io_write 0xFF538014 0x00700000 GPIO1_C5    # IOMUX = GPIO
+    io_write 0xFF5381C8 0x0C000400 GPIO1_C5    # Pull  = pull-up
+    io_write 0xFF53000C 0x00200000 GPIO1_C5    # Dir   = input
+    io_write 0xFF538188 0x00200020 GPIO1_C5    # IE    = enable
 }
 
 configure_GPIO1_C6() {
     log_msg "  GPIO1_C6 (gpiochip1 line 22)"
-    io_write 0xFF538014 0x07000000    # IOMUX = GPIO
-    io_write 0xFF5381C8 0x30001000    # Pull  = pull-up
-    io_write 0xFF53000C 0x00400000    # Dir   = input
-    io_write 0xFF538188 0x00400040    # IE    = enable
+    io_write 0xFF538014 0x07000000 GPIO1_C6    # IOMUX = GPIO
+    io_write 0xFF5381C8 0x30001000 GPIO1_C6    # Pull  = pull-up
+    io_write 0xFF53000C 0x00400000 GPIO1_C6    # Dir   = input
+    io_write 0xFF538188 0x00400040 GPIO1_C6    # IE    = enable
 }
 
 configure_GPIO1_C7() {
     log_msg "  GPIO1_C7 (gpiochip1 line 23)"
-    io_write 0xFF538014 0x70000000    # IOMUX = GPIO
-    io_write 0xFF5381C8 0xC0004000    # Pull  = pull-up
-    io_write 0xFF53000C 0x00800000    # Dir   = input
-    io_write 0xFF538188 0x00800080    # IE    = enable
+    io_write 0xFF538014 0x70000000 GPIO1_C7    # IOMUX = GPIO
+    io_write 0xFF5381C8 0xC0004000 GPIO1_C7    # Pull  = pull-up
+    io_write 0xFF53000C 0x00800000 GPIO1_C7    # Dir   = input
+    io_write 0xFF538188 0x00800080 GPIO1_C7    # IE    = enable
 }
 
 configure_GPIO1_D0() {
     log_msg "  GPIO1_D0 (gpiochip1 line 24)"
-    io_write 0xFF538018 0x00070000    # IOMUX = GPIO
-    io_write 0xFF5381CC 0x00030001    # Pull  = pull-up
-    io_write 0xFF53000C 0x01000000    # Dir   = input
-    io_write 0xFF53818C 0x00010001    # IE    = enable
+    io_write 0xFF538018 0x00070000 GPIO1_D0    # IOMUX = GPIO
+    io_write 0xFF5381CC 0x00030001 GPIO1_D0    # Pull  = pull-up
+    io_write 0xFF53000C 0x01000000 GPIO1_D0    # Dir   = input
+    io_write 0xFF53818C 0x00010001 GPIO1_D0    # IE    = enable
 }
 
 configure_GPIO1_D1() {
     log_msg "  GPIO1_D1 (gpiochip1 line 25)"
-    io_write 0xFF538018 0x00700000    # IOMUX = GPIO
-    io_write 0xFF5381CC 0x000C0004    # Pull  = pull-up
-    io_write 0xFF53000C 0x02000000    # Dir   = input
-    io_write 0xFF53818C 0x00020002    # IE    = enable
+    io_write 0xFF538018 0x00700000 GPIO1_D1    # IOMUX = GPIO
+    io_write 0xFF5381CC 0x000C0004 GPIO1_D1    # Pull  = pull-up
+    io_write 0xFF53000C 0x02000000 GPIO1_D1    # Dir   = input
+    io_write 0xFF53818C 0x00020002 GPIO1_D1    # IE    = enable
 }
 
 configure_GPIO1_D2() {
     log_msg "  GPIO1_D2 (gpiochip1 line 26)"
-    io_write 0xFF538018 0x07000000    # IOMUX = GPIO
-    io_write 0xFF5381CC 0x00300010    # Pull  = pull-up
-    io_write 0xFF53000C 0x04000000    # Dir   = input
-    io_write 0xFF53818C 0x00040004    # IE    = enable
+    io_write 0xFF538018 0x07000000 GPIO1_D2    # IOMUX = GPIO
+    io_write 0xFF5381CC 0x00300010 GPIO1_D2    # Pull  = pull-up
+    io_write 0xFF53000C 0x04000000 GPIO1_D2    # Dir   = input
+    io_write 0xFF53818C 0x00040004 GPIO1_D2    # IE    = enable
 }
 
 configure_GPIO1_D3() {
     log_msg "  GPIO1_D3 (gpiochip1 line 27)"
-    io_write 0xFF538018 0x70000000    # IOMUX = GPIO
-    io_write 0xFF5381CC 0x00C00040    # Pull  = pull-up
-    io_write 0xFF53000C 0x08000000    # Dir   = input
-    io_write 0xFF53818C 0x00080008    # IE    = enable
+    io_write 0xFF538018 0x70000000 GPIO1_D3    # IOMUX = GPIO
+    io_write 0xFF5381CC 0x00C00040 GPIO1_D3    # Pull  = pull-up
+    io_write 0xFF53000C 0x08000000 GPIO1_D3    # Dir   = input
+    io_write 0xFF53818C 0x00080008 GPIO1_D3    # IE    = enable
 }
 
 configure_GPIO3_D1() {
     log_msg "  GPIO3_D1 (gpiochip3 line 25)"
-    io_write 0xFF558058 0x00700000    # IOMUX = GPIO
-    io_write 0xFF5581EC 0x000C0004    # Pull  = pull-up
-    io_write 0xFF55000C 0x02000000    # Dir   = input
-    io_write 0xFF5581AC 0x00020002    # IE    = enable
+    io_write 0xFF558058 0x00700000 GPIO3_D1    # IOMUX = GPIO
+    io_write 0xFF5581EC 0x000C0004 GPIO3_D1    # Pull  = pull-up
+    io_write 0xFF55000C 0x02000000 GPIO3_D1    # Dir   = input
+    io_write 0xFF5581AC 0x00020002 GPIO3_D1    # IE    = enable
 }
 
 configure_GPIO3_D2() {
     log_msg "  GPIO3_D2 (gpiochip3 line 26)"
-    io_write 0xFF558058 0x07000000    # IOMUX = GPIO
-    io_write 0xFF5581EC 0x00300010    # Pull  = pull-up
-    io_write 0xFF55000C 0x04000000    # Dir   = input
-    io_write 0xFF5581AC 0x00040004    # IE    = enable
+    io_write 0xFF558058 0x07000000 GPIO3_D2    # IOMUX = GPIO
+    io_write 0xFF5581EC 0x00300010 GPIO3_D2    # Pull  = pull-up
+    io_write 0xFF55000C 0x04000000 GPIO3_D2    # Dir   = input
+    io_write 0xFF5581AC 0x00040004 GPIO3_D2    # IE    = enable
 }
 
 configure_GPIO3_D3() {
     log_msg "  GPIO3_D3 (gpiochip3 line 27)"
-    io_write 0xFF558058 0x70000000    # IOMUX = GPIO
-    io_write 0xFF5581EC 0x00C00040    # Pull  = pull-up
-    io_write 0xFF55000C 0x08000000    # Dir   = input
-    io_write 0xFF5581AC 0x00080008    # IE    = enable
+    io_write 0xFF558058 0x70000000 GPIO3_D3    # IOMUX = GPIO
+    io_write 0xFF5581EC 0x00C00040 GPIO3_D3    # Pull  = pull-up
+    io_write 0xFF55000C 0x08000000 GPIO3_D3    # Dir   = input
+    io_write 0xFF5581AC 0x00080008 GPIO3_D3    # IE    = enable
 }
 
 configure_GPIO4_C1() {
@@ -180,10 +180,10 @@ configure_GPIO4_C1() {
     # Pull and IE share register 0xFF5680C0 at different bit fields.
     # Pull bits [13:14] are shared between C0 and C1 in this IOC block.
     log_msg "  GPIO4_C1 (gpiochip4 line 17)"
-    io_write 0xFF568010 0x00700000    # IOMUX = GPIO
-    io_write 0xFF5680C0 0x60006000    # Pull  = pull-up  (bits[13:14]=11)
-    io_write 0xFF56000C 0x00020000    # Dir   = input
-    io_write 0xFF5680C0 0x00080008    # IE    = enable   (bit 3)
+    io_write 0xFF568010 0x00700000 GPIO4_C1    # IOMUX = GPIO
+    io_write 0xFF5680C0 0x60006000 GPIO4_C1    # Pull  = pull-up  (bits[13:14]=11)
+    io_write 0xFF56000C 0x00020000 GPIO4_C1    # Dir   = input
+    io_write 0xFF5680C0 0x00080008 GPIO4_C1    # IE    = enable   (bit 3)
 }
 
 # ---------------------------------------------------------------------------
@@ -279,7 +279,7 @@ detect_variant() {
 # ---------------------------------------------------------------------------
 
 if ! command -v io >/dev/null 2>&1; then
-    log_msg "ERROR: 'io' command not found (busybox io utility required)"
+    log_msg "ERROR: 'io' command not found. Ensure busybox is installed and includes the io applet."
     exit 1
 fi
 

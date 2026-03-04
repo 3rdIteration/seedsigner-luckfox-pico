@@ -145,7 +145,7 @@ while [ $retry_count -lt $MAX_RETRIES ]; do
 
     # Configure GPIO button pins (IOMUX, pull-up, input, IE) for detected variant
     if [ -x /usr/bin/configure-gpio.sh ]; then
-        /usr/bin/configure-gpio.sh 2>&1 | tee -a "$LOG_FILE" || log_message "WARNING: GPIO configuration returned non-zero"
+        /usr/bin/configure-gpio.sh 2>&1 | tee -a "$LOG_FILE" || log_message "WARNING: GPIO configuration failed — buttons may not work correctly. Check $LOG_FILE for details."
     else
         log_message "WARNING: /usr/bin/configure-gpio.sh not found or not executable"
     fi
