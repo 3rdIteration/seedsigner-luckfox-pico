@@ -100,60 +100,52 @@ start_camera_service_later() {
 }
 
 ensure_gpiochip_symlinks() {
-    # On Luckfox Pico Mini the kernel omits the GPIO2 bank from the device tree,
-    # so gpiochip numbers are shifted: GPIO3→gpiochip2, GPIO4→gpiochip3.
-    # The io_config.json FOX_22 profile references /dev/gpiochip4 for KEY1/KEY2
-    # (GPIO4_C0/C1). If that path is absent, find the GPIO4 bank by its sysfs
-    # label — the Rockchip GPIO driver labels each chip with its DT node name,
-    # which encodes the physical base address (0xff560000 for GPIO4) — and
-    # create a persistent symlink so the Python app can open it normally.
-    #
-    # GPIO platform devices may not appear in sysfs immediately at boot (async
-    # registration), so we retry up to 5 times with 1-second delays before
-    # giving up.
+    # On some LuckFox Pico variants the kernel omits one or more GPIO banks from
+    # the device tree, shifting gpiochip numbers downward.  The FOX_PI
+    # io_config.json profile references /dev/gpiochip4 for KEY1 (GPIO4_C1,
+    # line 17).  If that path is absent, locate the GPIO4 bank in sysfs and
+    # create a symlink so the Python app can open it regardless of the kernel-
+    # assigned chip number.
     if [ -e /dev/gpiochip4 ]; then
         return 0
     fi
 
-    local sysdir chip label devname attempt
-    for attempt in 1 2 3 4 5; do
-        # Primary search: scan /sys/class/gpio by label
-        for sysdir in /sys/class/gpio/gpiochip*/; do
-            [ -d "$sysdir" ] || continue
-            label=$(cat "$sysdir/label" 2>/dev/null || true)
-            # Match labels like "ff560000.gpio" (DT node) or "gpio4" (alias)
-            case "$label" in
-                *ff560*|*gpio4*)
-                    chip=$(basename "$sysdir")
-                    devname="/dev/${chip}"
-                    if [ -c "$devname" ]; then
-                        log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank label='$label')"
-                        ln -sf "$devname" /dev/gpiochip4
-                        return 0
-                    fi
-                    ;;
-            esac
-        done
+    local sysdir chip devname label
 
-        # Secondary search: use the platform device path directly (more reliable
-        # when the sysfs class label doesn't match the expected pattern)
-        for sysdir in /sys/devices/platform/ff560000.gpio/gpio/gpiochip*/; do
-            [ -d "$sysdir" ] || continue
-            chip=$(basename "$sysdir")
-            devname="/dev/${chip}"
-            if [ -c "$devname" ]; then
-                log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank via platform path)"
-                ln -sf "$devname" /dev/gpiochip4
-                return 0
-            fi
-        done
-
-        if [ "$attempt" -lt 5 ]; then
-            sleep 1
+    # Primary: use the platform device path.  The RV1106 GPIO4 controller is
+    # always registered at physical address 0xff560000, so this glob is reliable
+    # regardless of how many banks are present or what label the driver assigns.
+    for sysdir in /sys/devices/platform/ff560000.gpio/gpio/gpiochip*/; do
+        [ -d "$sysdir" ] || continue
+        chip=$(basename "$sysdir")
+        devname="/dev/${chip}"
+        if [ -c "$devname" ]; then
+            log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank via platform path)"
+            ln -sf "$devname" /dev/gpiochip4
+            return 0
         fi
     done
 
-    log_message "WARNING: GPIO4 bank gpiochip not found; /dev/gpiochip4 unavailable — KEY1/KEY2 may not work on Mini"
+    # Fallback: scan /sys/class/gpio by label.  The Rockchip GPIO driver
+    # labels each chip with its DT node name (e.g. "ff560000.gpio") or the
+    # DT alias (e.g. "gpio4").
+    for sysdir in /sys/class/gpio/gpiochip*/; do
+        [ -d "$sysdir" ] || continue
+        label=$(cat "$sysdir/label" 2>/dev/null || true)
+        case "$label" in
+            *ff560*|*gpio4*)
+                chip=$(basename "$sysdir")
+                devname="/dev/${chip}"
+                if [ -c "$devname" ]; then
+                    log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank label='$label')"
+                    ln -sf "$devname" /dev/gpiochip4
+                    return 0
+                fi
+                ;;
+        esac
+    done
+
+    log_message "WARNING: GPIO4 bank gpiochip not found; /dev/gpiochip4 unavailable — KEY1 may not work on Pi"
 }
 
 bootstrap_camera_graph() {
@@ -185,8 +177,8 @@ trap cleanup SIGTERM SIGINT
 killall rkipc 2>/dev/null
 bootstrap_camera_graph
 
-# Ensure /dev/gpiochip4 exists — on Mini, GPIO4 bank may be registered under a
-# lower chip number due to GPIO2 bank being absent from the device tree.
+# Ensure /dev/gpiochip4 exists — on some variants, GPIO4 bank is registered
+# under a lower chip number due to absent GPIO banks in the device tree.
 ensure_gpiochip_symlinks
 
 # Change to SeedSigner directory
@@ -211,8 +203,8 @@ while [ $retry_count -lt $MAX_RETRIES ]; do
         log_message "WARNING: /usr/bin/configure-gpio.sh not found or not executable"
     fi
 
-    # Re-check /dev/gpiochip4 symlink on each attempt — the GPIO4 bank may not
-    # have been registered in sysfs when the initial check ran at startup.
+    # Ensure /dev/gpiochip4 symlink is present before launching the app.
+    # This is a no-op if the symlink was already created at startup.
     ensure_gpiochip_symlinks
 
     # Start SeedSigner first. On Mini, camera ISP start before display init can
