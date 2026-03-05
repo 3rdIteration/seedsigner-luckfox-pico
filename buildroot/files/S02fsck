@@ -17,11 +17,22 @@ get_root_device() {
     awk '$2 == "/" { print $1; exit }' /proc/mounts
 }
 
-# Check whether a device has an ext2/3/4 filesystem
+# Return the filesystem type for the device mounted at /
+# Uses /proc/mounts directly — no blkid dependency.
+get_root_fstype() {
+    awk '$2 == "/" { print $3; exit }' /proc/mounts
+}
+
+# Check whether a device has an ext2/3/4 filesystem.
+# For unmounted devices, falls back to blkid if available; otherwise skips.
 is_ext4() {
     local dev="$1"
     local fstype
-    fstype=$(blkid -s TYPE -o value "$dev" 2>/dev/null)
+    if command -v blkid >/dev/null 2>&1; then
+        fstype=$(blkid -s TYPE -o value "$dev" 2>/dev/null)
+    else
+        return 1
+    fi
     case "$fstype" in
         ext2|ext3|ext4) return 0 ;;
         *) return 1 ;;
@@ -66,44 +77,47 @@ start() {
         return 0
     fi
 
-    if ! command -v blkid >/dev/null 2>&1; then
-        log_fsck "blkid not found; skipping filesystem check"
-        return 0
-    fi
-
     log_fsck "Starting filesystem check"
 
     # --- Check the root filesystem ---
-    local root_dev
+    local root_dev root_fstype
     root_dev=$(get_root_device)
+    root_fstype=$(get_root_fstype)
 
-    if [ -n "$root_dev" ] && [ -b "$root_dev" ] && is_ext4 "$root_dev"; then
-        log_fsck "Root device $root_dev is ext4; running fsck (remounting read-only)"
-        if mount -o remount,ro / 2>>"$FSCK_LOG"; then
-            run_e2fsck "$root_dev"
-            local fsck_rc=$?
-            mount -o remount,rw / 2>>"$FSCK_LOG" || log_fsck "WARNING: failed to remount / read-write"
-            if [ $fsck_rc -ge 4 ]; then
-                log_fsck "Root filesystem has uncorrected errors (code $fsck_rc); system may be unstable"
+    case "$root_fstype" in
+        ext2|ext3|ext4)
+            if [ -n "$root_dev" ] && [ -b "$root_dev" ]; then
+                log_fsck "Root device $root_dev is $root_fstype; running fsck (remounting read-only)"
+                if mount -o remount,ro / 2>>"$FSCK_LOG"; then
+                    run_e2fsck "$root_dev"
+                    local fsck_rc=$?
+                    mount -o remount,rw / 2>>"$FSCK_LOG" || log_fsck "WARNING: failed to remount / read-write"
+                    if [ $fsck_rc -ge 4 ]; then
+                        log_fsck "Root filesystem has uncorrected errors (code $fsck_rc); system may be unstable"
+                    fi
+                else
+                    log_fsck "Could not remount / read-only; skipping root fsck"
+                fi
             fi
-        else
-            log_fsck "Could not remount / read-only; skipping root fsck"
-        fi
-    else
-        log_fsck "Root ($root_dev) is not a block-device ext4 filesystem (likely UBIFS/SPI-NAND); skipping root fsck"
+            ;;
+        *)
+            log_fsck "Root ($root_dev) is $root_fstype (likely UBIFS/SPI-NAND); skipping root fsck"
+            ;;
+    esac
+
+    # --- Check any other unmounted ext4 block partitions (requires blkid) ---
+    if command -v blkid >/dev/null 2>&1; then
+        local dev
+        for dev in /dev/mmcblk[0-9]p[0-9]* /dev/sd[a-z][0-9]*; do
+            [ -b "$dev" ] || continue
+            [ "$dev" = "$root_dev" ] && continue
+            is_mounted "$dev" && continue
+            is_ext4 "$dev" || continue
+
+            log_fsck "Checking unmounted partition $dev"
+            run_e2fsck "$dev"
+        done
     fi
-
-    # --- Check any other unmounted ext4 block partitions ---
-    local dev
-    for dev in /dev/mmcblk[0-9]p[0-9]* /dev/sd[a-z][0-9]*; do
-        [ -b "$dev" ] || continue
-        [ "$dev" = "$root_dev" ] && continue
-        is_mounted "$dev" && continue
-        is_ext4 "$dev" || continue
-
-        log_fsck "Checking unmounted partition $dev"
-        run_e2fsck "$dev"
-    done
 
     log_fsck "Filesystem check complete"
 }
