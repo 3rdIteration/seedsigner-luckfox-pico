@@ -99,6 +99,39 @@ start_camera_service_later() {
     CAMERA_HELPER_PID="$!"
 }
 
+ensure_gpiochip_symlinks() {
+    # On Luckfox Pico Mini the kernel omits the GPIO2 bank from the device tree,
+    # so gpiochip numbers are shifted: GPIO3→gpiochip2, GPIO4→gpiochip3.
+    # The io_config.json FOX_22 profile references /dev/gpiochip4 for KEY1/KEY2
+    # (GPIO4_C0/C1). If that path is absent, find the GPIO4 bank by its sysfs
+    # label — the Rockchip GPIO driver labels each chip with its DT node name,
+    # which encodes the physical base address (0xff560000 for GPIO4) — and
+    # create a persistent symlink so the Python app can open it normally.
+    if [ -e /dev/gpiochip4 ]; then
+        return 0
+    fi
+
+    local sysdir chip label devname
+    for sysdir in /sys/class/gpio/gpiochip*/; do
+        [ -d "$sysdir" ] || continue
+        label=$(cat "$sysdir/label" 2>/dev/null || true)
+        # Match labels like "ff560000.gpio" (DT node) or "gpio4" (alias)
+        case "$label" in
+            *ff560*|*gpio4*)
+                chip=$(basename "$sysdir")
+                devname="/dev/${chip}"
+                if [ -c "$devname" ]; then
+                    log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank label='$label')"
+                    ln -sf "$devname" /dev/gpiochip4
+                    return 0
+                fi
+                ;;
+        esac
+    done
+
+    log_message "WARNING: GPIO4 bank gpiochip not found; /dev/gpiochip4 unavailable — KEY1/KEY2 may not work on Mini"
+}
+
 bootstrap_camera_graph() {
     # Some builds only create a usable ISP graph after rkipc performs early init.
     if ls /dev/v4l-subdev* >/dev/null 2>&1; then
@@ -127,6 +160,10 @@ trap cleanup SIGTERM SIGINT
 # Kill any existing rkipc processes
 killall rkipc 2>/dev/null
 bootstrap_camera_graph
+
+# Ensure /dev/gpiochip4 exists — on Mini, GPIO4 bank may be registered under a
+# lower chip number due to GPIO2 bank being absent from the device tree.
+ensure_gpiochip_symlinks
 
 # Change to SeedSigner directory
 cd /seedsigner
