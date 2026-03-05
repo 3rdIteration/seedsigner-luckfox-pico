@@ -232,6 +232,89 @@ grep configure-gpio /tmp/startup.log
 - Exposure adjusts dynamically in changing light
 - All buttons respond (up, down, left, right, press, key1, key2, key3)
 
+## microSD filesystem corruption (read-only state)
+
+### Symptom
+
+The microSD card occasionally becomes stuck in a **read-only** state after an
+unexpected power-off.  All write operations fail silently or with "Read-only
+file system" errors, and the condition persists across reboots until the card
+is repaired on a PC.
+
+### Root cause
+
+When the system loses power while filesystem writes are in progress, the
+on-disk journal may be left in an inconsistent state.  On the next mount the
+kernel's ext4 driver detects the inconsistency and automatically **remounts
+the partition read-only** to prevent further corruption.  This is a
+kernel-level safety mechanism — it is not a hardware fault and does not mean
+the card is damaged.
+
+### How to detect it
+
+Check the kernel log immediately after boot:
+
+```sh
+dmesg | grep -E "(remount|EXT4-fs error|I/O error|read-only|JBD2|journal commit)"
+```
+
+A read-only remount looks like:
+
+```
+EXT4-fs error (device mmcblk1p5): ...
+EXT4-fs (mmcblk1p5): Remounting filesystem read-only
+```
+
+You can also inspect the mount flags directly:
+
+```sh
+mount | grep mmcblk
+```
+
+A healthy rootfs shows `rw`; a remounted-RO partition shows `ro`.
+
+### Fix
+
+Connect the microSD card to a PC (or a Linux host) and run `fsck` on the
+affected partition.  The partition containing the rootfs is typically
+the fifth partition on the LuckFox image layout.
+
+> ⚠️ **Replace `X` with your actual device letter** (e.g., `b`, `c`, `d`) before
+> running these commands.  Use `lsblk` or `fdisk -l` to identify the correct
+> device.  Running `fsck` on the wrong device can cause data loss.
+
+```sh
+# Identify the card — look for the device whose size matches your microSD
+lsblk
+
+# Unmount the partition first if it is auto-mounted
+sudo umount /dev/sdX5
+
+# Run fsck in automatic-repair mode (-y answers "yes" to all questions)
+sudo fsck -y /dev/sdX5
+```
+
+On Windows, use the built-in **Scan and Fix** prompt that appears when the
+drive is inserted, or run `chkdsk X: /f` in an administrator command prompt
+(only effective for FAT/exFAT partitions — for ext4 use a Linux environment
+such as WSL2 or a live USB).
+
+After `fsck` completes successfully, re-insert the card; the kernel will
+mount it read-write on the next boot.
+
+### Prevention
+
+The root cause is always an unclean shutdown.  Best practices:
+
+1. **Always shut down gracefully** — from within the SeedSigner app, use the
+   power-off / shutdown option if one is available, or run `halt` / `shutdown -h now`
+   via SSH before removing power.
+2. **Sync writes before power-off** — if you must cut power, run `sync` first
+   from a shell to flush all buffered writes to the card.
+3. **Use a good-quality microSD card** — cards rated for frequent
+   write cycles (e.g., A1/A2 application-class or industrial-grade cards)
+   handle unexpected power loss more reliably.
+
 ## Notes for future changes
 
 - Treat startup order as a functional requirement, not just cleanup.
