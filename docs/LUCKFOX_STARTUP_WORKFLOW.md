@@ -135,29 +135,32 @@ down by one:
 | GPIO3 | `/dev/gpiochip3` | `/dev/gpiochip2` |
 | GPIO4 | `/dev/gpiochip4` | `/dev/gpiochip3` |
 
-The SeedSigner `io_config.json` FOX_22 profile references
-`/dev/gpiochip4` for **KEY1** (GPIO4_C0) and **KEY2** (GPIO4_C1).
-Without the path present, the Python app crashes with:
+Any profile that references `/dev/gpiochip4` (e.g. for GPIO4_C0/C1 pins)
+will crash without the path present:
 
 ```
 periphery.gpio.GPIOError: [Errno 2] Opening GPIO chip: No such file or directory
 ```
 
-**Workaround:** `start-seedsigner.sh` calls `ensure_gpiochip_symlinks()`
-once at startup before the retry loop.  That function searches
-`/sys/class/gpio/gpiochip*/label` for a chip whose label matches the
-GPIO4 bank's DT node name (`ff560000.gpio`, derived from the physical base
-address `0xff560000`) or the DT alias (`gpio4`).  When found it creates
-a symlink:
+**Fix:** `start-seedsigner.sh` calls `ensure_gpiochip_symlinks()` once at
+startup before the retry loop.  On **Mini**, because the GPIO2-absent shift
+is a static hardware fact, the symlink is created directly without any sysfs
+scanning:
 
 ```
-/dev/gpiochip4  ->  /dev/gpiochip3   (on Mini)
+/dev/gpiochip4  ->  /dev/gpiochip3   (on Mini, always)
 ```
 
-This symlink is transparent to the Python app and persists for the
-lifetime of the boot session.  On variants where GPIO2 is present (Pi,
-Pro, Max) `/dev/gpiochip4` already exists, so the function returns
-immediately without creating a symlink.
+The symlink is created **unconditionally on Mini** — regardless of which
+pins the current `io_config.json` profile happens to reference.  This
+future-proofs the boot against profile changes and avoids fragile sysfs
+label matching.
+
+On variants where GPIO2 is present (Pi, Pro, Max), `/dev/gpiochip4`
+already exists as a real device node, so the function returns immediately.
+For those variants, if `/dev/gpiochip4` were ever absent, the function falls
+back to a dynamic sysfs search anchored on the GPIO4 controller's fixed
+hardware address (`0xff560000`).
 
 ### Reference
 
