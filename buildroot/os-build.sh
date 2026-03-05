@@ -1111,8 +1111,10 @@ CONFIGMENU
         cp -v "/build/files/configure-gpio.sh" "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
         chmod +x "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
     fi
+    [[ -f "/build/files/S02fsck" ]] && cp -v "/build/files/S02fsck" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "/build/files/S60pcscd" ]] && cp -v "/build/files/S60pcscd" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
+    [[ -f "$ROOTFS_DIR/etc/init.d/S02fsck" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S02fsck"
     [[ -f "$ROOTFS_DIR/etc/init.d/S60pcscd" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S60pcscd"
     [[ -f "$ROOTFS_DIR/etc/init.d/S99seedsigner" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S99seedsigner"
     if [[ -f "/build/files/sec1210" ]]; then

@@ -1,0 +1,127 @@
+#!/bin/sh
+#
+# S02fsck - Automatic filesystem check at boot
+#
+# Runs e2fsck on ext4 partitions before services start.
+# Safely skips UBIFS/SPI-NAND systems where ext4 fsck does not apply.
+#
+
+FSCK_LOG="/tmp/fsck.log"
+
+log_fsck() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [fsck] $1" | tee -a "$FSCK_LOG"
+}
+
+# Return the block device mounted at /
+get_root_device() {
+    awk '$2 == "/" { print $1; exit }' /proc/mounts
+}
+
+# Check whether a device has an ext2/3/4 filesystem
+is_ext4() {
+    local dev="$1"
+    local fstype
+    fstype=$(blkid -s TYPE -o value "$dev" 2>/dev/null)
+    case "$fstype" in
+        ext2|ext3|ext4) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Check whether a device is currently listed in /proc/mounts
+is_mounted() {
+    local dev="$1"
+    awk -v d="$dev" '$1 == d { found=1 } END { exit !found }' /proc/mounts
+}
+
+# Run e2fsck in preen (automatic repair) mode and log the result.
+# Returns the e2fsck exit code.
+run_e2fsck() {
+    local dev="$1"
+    local rc
+
+    e2fsck -p "$dev" >> "$FSCK_LOG" 2>&1
+    rc=$?
+
+    # e2fsck exit codes are bit flags:
+    #   0  - no errors
+    #   1  - errors corrected
+    #   2  - errors corrected, reboot recommended
+    #   4  - errors left uncorrected
+    #   8  - operational error
+    #  16  - usage error or other
+    case $rc in
+        0)  log_fsck "$dev: filesystem clean" ;;
+        1)  log_fsck "$dev: errors corrected" ;;
+        2)  log_fsck "$dev: errors corrected; reboot recommended" ;;
+        *)  log_fsck "$dev: fsck returned exit code $rc - check $FSCK_LOG" ;;
+    esac
+
+    return $rc
+}
+
+start() {
+    if ! command -v e2fsck >/dev/null 2>&1; then
+        log_fsck "e2fsck not found; skipping filesystem check"
+        return 0
+    fi
+
+    if ! command -v blkid >/dev/null 2>&1; then
+        log_fsck "blkid not found; skipping filesystem check"
+        return 0
+    fi
+
+    log_fsck "Starting filesystem check"
+
+    # --- Check the root filesystem ---
+    local root_dev
+    root_dev=$(get_root_device)
+
+    if [ -n "$root_dev" ] && [ -b "$root_dev" ] && is_ext4 "$root_dev"; then
+        log_fsck "Root device $root_dev is ext4; running fsck (remounting read-only)"
+        if mount -o remount,ro / 2>>"$FSCK_LOG"; then
+            run_e2fsck "$root_dev"
+            local fsck_rc=$?
+            mount -o remount,rw / 2>>"$FSCK_LOG" || log_fsck "WARNING: failed to remount / read-write"
+            if [ $fsck_rc -ge 4 ]; then
+                log_fsck "Root filesystem has uncorrected errors (code $fsck_rc); system may be unstable"
+            fi
+        else
+            log_fsck "Could not remount / read-only; skipping root fsck"
+        fi
+    else
+        log_fsck "Root ($root_dev) is not a block-device ext4 filesystem (likely UBIFS/SPI-NAND); skipping root fsck"
+    fi
+
+    # --- Check any other unmounted ext4 block partitions ---
+    local dev
+    for dev in /dev/mmcblk[0-9]p[0-9]* /dev/sd[a-z][0-9]*; do
+        [ -b "$dev" ] || continue
+        [ "$dev" = "$root_dev" ] && continue
+        is_mounted "$dev" && continue
+        is_ext4 "$dev" || continue
+
+        log_fsck "Checking unmounted partition $dev"
+        run_e2fsck "$dev"
+    done
+
+    log_fsck "Filesystem check complete"
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        # Nothing to do on shutdown
+        ;;
+    restart|reload)
+        start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0
