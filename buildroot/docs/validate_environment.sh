@@ -58,7 +58,7 @@ if [ ${#missing_dirs[@]} -ne 0 ] || [ ${#missing_files[@]} -ne 0 ]; then
     echo "1. Clone required repositories in your HOME directory:"
     echo "   git clone https://github.com/3rdIteration/luckfox-pico.git"
     echo "   git clone https://github.com/3rdIteration/seedsigner-os.git"
-    echo "   git clone https://github.com/3rdIteration/seedsigner.git -b luckfox-staging-portability --recurse-submodules"
+    echo "   git clone https://github.com/3rdIteration/seedsigner.git -b dev --recurse-submodules"
     echo ""
     echo "2. Run Docker with proper volume mounts as specified in the documentation"
     exit 1

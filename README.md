@@ -1,7 +1,7 @@
 # seedsigner-luckfox-pico
 Port of the SeedSigner code to support the LuckFox Pico Linux board family. Since this device is still an embedded Linux device, like the Raspberry Pi, the changes are fairly minimal in order to access the buttons and the camera. This repo mostly pertains to the Buildroot OS build instructions, the KiCAD schematic and PCB design files, and 3D models of cases for the assembled device.
 
-SeedSigner code fork: https://github.com/3rdIteration/seedsigner/tree/luckfox-staging-portability
+SeedSigner code fork: https://github.com/3rdIteration/seedsigner/tree/dev
 
 
 ## Hardware Photos
