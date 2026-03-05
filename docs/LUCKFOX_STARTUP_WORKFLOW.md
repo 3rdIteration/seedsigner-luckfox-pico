@@ -120,6 +120,45 @@ encoding from GPIO0–GPIO3:
 
 The `configure_GPIO4_C1()` function in the script handles this difference.
 
+### `/dev/gpiochip4` missing on Pico Mini
+
+On the Luckfox Pico Mini the Linux kernel's device tree **omits the GPIO2
+bank entirely**.  Because the kernel assigns `/dev/gpiochipN` numbers
+sequentially (one per registered bank), all banks above GPIO1 are shifted
+down by one:
+
+| GPIO bank | Pi / Pro / Max | Mini (GPIO2 absent) |
+|-----------|----------------|---------------------|
+| GPIO0 | `/dev/gpiochip0` | `/dev/gpiochip0` |
+| GPIO1 | `/dev/gpiochip1` | `/dev/gpiochip1` |
+| GPIO2 | `/dev/gpiochip2` | *(not registered)* |
+| GPIO3 | `/dev/gpiochip3` | `/dev/gpiochip2` |
+| GPIO4 | `/dev/gpiochip4` | `/dev/gpiochip3` |
+
+The SeedSigner `io_config.json` FOX_22 profile references
+`/dev/gpiochip4` for **KEY1** (GPIO4_C0) and **KEY2** (GPIO4_C1).
+Without the path present, the Python app crashes with:
+
+```
+periphery.gpio.GPIOError: [Errno 2] Opening GPIO chip: No such file or directory
+```
+
+**Workaround:** `start-seedsigner.sh` calls `ensure_gpiochip_symlinks()`
+once at startup before the retry loop.  That function searches
+`/sys/class/gpio/gpiochip*/label` for a chip whose label matches the
+GPIO4 bank's DT node name (`ff560000.gpio`, derived from the physical base
+address `0xff560000`) or the DT alias (`gpio4`).  When found it creates
+a symlink:
+
+```
+/dev/gpiochip4  ->  /dev/gpiochip3   (on Mini)
+```
+
+This symlink is transparent to the Python app and persists for the
+lifetime of the boot session.  On variants where GPIO2 is present (Pi,
+Pro, Max) `/dev/gpiochip4` already exists, so the function returns
+immediately without creating a symlink.
+
 ### Reference
 
 The full register-level reference for all RV1106 GPIO pins (addresses,
