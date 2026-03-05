@@ -1112,11 +1112,20 @@ CONFIGMENU
         chmod +x "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
     fi
     [[ -f "/build/files/S02fsck" ]] && cp -v "/build/files/S02fsck" "$ROOTFS_DIR/etc/init.d/"
+    [[ -f "/build/files/S10mdev" ]] && cp -v "/build/files/S10mdev" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "/build/files/S60pcscd" ]] && cp -v "/build/files/S60pcscd" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "/build/files/S99seedsigner" ]] && cp -v "/build/files/S99seedsigner" "$ROOTFS_DIR/etc/init.d/"
     [[ -f "$ROOTFS_DIR/etc/init.d/S02fsck" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S02fsck"
+    [[ -f "$ROOTFS_DIR/etc/init.d/S10mdev" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S10mdev"
     [[ -f "$ROOTFS_DIR/etc/init.d/S60pcscd" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S60pcscd"
     [[ -f "$ROOTFS_DIR/etc/init.d/S99seedsigner" ]] && chmod +x "$ROOTFS_DIR/etc/init.d/S99seedsigner"
+    if [[ -f "/build/files/mdev.conf" ]]; then
+        cp -v "/build/files/mdev.conf" "$ROOTFS_DIR/etc/mdev.conf"
+    fi
+    if [[ -f "/build/files/fat-fsck-hotplug" ]]; then
+        cp -v "/build/files/fat-fsck-hotplug" "$ROOTFS_DIR/usr/sbin/fat-fsck-hotplug"
+        chmod +x "$ROOTFS_DIR/usr/sbin/fat-fsck-hotplug"
+    fi
     if [[ -f "/build/files/sec1210" ]]; then
         mkdir -p "$ROOTFS_DIR/etc/reader.conf.d"
         cp -v "/build/files/sec1210" "$ROOTFS_DIR/etc/reader.conf.d/sec1210"

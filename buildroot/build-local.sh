@@ -1036,11 +1036,20 @@ install_seedsigner_app() {
     cp -v "$SCRIPT_DIR/files/configure-gpio.sh" "$rootfs_dir/usr/bin/configure-gpio.sh"
     chmod +x "$rootfs_dir/usr/bin/configure-gpio.sh"
     cp -v "$SCRIPT_DIR/files/S02fsck" "$rootfs_dir/etc/init.d/"
+    cp -v "$SCRIPT_DIR/files/S10mdev" "$rootfs_dir/etc/init.d/"
     cp -v "$SCRIPT_DIR/files/S60pcscd" "$rootfs_dir/etc/init.d/"
     cp -v "$SCRIPT_DIR/files/S99seedsigner" "$rootfs_dir/etc/init.d/"
     chmod +x "$rootfs_dir/etc/init.d/S02fsck"
+    chmod +x "$rootfs_dir/etc/init.d/S10mdev"
     chmod +x "$rootfs_dir/etc/init.d/S60pcscd"
     chmod +x "$rootfs_dir/etc/init.d/S99seedsigner"
+    if [[ -f "$SCRIPT_DIR/files/mdev.conf" ]]; then
+        cp -v "$SCRIPT_DIR/files/mdev.conf" "$rootfs_dir/etc/mdev.conf"
+    fi
+    if [[ -f "$SCRIPT_DIR/files/fat-fsck-hotplug" ]]; then
+        cp -v "$SCRIPT_DIR/files/fat-fsck-hotplug" "$rootfs_dir/usr/sbin/fat-fsck-hotplug"
+        chmod +x "$rootfs_dir/usr/sbin/fat-fsck-hotplug"
+    fi
     mkdir -p "$rootfs_dir/etc/reader.conf.d"
     cp -v "$SCRIPT_DIR/files/sec1210" "$rootfs_dir/etc/reader.conf.d/sec1210"
     mkdir -p "$rootfs_dir/etc/readers.d"
