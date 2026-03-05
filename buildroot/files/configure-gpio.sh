@@ -203,15 +203,15 @@ configure_GPIO4_C1() {
 
 configure_fox_22() {
     # FOX_22 — Luckfox Pico Mini (22-pin)
-    # Pin assignments from io_config.json FOX_22 profile.
+    # Pin assignments reflect io_config.json as updated in PR #327.
     log_msg "Configuring buttons for Luckfox Pico Mini (FOX_22)..."
     configure_GPIO1_D1    # KEY_UP     (gpiochip1 line 25)
-    configure_GPIO1_D3    # KEY_DOWN   (gpiochip1 line 27)
+    configure_GPIO1_C7    # KEY_DOWN   (gpiochip1 line 23)
     configure_GPIO1_D0    # KEY_LEFT   (gpiochip1 line 24)
-    configure_GPIO1_C6    # KEY_RIGHT  (gpiochip1 line 22)
-    configure_GPIO1_D2    # KEY_PRESS  (gpiochip1 line 26)
-    configure_GPIO1_C7    # KEY1       (gpiochip1 line 23)
-    configure_GPIO0_A4    # KEY2       (gpiochip0 line 4)
+    configure_GPIO0_A4    # KEY_RIGHT  (gpiochip0 line 4)
+    configure_GPIO1_C6    # KEY_PRESS  (gpiochip1 line 22)
+    configure_GPIO4_C0    # KEY1       (gpiochip4 line 16)
+    configure_GPIO4_C1    # KEY2       (gpiochip4 line 17)
     configure_GPIO1_C5    # KEY3       (gpiochip1 line 21)
 }
 

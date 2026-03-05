@@ -101,20 +101,38 @@ start_camera_service_later() {
 
 ensure_gpiochip_symlinks() {
     # On some LuckFox Pico variants the kernel omits one or more GPIO banks from
-    # the device tree, shifting gpiochip numbers downward.  The FOX_PI
-    # io_config.json profile references /dev/gpiochip4 for KEY1 (GPIO4_C1,
-    # line 17).  If that path is absent, locate the GPIO4 bank in sysfs and
-    # create a symlink so the Python app can open it regardless of the kernel-
-    # assigned chip number.
+    # the device tree, shifting gpiochip numbers downward.  Any profile that
+    # references /dev/gpiochip4 (e.g. FOX_PI KEY1, or future FOX_22 configs)
+    # needs a symlink pointing at the real chip device.
     if [ -e /dev/gpiochip4 ]; then
         return 0
     fi
 
+    local model=""
+    if [ -f /proc/device-tree/model ]; then
+        model=$(tr -d '\0' < /proc/device-tree/model | tr '[:upper:]' '[:lower:]')
+    fi
+
+    case "$model" in
+        *"luckfox pico mini"*)
+            # On Mini, GPIO2 bank is absent from the device tree so gpiochip
+            # numbers shift by one: GPIO4 is always registered as gpiochip3.
+            # Create the symlink directly — no sysfs scanning needed.
+            if [ -c /dev/gpiochip3 ]; then
+                log_message "Creating /dev/gpiochip4 -> /dev/gpiochip3 (Mini: GPIO4 bank shifted to chip3)"
+                ln -sf /dev/gpiochip3 /dev/gpiochip4
+                return 0
+            fi
+            log_message "WARNING: /dev/gpiochip3 not found on Mini; cannot create /dev/gpiochip4 symlink"
+            return 0
+            ;;
+    esac
+
+    # For other variants (e.g. Pi), find the GPIO4 bank dynamically via sysfs.
     local sysdir chip devname label
 
-    # Primary: use the platform device path.  The RV1106 GPIO4 controller is
-    # always registered at physical address 0xff560000, so this glob is reliable
-    # regardless of how many banks are present or what label the driver assigns.
+    # Primary: platform device path anchored to GPIO4's fixed hardware address
+    # (0xff560000) — reliable regardless of chip numbering or driver label.
     for sysdir in /sys/devices/platform/ff560000.gpio/gpio/gpiochip*/; do
         [ -d "$sysdir" ] || continue
         chip=$(basename "$sysdir")
