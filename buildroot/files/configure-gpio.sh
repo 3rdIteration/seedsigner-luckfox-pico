@@ -174,14 +174,24 @@ configure_GPIO3_D3() {
     io_write 0xFF5581AC 0x00080008 GPIO3_D3    # IE    = enable
 }
 
+configure_GPIO4_C0() {
+    # GPIO4 is in the VCCIO6 domain with a different IOC layout.
+    # Pull encoding: 0=normal, 1=pull-down, 3=pull-up  (differs from GPIO0-3).
+    # Pull and IE share register 0xFF5680C0: C0 pull=bits[12:11], C0 IE=bit 2.
+    log_msg "  GPIO4_C0 (gpiochip4 line 16)"
+    io_write 0xFF568010 0x00070000 GPIO4_C0    # IOMUX = GPIO
+    io_write 0xFF5680C0 0x18001800 GPIO4_C0    # Pull  = pull-up  (bits[12:11]=11)
+    io_write 0xFF56000C 0x00010000 GPIO4_C0    # Dir   = input
+    io_write 0xFF5680C0 0x00040004 GPIO4_C0    # IE    = enable   (bit 2)
+}
+
 configure_GPIO4_C1() {
     # GPIO4 is in the VCCIO6 domain with a different IOC layout.
     # Pull encoding: 0=normal, 1=pull-down, 3=pull-up  (differs from GPIO0-3).
-    # Pull and IE share register 0xFF5680C0 at different bit fields.
-    # Pull bits [13:14] are shared between C0 and C1 in this IOC block.
+    # Pull and IE share register 0xFF5680C0: C1 pull=bits[14:13], C1 IE=bit 3.
     log_msg "  GPIO4_C1 (gpiochip4 line 17)"
     io_write 0xFF568010 0x00700000 GPIO4_C1    # IOMUX = GPIO
-    io_write 0xFF5680C0 0x60006000 GPIO4_C1    # Pull  = pull-up  (bits[13:14]=11)
+    io_write 0xFF5680C0 0x60006000 GPIO4_C1    # Pull  = pull-up  (bits[14:13]=11)
     io_write 0xFF56000C 0x00020000 GPIO4_C1    # Dir   = input
     io_write 0xFF5680C0 0x00080008 GPIO4_C1    # IE    = enable   (bit 3)
 }
@@ -193,14 +203,15 @@ configure_GPIO4_C1() {
 
 configure_fox_22() {
     # FOX_22 — Luckfox Pico Mini (22-pin)
+    # Pin assignments reflect io_config.json as updated in PR #327.
     log_msg "Configuring buttons for Luckfox Pico Mini (FOX_22)..."
     configure_GPIO1_D1    # KEY_UP     (gpiochip1 line 25)
-    configure_GPIO1_D3    # KEY_DOWN   (gpiochip1 line 27)
+    configure_GPIO1_C7    # KEY_DOWN   (gpiochip1 line 23)
     configure_GPIO1_D0    # KEY_LEFT   (gpiochip1 line 24)
-    configure_GPIO1_C6    # KEY_RIGHT  (gpiochip1 line 22)
-    configure_GPIO1_D2    # KEY_PRESS  (gpiochip1 line 26)
-    configure_GPIO1_C7    # KEY1       (gpiochip1 line 23)
-    configure_GPIO0_A4    # KEY2       (gpiochip0 line 4)
+    configure_GPIO0_A4    # KEY_RIGHT  (gpiochip0 line 4)
+    configure_GPIO1_C6    # KEY_PRESS  (gpiochip1 line 22)
+    configure_GPIO4_C0    # KEY1       (gpiochip4 line 16)
+    configure_GPIO4_C1    # KEY2       (gpiochip4 line 17)
     configure_GPIO1_C5    # KEY3       (gpiochip1 line 21)
 }
 

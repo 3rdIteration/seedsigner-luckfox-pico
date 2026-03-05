@@ -54,7 +54,7 @@ stop_camera_service() {
 
 release_conflicting_gpio_lines() {
     # Release legacy sysfs-exported lines that conflict with libgpiod/periphery.
-    # On Luckfox Pico Mini, KEY2 uses global line 4 (gpiochip0 line 4).
+    # On Luckfox Pico Mini, KEY_RIGHT uses global line 4 (gpiochip0 line 4).
     for line in 4; do
         if [ -d "/sys/class/gpio/gpio${line}" ]; then
             echo "${line}" > /sys/class/gpio/unexport 2>/dev/null || true
