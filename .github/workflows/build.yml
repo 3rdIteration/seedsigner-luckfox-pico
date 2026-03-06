@@ -871,10 +871,21 @@ jobs:
         cp -v ../seedsigner-luckfox-pico/buildroot/files/start-seedsigner.sh "$ROOTFS_DIR/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/configure-gpio.sh "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
         chmod +x "$ROOTFS_DIR/usr/bin/configure-gpio.sh"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/S02fsck "$ROOTFS_DIR/etc/init.d/"
+        cp -v ../seedsigner-luckfox-pico/buildroot/files/S10mdev "$ROOTFS_DIR/etc/init.d/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S60pcscd "$ROOTFS_DIR/etc/init.d/"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/S99seedsigner "$ROOTFS_DIR/etc/init.d/"
+        chmod +x "$ROOTFS_DIR/etc/init.d/S02fsck"
+        chmod +x "$ROOTFS_DIR/etc/init.d/S10mdev"
         chmod +x "$ROOTFS_DIR/etc/init.d/S60pcscd"
         chmod +x "$ROOTFS_DIR/etc/init.d/S99seedsigner"
+        if [[ -f "../seedsigner-luckfox-pico/buildroot/files/mdev.conf" ]]; then
+          cp -v ../seedsigner-luckfox-pico/buildroot/files/mdev.conf "$ROOTFS_DIR/etc/mdev.conf"
+        fi
+        if [[ -f "../seedsigner-luckfox-pico/buildroot/files/fat-fsck-hotplug" ]]; then
+          cp -v ../seedsigner-luckfox-pico/buildroot/files/fat-fsck-hotplug "$ROOTFS_DIR/usr/sbin/fat-fsck-hotplug"
+          chmod +x "$ROOTFS_DIR/usr/sbin/fat-fsck-hotplug"
+        fi
         mkdir -p "$ROOTFS_DIR/etc/reader.conf.d"
         cp -v ../seedsigner-luckfox-pico/buildroot/files/sec1210 "$ROOTFS_DIR/etc/reader.conf.d/sec1210"
         mkdir -p "$ROOTFS_DIR/etc/readers.d"

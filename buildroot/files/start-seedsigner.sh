@@ -54,7 +54,7 @@ stop_camera_service() {
 
 release_conflicting_gpio_lines() {
     # Release legacy sysfs-exported lines that conflict with libgpiod/periphery.
-    # On Luckfox Pico Mini, KEY2 uses global line 4 (gpiochip0 line 4).
+    # On Luckfox Pico Mini, KEY_RIGHT uses global line 4 (gpiochip0 line 4).
     for line in 4; do
         if [ -d "/sys/class/gpio/gpio${line}" ]; then
             echo "${line}" > /sys/class/gpio/unexport 2>/dev/null || true
@@ -99,6 +99,73 @@ start_camera_service_later() {
     CAMERA_HELPER_PID="$!"
 }
 
+ensure_gpiochip_symlinks() {
+    # On some LuckFox Pico variants the kernel omits one or more GPIO banks from
+    # the device tree, shifting gpiochip numbers downward.  Any profile that
+    # references /dev/gpiochip4 (e.g. FOX_PI KEY1, or future FOX_22 configs)
+    # needs a symlink pointing at the real chip device.
+    if [ -e /dev/gpiochip4 ]; then
+        return 0
+    fi
+
+    local model=""
+    if [ -f /proc/device-tree/model ]; then
+        model=$(tr -d '\0' < /proc/device-tree/model | tr '[:upper:]' '[:lower:]')
+    fi
+
+    case "$model" in
+        *"luckfox pico mini"*)
+            # On Mini, GPIO2 bank is absent from the device tree so gpiochip
+            # numbers shift by one: GPIO4 is always registered as gpiochip3.
+            # Create the symlink directly — no sysfs scanning needed.
+            if [ -c /dev/gpiochip3 ]; then
+                log_message "Creating /dev/gpiochip4 -> /dev/gpiochip3 (Mini: GPIO4 bank shifted to chip3)"
+                ln -sf /dev/gpiochip3 /dev/gpiochip4
+                return 0
+            fi
+            log_message "WARNING: /dev/gpiochip3 not found on Mini; cannot create /dev/gpiochip4 symlink"
+            return 0
+            ;;
+    esac
+
+    # For other variants (e.g. Pi), find the GPIO4 bank dynamically via sysfs.
+    local sysdir chip devname label
+
+    # Primary: platform device path anchored to GPIO4's fixed hardware address
+    # (0xff560000) — reliable regardless of chip numbering or driver label.
+    for sysdir in /sys/devices/platform/ff560000.gpio/gpio/gpiochip*/; do
+        [ -d "$sysdir" ] || continue
+        chip=$(basename "$sysdir")
+        devname="/dev/${chip}"
+        if [ -c "$devname" ]; then
+            log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank via platform path)"
+            ln -sf "$devname" /dev/gpiochip4
+            return 0
+        fi
+    done
+
+    # Fallback: scan /sys/class/gpio by label.  The Rockchip GPIO driver
+    # labels each chip with its DT node name (e.g. "ff560000.gpio") or the
+    # DT alias (e.g. "gpio4").
+    for sysdir in /sys/class/gpio/gpiochip*/; do
+        [ -d "$sysdir" ] || continue
+        label=$(cat "$sysdir/label" 2>/dev/null || true)
+        case "$label" in
+            *ff560*|*gpio4*)
+                chip=$(basename "$sysdir")
+                devname="/dev/${chip}"
+                if [ -c "$devname" ]; then
+                    log_message "Creating /dev/gpiochip4 -> $devname (GPIO4 bank label='$label')"
+                    ln -sf "$devname" /dev/gpiochip4
+                    return 0
+                fi
+                ;;
+        esac
+    done
+
+    log_message "WARNING: GPIO4 bank gpiochip not found; /dev/gpiochip4 unavailable — KEY1 may not work on Pi"
+}
+
 bootstrap_camera_graph() {
     # Some builds only create a usable ISP graph after rkipc performs early init.
     if ls /dev/v4l-subdev* >/dev/null 2>&1; then
@@ -128,6 +195,10 @@ trap cleanup SIGTERM SIGINT
 killall rkipc 2>/dev/null
 bootstrap_camera_graph
 
+# Ensure /dev/gpiochip4 exists — on some variants, GPIO4 bank is registered
+# under a lower chip number due to absent GPIO banks in the device tree.
+ensure_gpiochip_symlinks
+
 # Change to SeedSigner directory
 cd /seedsigner
 
@@ -149,6 +220,10 @@ while [ $retry_count -lt $MAX_RETRIES ]; do
     else
         log_message "WARNING: /usr/bin/configure-gpio.sh not found or not executable"
     fi
+
+    # Ensure /dev/gpiochip4 symlink is present before launching the app.
+    # This is a no-op if the symlink was already created at startup.
+    ensure_gpiochip_symlinks
 
     # Start SeedSigner first. On Mini, camera ISP start before display init can
     # exhaust memory and cause SPI open failures.

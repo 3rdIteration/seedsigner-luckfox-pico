@@ -120,6 +120,48 @@ encoding from GPIO0–GPIO3:
 
 The `configure_GPIO4_C1()` function in the script handles this difference.
 
+### `/dev/gpiochip4` missing on Pico Mini
+
+On the Luckfox Pico Mini the Linux kernel's device tree **omits the GPIO2
+bank entirely**.  Because the kernel assigns `/dev/gpiochipN` numbers
+sequentially (one per registered bank), all banks above GPIO1 are shifted
+down by one:
+
+| GPIO bank | Pi / Pro / Max | Mini (GPIO2 absent) |
+|-----------|----------------|---------------------|
+| GPIO0 | `/dev/gpiochip0` | `/dev/gpiochip0` |
+| GPIO1 | `/dev/gpiochip1` | `/dev/gpiochip1` |
+| GPIO2 | `/dev/gpiochip2` | *(not registered)* |
+| GPIO3 | `/dev/gpiochip3` | `/dev/gpiochip2` |
+| GPIO4 | `/dev/gpiochip4` | `/dev/gpiochip3` |
+
+Any profile that references `/dev/gpiochip4` (e.g. for GPIO4_C0/C1 pins)
+will crash without the path present:
+
+```
+periphery.gpio.GPIOError: [Errno 2] Opening GPIO chip: No such file or directory
+```
+
+**Fix:** `start-seedsigner.sh` calls `ensure_gpiochip_symlinks()` once at
+startup before the retry loop.  On **Mini**, because the GPIO2-absent shift
+is a static hardware fact, the symlink is created directly without any sysfs
+scanning:
+
+```
+/dev/gpiochip4  ->  /dev/gpiochip3   (on Mini, always)
+```
+
+The symlink is created **unconditionally on Mini** — regardless of which
+pins the current `io_config.json` profile happens to reference.  This
+future-proofs the boot against profile changes and avoids fragile sysfs
+label matching.
+
+On variants where GPIO2 is present (Pi, Pro, Max), `/dev/gpiochip4`
+already exists as a real device node, so the function returns immediately.
+For those variants, if `/dev/gpiochip4` were ever absent, the function falls
+back to a dynamic sysfs search anchored on the GPIO4 controller's fixed
+hardware address (`0xff560000`).
+
 ### Reference
 
 The full register-level reference for all RV1106 GPIO pins (addresses,
@@ -192,6 +234,89 @@ grep configure-gpio /tmp/startup.log
 - Camera scan works
 - Exposure adjusts dynamically in changing light
 - All buttons respond (up, down, left, right, press, key1, key2, key3)
+
+## microSD filesystem corruption (read-only state)
+
+### Symptom
+
+The microSD card occasionally becomes stuck in a **read-only** state after an
+unexpected power-off.  All write operations fail silently or with "Read-only
+file system" errors, and the condition persists across reboots until the card
+is repaired on a PC.
+
+### Root cause
+
+When the system loses power while filesystem writes are in progress, the
+on-disk journal may be left in an inconsistent state.  On the next mount the
+kernel's ext4 driver detects the inconsistency and automatically **remounts
+the partition read-only** to prevent further corruption.  This is a
+kernel-level safety mechanism — it is not a hardware fault and does not mean
+the card is damaged.
+
+### How to detect it
+
+Check the kernel log immediately after boot:
+
+```sh
+dmesg | grep -E "(remount|EXT4-fs error|I/O error|read-only|JBD2|journal commit)"
+```
+
+A read-only remount looks like:
+
+```
+EXT4-fs error (device mmcblk1p5): ...
+EXT4-fs (mmcblk1p5): Remounting filesystem read-only
+```
+
+You can also inspect the mount flags directly:
+
+```sh
+mount | grep mmcblk
+```
+
+A healthy rootfs shows `rw`; a remounted-RO partition shows `ro`.
+
+### Fix
+
+Connect the microSD card to a PC (or a Linux host) and run `fsck` on the
+affected partition.  The partition containing the rootfs is typically
+the fifth partition on the LuckFox image layout.
+
+> ⚠️ **Replace `X` with your actual device letter** (e.g., `b`, `c`, `d`) before
+> running these commands.  Use `lsblk` or `fdisk -l` to identify the correct
+> device.  Running `fsck` on the wrong device can cause data loss.
+
+```sh
+# Identify the card — look for the device whose size matches your microSD
+lsblk
+
+# Unmount the partition first if it is auto-mounted
+sudo umount /dev/sdX5
+
+# Run fsck in automatic-repair mode (-y answers "yes" to all questions)
+sudo fsck -y /dev/sdX5
+```
+
+On Windows, use the built-in **Scan and Fix** prompt that appears when the
+drive is inserted, or run `chkdsk X: /f` in an administrator command prompt
+(only effective for FAT/exFAT partitions — for ext4 use a Linux environment
+such as WSL2 or a live USB).
+
+After `fsck` completes successfully, re-insert the card; the kernel will
+mount it read-write on the next boot.
+
+### Prevention
+
+The root cause is always an unclean shutdown.  Best practices:
+
+1. **Always shut down gracefully** — from within the SeedSigner app, use the
+   power-off / shutdown option if one is available, or run `halt` / `shutdown -h now`
+   via SSH before removing power.
+2. **Sync writes before power-off** — if you must cut power, run `sync` first
+   from a shell to flush all buffered writes to the card.
+3. **Use a good-quality microSD card** — cards rated for frequent
+   write cycles (e.g., A1/A2 application-class or industrial-grade cards)
+   handle unexpected power loss more reliably.
 
 ## Notes for future changes
 
