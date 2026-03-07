@@ -1,0 +1,9 @@
+Comment,Designator,Footprint,LCSC,Quantity
+LuckFox_Pico_MINI,U1,LUCKFOX_PICO_MINI,,1
+WAVESHARELCD_PLUS_UART_PLUS_I2C,U2,WAVESHARE_LCD_BUTTON,,1
+Jumper_2_Small_Open,JP2,SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,,1
+Jumper_2_Small_Open,JP4,SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,,1
+Jumper_2_Small_Open,JP6,SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,,1
+Jumper_2_Small_Bridged,JP3,SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm,,1
+Jumper_2_Small_Bridged,JP1,SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm,,1
+Jumper_2_Small_Bridged,JP5,SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm,,1
