@@ -1,10 +1,10 @@
 config BR2_PACKAGE_PYTHON_PGPY
 	bool "python-pgpy"
+	select BR2_PACKAGE_PYTHON_PYCRYPTODOMEX
 	select BR2_PACKAGE_PYTHON_PYASN1
 	help
       Pretty Good Privacy (PGP) implementation in Python.
-      Requires python-cryptography at runtime which must be
-      installed via pip (Rust/maturin cannot cross-compile
-      for uclibc targets).
+      Uses pycryptodomex as the cryptographic backend
+      (no python-cryptography/Rust dependency).
 
-	  https://github.com/SecurityInnovation/PGPy
+	  https://github.com/3rdIteration/PGPy
