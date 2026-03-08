@@ -874,6 +874,7 @@ menu "SeedSigner"
 	source "package/python-pyqrcode/Config.in"
 	source "package/python-pyscard/Config.in"
 	source "package/python-pysatochip/Config.in"
+	source "package/python-pgpy/Config.in"
 	source "package/ccid-sec1210/Config.in"
 endmenu
 EOF
