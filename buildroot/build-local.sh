@@ -994,7 +994,7 @@ apply_seedsigner_config() {
 }
 
 restore_cached_rust_toolchain() {
-    local cache_tar="$SCRIPT_DIR/cache/rust-toolchain.tar.zst"
+    local cache_dir="$SCRIPT_DIR/cache"
 
     if [ "$BUILD_RUST_FROM_SOURCE" = "1" ]; then
         print_info "🦀 --build-rust-from-source set — will build Rust from source"
@@ -1002,11 +1002,16 @@ restore_cached_rust_toolchain() {
         return
     fi
 
-    if [ ! -f "$cache_tar" ]; then
-        print_info "🦀 No cached Rust toolchain found — will build from source"
+    # Reassemble split chunks into a single tarball
+    if ! ls "$cache_dir"/rust-toolchain.tar.zst.part* >/dev/null 2>&1; then
+        print_info "🦀 No cached Rust toolchain chunks found — will build from source"
         RUST_FROM_CACHE=false
         return
     fi
+
+    local cache_tar="/tmp/rust-toolchain.tar.zst"
+    print_info "🦀 Reassembling chunks..."
+    cat "$cache_dir"/rust-toolchain.tar.zst.part* > "$cache_tar"
 
     local buildroot_dir
     buildroot_dir=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
@@ -1074,7 +1079,7 @@ save_rust_toolchain_cache() {
     fi
 
     local cache_dir="$SCRIPT_DIR/cache"
-    local cache_tar="$cache_dir/rust-toolchain.tar.zst"
+    local cache_tar="/tmp/rust-toolchain.tar.zst"
 
     print_info "📦 Packaging Rust toolchain for future builds..."
     "$buildroot_dir/output/host/bin/rustc" --version
@@ -1107,7 +1112,14 @@ save_rust_toolchain_cache() {
     rm -f "$file_list"
 
     ls -lh "$cache_tar"
-    print_success "Rust toolchain saved to $cache_tar"
+
+    # Split into 25MB chunks for committing as regular Git files
+    rm -f "$cache_dir"/rust-toolchain.tar.zst.part*
+    split -b 25m -d "$cache_tar" "$cache_dir/rust-toolchain.tar.zst.part"
+    rm -f "$cache_tar"
+    print_info "  Split into $(ls "$cache_dir"/rust-toolchain.tar.zst.part* | wc -l) chunks"
+    ls -lh "$cache_dir"/rust-toolchain.tar.zst.part*
+    print_success "Rust toolchain saved to $cache_dir/rust-toolchain.tar.zst.part*"
     cd "$WORK_DIR/luckfox-pico"
 }
 

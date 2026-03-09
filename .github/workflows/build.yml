@@ -835,17 +835,7 @@ jobs:
           fi
         fi
 
-    - name: Restore Rust toolchain cache
-      if: github.event.inputs.build_rust_from_source != 'true'
-      id: rust-cache
-      uses: actions/cache@v4
-      with:
-        path: rust-toolchain.tar.zst
-        key: rust-toolchain-${{ hashFiles('buildroot/configs/luckfox_pico_defconfig') }}
-        restore-keys: |
-          rust-toolchain-
-
-    - name: Extract cached Rust toolchain
+    - name: Restore cached Rust toolchain
       run: |
         cd luckfox-pico
 
@@ -857,17 +847,19 @@ jobs:
           exit 0
         fi
 
-        # Check for tarball from actions/cache, then fall back to local file
-        CACHE_TAR="$GITHUB_WORKSPACE/rust-toolchain.tar.zst"
-        if [ ! -f "$CACHE_TAR" ]; then
-          CACHE_TAR="../seedsigner-luckfox-pico/buildroot/cache/rust-toolchain.tar.zst"
-        fi
+        # Reassemble split chunks into a single tarball
+        CACHE_DIR="../seedsigner-luckfox-pico/buildroot/cache"
+        CACHE_TAR="/tmp/rust-toolchain.tar.zst"
 
-        if [ ! -f "$CACHE_TAR" ]; then
-          echo "🦀 No cached Rust toolchain found — will build from source"
+        if ! ls "$CACHE_DIR"/rust-toolchain.tar.zst.part* >/dev/null 2>&1; then
+          echo "🦀 No cached Rust toolchain chunks found — will build from source"
           echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
           exit 0
         fi
+
+        echo "🦀 Reassembling chunks..."
+        cat "$CACHE_DIR"/rust-toolchain.tar.zst.part* > "$CACHE_TAR"
+        ls -lh "$CACHE_TAR"
 
         BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
         if [ -z "$BUILDROOT_DIR" ] || [ ! -d "$BUILDROOT_DIR" ]; then
@@ -985,14 +977,21 @@ jobs:
         tar --zstd -cf "$GITHUB_WORKSPACE/rust-toolchain.tar.zst" --files-from="$RUST_FILES"
         rm -f "$RUST_FILES"
         ls -lh "$GITHUB_WORKSPACE/rust-toolchain.tar.zst"
+
+        # Split into 25MB chunks for committing as regular Git files
+        CHUNK_DIR="$GITHUB_WORKSPACE/rust-toolchain-chunks"
+        mkdir -p "$CHUNK_DIR"
+        split -b 25m -d "$GITHUB_WORKSPACE/rust-toolchain.tar.zst" "$CHUNK_DIR/rust-toolchain.tar.zst.part"
+        echo "  Split into $(ls "$CHUNK_DIR" | wc -l) chunks:"
+        ls -lh "$CHUNK_DIR"/
         echo "✅ Rust toolchain packaged"
 
-    - name: Upload Rust toolchain artifact
+    - name: Upload Rust toolchain chunks
       if: env.RUST_FROM_CACHE != 'true'
       uses: actions/upload-artifact@v4
       with:
         name: rust-toolchain-cache-${{ matrix.hardware }}-${{ matrix.boot }}
-        path: rust-toolchain.tar.zst
+        path: rust-toolchain-chunks/
         retention-days: 90
         if-no-files-found: warn
 

@@ -6,8 +6,8 @@ python_deps/*.tar.gz
 # Built OS images
 buildroot/build-output/
 
-# Rust toolchain cache (managed by GitHub Actions cache, not Git)
-buildroot/cache/*.tar.zst
+# Assembled Rust toolchain tarball (only chunks are committed)
+buildroot/cache/rust-toolchain.tar.zst
 
 **/.DS_Store
 
