@@ -161,9 +161,9 @@ configure_GPIO1_D3() {
 configure_GPIO1_D4() {
     log_msg "  GPIO1_D4 (gpiochip1 line 28)"
     io_write 0xFF53801C 0x00070000 GPIO1_D4    # IOMUX = GPIO
-    io_write 0xFF5381CC 0x03000100 GPIO1_D4    # Pull  = pull-up
+    io_write 0xFF5381D0 0x00030001 GPIO1_D4    # Pull  = pull-up
     io_write 0xFF53000C 0x10000000 GPIO1_D4    # Dir   = input
-    io_write 0xFF53818C 0x00100010 GPIO1_D4    # IE    = enable
+    io_write 0xFF538190 0x00010001 GPIO1_D4    # IE    = enable
 }
 
 configure_GPIO2_B1() {
@@ -244,7 +244,7 @@ configure_fox_40() {
     # Pin assignments updated per seedsigner commit d625dbc08ef935e0c1579aeeb12eef7707f59c4f
     log_msg "Configuring buttons for Luckfox Pico Pro Max (FOX_40)..."
     configure_GPIO2_B1    # KEY_UP     (gpiochip2 line 9)
-    configure_GPIO1_D4    # KEY_DOWN   (gpiochip1 line 28)
+    configure_GPIO1_D2    # KEY_DOWN   (gpiochip1 line 26)
     configure_GPIO1_C3    # KEY_LEFT   (gpiochip1 line 19)
     configure_GPIO1_C4    # KEY_RIGHT  (gpiochip1 line 20)
     configure_GPIO1_D3    # KEY_PRESS  (gpiochip1 line 27)
