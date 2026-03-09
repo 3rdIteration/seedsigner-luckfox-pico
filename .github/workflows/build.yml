@@ -62,6 +62,11 @@ on:
         required: false
         type: string
         default: ''
+      build_rust_from_source:
+        description: 'Build Rust toolchain from source (ignore cached binary). Use when updating Rust version.'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -830,6 +835,74 @@ jobs:
           fi
         fi
 
+    - name: Restore cached Rust toolchain
+      run: |
+        cd luckfox-pico
+
+        BUILD_RUST="${{ github.event.inputs.build_rust_from_source }}"
+        CACHE_TAR="../seedsigner-luckfox-pico/buildroot/cache/rust-toolchain.tar.zst"
+
+        if [ "$BUILD_RUST" = "true" ]; then
+          echo "🦀 build_rust_from_source=true — will build Rust from source"
+          echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
+          exit 0
+        fi
+
+        if [ ! -f "$CACHE_TAR" ]; then
+          echo "🦀 No cached Rust toolchain found at $CACHE_TAR — will build from source"
+          echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
+          exit 0
+        fi
+
+        BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
+        if [ -z "$BUILDROOT_DIR" ] || [ ! -d "$BUILDROOT_DIR" ]; then
+          echo "ERROR: Could not locate buildroot directory"
+          echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
+          exit 0
+        fi
+
+        echo "🦀 Restoring cached Rust toolchain into $BUILDROOT_DIR ..."
+        mkdir -p "$BUILDROOT_DIR/output"
+        tar --zstd -xf "$CACHE_TAR" -C "$BUILDROOT_DIR/output"
+
+        # Detect Rust version from the extracted binary
+        RUST_VERSION=""
+        if [ -x "$BUILDROOT_DIR/output/host/bin/rustc" ]; then
+          RUST_VERSION=$("$BUILDROOT_DIR/output/host/bin/rustc" --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || true)
+        fi
+
+        # Create stamp files so buildroot skips the Rust packages entirely.
+        # Buildroot uses order-only prerequisites so stamps only need to exist.
+        STAMPS=".stamp_downloaded .stamp_extracted .stamp_patched .stamp_configured .stamp_built .stamp_host_installed"
+
+        # Build list of package directories that need stamps
+        RUST_PKG_DIRS="$BUILDROOT_DIR/output/build/host-rustc"
+        if [ -n "$RUST_VERSION" ]; then
+          RUST_PKG_DIRS="$RUST_PKG_DIRS $BUILDROOT_DIR/output/build/host-rust-bin-$RUST_VERSION"
+          RUST_PKG_DIRS="$RUST_PKG_DIRS $BUILDROOT_DIR/output/build/host-rust-$RUST_VERSION"
+        fi
+
+        for pkg_dir in $RUST_PKG_DIRS; do
+          if [ -d "$pkg_dir" ] && [ -f "$pkg_dir/.stamp_host_installed" ]; then
+            echo "  Stamps already present in $(basename "$pkg_dir")"
+            continue
+          fi
+          mkdir -p "$pkg_dir"
+          for s in $STAMPS; do touch "$pkg_dir/$s"; done
+          echo "  Created stamps for $(basename "$pkg_dir")"
+        done
+
+        # Verify key binaries exist
+        if [ -x "$BUILDROOT_DIR/output/host/bin/rustc" ] && \
+           [ -x "$BUILDROOT_DIR/output/host/bin/cargo" ]; then
+          echo "✅ Cached Rust toolchain restored successfully"
+          "$BUILDROOT_DIR/output/host/bin/rustc" --version || true
+          echo "RUST_FROM_CACHE=true" >> $GITHUB_ENV
+        else
+          echo "⚠️  Cached toolchain missing binaries — will build from source"
+          echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
+        fi
+
     - name: Build system
       run: |
         cd luckfox-pico
@@ -848,6 +921,67 @@ jobs:
         # Keep vendor RkLunch.sh camera bring-up behavior on all builds.
         echo "Keeping RkLunch.sh rkipc autostart enabled"
         ./build.sh app
+
+    - name: Package Rust toolchain for caching
+      if: env.RUST_FROM_CACHE != 'true'
+      run: |
+        cd luckfox-pico
+        BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
+
+        if [ -z "$BUILDROOT_DIR" ] || [ ! -d "$BUILDROOT_DIR" ]; then
+          echo "WARNING: Could not locate buildroot directory, skipping toolchain packaging"
+          exit 0
+        fi
+
+        cd "$BUILDROOT_DIR/output"
+
+        if [ ! -x host/bin/rustc ]; then
+          echo "WARNING: No rustc found in output/host/bin, skipping toolchain packaging"
+          exit 0
+        fi
+
+        echo "📦 Packaging Rust toolchain for future builds..."
+        host/bin/rustc --version
+
+        # Collect stamp files for the Rust packages
+        STAMP_DIRS=""
+        for d in build/host-rust-bin-* build/host-rust-[0-9]* build/host-rustc; do
+          if [ -d "$d" ]; then
+            STAMP_DIRS="$STAMP_DIRS $(find "$d" -maxdepth 1 -name '.stamp_*' -type f)"
+          fi
+        done
+
+        # Collect Rust-specific files from host/
+        # The install.sh components place files in bin/ and lib/rustlib/
+        RUST_FILES=$(mktemp)
+        {
+          # Rust binaries
+          for f in host/bin/rustc host/bin/cargo host/bin/rustdoc host/bin/rust-gdb \
+                   host/bin/rust-gdbgui host/bin/rust-lldb; do
+            [ -e "$f" ] && echo "$f"
+          done
+          # Rust libraries (target std, host std, etc.)
+          [ -d "host/lib/rustlib" ] && find host/lib/rustlib -type f -o -type l
+          # Stamp files
+          echo "$STAMP_DIRS" | tr ' ' '\n' | grep -v '^$'
+          # Download cache for rust sources (speeds up any future from-source build)
+          [ -d "dl" ] && find ../dl -maxdepth 2 \( -name 'rust-*' -o -name 'rustc-*' \) -type f 2>/dev/null | sed 's|^\.\./||'
+        } | sort -u > "$RUST_FILES"
+
+        echo "  Files to package: $(wc -l < "$RUST_FILES")"
+        tar --zstd -cf "$GITHUB_WORKSPACE/rust-toolchain.tar.zst" --files-from="$RUST_FILES"
+        rm -f "$RUST_FILES"
+        ls -lh "$GITHUB_WORKSPACE/rust-toolchain.tar.zst"
+        echo "✅ Rust toolchain packaged"
+
+    - name: Upload Rust toolchain artifact
+      if: env.RUST_FROM_CACHE != 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: rust-toolchain-cache-${{ matrix.hardware }}-${{ matrix.boot }}
+        path: rust-toolchain.tar.zst
+        retention-days: 90
+        if-no-files-found: warn
 
     - name: Install SeedSigner application
       run: |

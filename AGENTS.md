@@ -390,6 +390,15 @@ $SDK_DIR/sysdrv/source/buildroot/buildroot-*/package/
 - Main defconfig: `buildroot/configs/luckfox_pico_defconfig`
 - Package analysis: `buildroot/configs/enabled_packages_analysis.txt`
 
+### Rust Toolchain Cache
+- Cache directory: `buildroot/cache/`
+- Cached binary: `buildroot/cache/rust-toolchain.tar.zst` (Git LFS)
+- Build from source flags:
+  - GitHub Actions: `build_rust_from_source: true` (workflow\_dispatch input)
+  - `build-local.sh`: `--build-rust-from-source`
+  - `os-build.sh`: `BUILD_RUST_FROM_SOURCE=1`
+- To update the cache: run a from-source build, download the `rust-toolchain-cache-*` CI artifact, and commit it to `buildroot/cache/rust-toolchain.tar.zst`
+
 ### Common Commands
 
 **Check what's enabled:**

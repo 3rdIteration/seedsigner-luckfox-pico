@@ -11,6 +11,7 @@ WORK_DIR="$(dirname "$SCRIPT_DIR")"
 # Default Python version for buildroot (used if detection fails)
 DEFAULT_PYTHON_VERSION="3.12"
 DISABLE_UART2_CONSOLE_DEBUG="${DISABLE_UART2_CONSOLE_DEBUG:-1}"
+BUILD_RUST_FROM_SOURCE="${BUILD_RUST_FROM_SOURCE:-0}"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -125,6 +126,7 @@ Options:
   --hardware TYPE    - Hardware type: mini|max|pi (default: mini)
   --boot MEDIUM      - Boot medium: sd|nand|emmc (default: sd)
   --enable-uart2-console - Keep UART2 console/debug enabled (default: disabled)
+  --build-rust-from-source - Build Rust toolchain from source (ignore cached binary)
   --check-deps       - Check and install missing dependencies
   --clone-only       - Only clone repositories and exit
   --clean            - Clean previous build artifacts
@@ -991,6 +993,124 @@ apply_seedsigner_config() {
     print_success "SeedSigner configuration applied"
 }
 
+restore_cached_rust_toolchain() {
+    local cache_tar="$SCRIPT_DIR/cache/rust-toolchain.tar.zst"
+
+    if [ "$BUILD_RUST_FROM_SOURCE" = "1" ]; then
+        print_info "🦀 --build-rust-from-source set — will build Rust from source"
+        RUST_FROM_CACHE=false
+        return
+    fi
+
+    if [ ! -f "$cache_tar" ]; then
+        print_info "🦀 No cached Rust toolchain found — will build from source"
+        RUST_FROM_CACHE=false
+        return
+    fi
+
+    local buildroot_dir
+    buildroot_dir=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
+    if [ -z "$buildroot_dir" ] || [ ! -d "$buildroot_dir" ]; then
+        print_warning "Could not locate buildroot directory, skipping cache restore"
+        RUST_FROM_CACHE=false
+        return
+    fi
+
+    print_info "🦀 Restoring cached Rust toolchain into $buildroot_dir ..."
+    mkdir -p "$buildroot_dir/output"
+    tar --zstd -xf "$cache_tar" -C "$buildroot_dir/output"
+
+    # Detect Rust version from the extracted binary
+    local rust_version=""
+    if [ -x "$buildroot_dir/output/host/bin/rustc" ]; then
+        rust_version=$("$buildroot_dir/output/host/bin/rustc" --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || true)
+    fi
+
+    # Create stamp files so buildroot skips the Rust packages entirely.
+    # Buildroot uses order-only prerequisites so stamps only need to exist.
+    local stamps=".stamp_downloaded .stamp_extracted .stamp_patched .stamp_configured .stamp_built .stamp_host_installed"
+    local rust_pkg_dirs="$buildroot_dir/output/build/host-rustc"
+    if [ -n "$rust_version" ]; then
+        rust_pkg_dirs="$rust_pkg_dirs $buildroot_dir/output/build/host-rust-bin-$rust_version"
+        rust_pkg_dirs="$rust_pkg_dirs $buildroot_dir/output/build/host-rust-$rust_version"
+    fi
+
+    local pkg_dir
+    for pkg_dir in $rust_pkg_dirs; do
+        if [ -d "$pkg_dir" ] && [ -f "$pkg_dir/.stamp_host_installed" ]; then
+            print_info "  Stamps already present in $(basename "$pkg_dir")"
+            continue
+        fi
+        mkdir -p "$pkg_dir"
+        local s
+        for s in $stamps; do touch "$pkg_dir/$s"; done
+        print_info "  Created stamps for $(basename "$pkg_dir")"
+    done
+
+    if [ -x "$buildroot_dir/output/host/bin/rustc" ] && \
+       [ -x "$buildroot_dir/output/host/bin/cargo" ]; then
+        print_success "Cached Rust toolchain restored"
+        "$buildroot_dir/output/host/bin/rustc" --version || true
+        RUST_FROM_CACHE=true
+    else
+        print_warning "Cached toolchain missing binaries — will build from source"
+        RUST_FROM_CACHE=false
+    fi
+}
+
+save_rust_toolchain_cache() {
+    if [ "$RUST_FROM_CACHE" = "true" ]; then
+        return  # Already used cache, no need to re-save
+    fi
+
+    local buildroot_dir
+    buildroot_dir=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
+    if [ -z "$buildroot_dir" ] || [ ! -d "$buildroot_dir" ]; then
+        return
+    fi
+
+    if [ ! -x "$buildroot_dir/output/host/bin/rustc" ]; then
+        return
+    fi
+
+    local cache_dir="$SCRIPT_DIR/cache"
+    local cache_tar="$cache_dir/rust-toolchain.tar.zst"
+
+    print_info "📦 Packaging Rust toolchain for future builds..."
+    "$buildroot_dir/output/host/bin/rustc" --version
+
+    cd "$buildroot_dir/output"
+
+    # Collect stamp files for Rust packages
+    local stamp_files=""
+    local d
+    for d in build/host-rust-bin-* build/host-rust-[0-9]* build/host-rustc; do
+        if [ -d "$d" ]; then
+            stamp_files="$stamp_files $(find "$d" -maxdepth 1 -name '.stamp_*' -type f)"
+        fi
+    done
+
+    # Collect Rust-specific files from host/
+    local file_list
+    file_list=$(mktemp)
+    {
+        for f in host/bin/rustc host/bin/cargo host/bin/rustdoc host/bin/rust-gdb \
+                 host/bin/rust-gdbgui host/bin/rust-lldb; do
+            [ -e "$f" ] && echo "$f"
+        done
+        [ -d "host/lib/rustlib" ] && find host/lib/rustlib -type f -o -type l
+        echo "$stamp_files" | tr ' ' '\n' | grep -v '^$'
+    } | sort -u > "$file_list"
+
+    mkdir -p "$cache_dir"
+    tar --zstd -cf "$cache_tar" --files-from="$file_list"
+    rm -f "$file_list"
+
+    ls -lh "$cache_tar"
+    print_success "Rust toolchain saved to $cache_tar"
+    cd "$WORK_DIR/luckfox-pico"
+}
+
 build_system() {
     print_header "Building System Components"
     
@@ -1001,6 +1121,9 @@ build_system() {
     # CI environments, and panics if stage != 2. Buildroot's host-rust calls
     # x.py build without --stage 2.
     unset GITHUB_ACTIONS
+    
+    # Restore cached Rust toolchain if available
+    restore_cached_rust_toolchain
     
     print_info "Building U-Boot..."
     ./build.sh uboot
@@ -1019,6 +1142,9 @@ build_system() {
     
     print_info "Building Applications..."
     ./build.sh app
+    
+    # Save Rust toolchain for future builds if it was built from source
+    save_rust_toolchain_cache
     
     print_success "System build complete"
 }
@@ -1345,6 +1471,10 @@ main() {
                 DISABLE_UART2_CONSOLE_DEBUG=0
                 shift
                 ;;
+            --build-rust-from-source)
+                BUILD_RUST_FROM_SOURCE=1
+                shift
+                ;;
             --clone-only)
                 clone_only=true
                 shift
@@ -1369,6 +1499,7 @@ main() {
     print_info "Hardware: $hardware"
     print_info "Boot Medium: $boot_medium"
     print_info "Disable UART2 Console Debug: $DISABLE_UART2_CONSOLE_DEBUG"
+    print_info "Build Rust From Source: $BUILD_RUST_FROM_SOURCE"
     print_info "Working Directory: $WORK_DIR"
     
     # Handle special modes
