@@ -944,6 +944,11 @@ build_system() {
     
     cd "$WORK_DIR/luckfox-pico"
     
+    # Unset CI so Rust's x.py bootstrap doesn't enforce --stage 2
+    # (Buildroot's host-rust calls x.py build without --stage 2,
+    # and Rust 1.82+ panics if CI=true and stage != 2)
+    unset CI
+    
     print_info "Building U-Boot..."
     ./build.sh uboot
     
