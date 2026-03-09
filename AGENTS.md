@@ -392,13 +392,13 @@ $SDK_DIR/sysdrv/source/buildroot/buildroot-*/package/
 
 ### Rust Toolchain Cache
 - Cache directory: `buildroot/cache/`
-- Cached as 25MB split chunks: `buildroot/cache/rust-toolchain.tar.zst.part*` (regular Git files, no LFS)
-- Build scripts reassemble chunks with `cat` before extracting
+- Cached as a GitHub Release asset under the `rust-toolchain` tag (no LFS, no large files in repo)
+- Build scripts download via `curl` from `https://github.com/OWNER/REPO/releases/download/rust-toolchain/rust-toolchain.tar.zst`
 - Build from source flags:
   - GitHub Actions: `build_rust_from_source: true` (workflow\_dispatch input)
   - `build-local.sh`: `--build-rust-from-source`
   - `os-build.sh`: `BUILD_RUST_FROM_SOURCE=1`
-- To update the cache: run a from-source build, download the `rust-toolchain-cache-*` CI artifact, and copy chunks to `buildroot/cache/`
+- To update the cache: run a from-source build; CI auto-uploads the new tarball to the `rust-toolchain` release
 
 ### Common Commands
 

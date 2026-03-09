@@ -74,7 +74,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 240  # 4 hours max
     permissions:
-      contents: read
+      contents: write
     strategy:
       matrix:
         include:
@@ -847,18 +847,19 @@ jobs:
           exit 0
         fi
 
-        # Reassemble split chunks into a single tarball
-        CACHE_DIR="../seedsigner-luckfox-pico/buildroot/cache"
+        # Download pre-built toolchain from GitHub Release asset
+        RELEASE_TAG="rust-toolchain"
+        ASSET_NAME="rust-toolchain.tar.zst"
+        REPO="${{ github.repository }}"
+        DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
         CACHE_TAR="/tmp/rust-toolchain.tar.zst"
 
-        if ! ls "$CACHE_DIR"/rust-toolchain.tar.zst.part* >/dev/null 2>&1; then
-          echo "🦀 No cached Rust toolchain chunks found — will build from source"
+        echo "🦀 Downloading cached Rust toolchain from ${DOWNLOAD_URL} ..."
+        if ! curl -fSL --retry 3 --retry-delay 5 -o "$CACHE_TAR" "$DOWNLOAD_URL"; then
+          echo "🦀 No cached toolchain release found — will build from source"
           echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
           exit 0
         fi
-
-        echo "🦀 Reassembling chunks..."
-        cat "$CACHE_DIR"/rust-toolchain.tar.zst.part* > "$CACHE_TAR"
         ls -lh "$CACHE_TAR"
 
         BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
@@ -977,21 +978,43 @@ jobs:
         tar --zstd -cf "$GITHUB_WORKSPACE/rust-toolchain.tar.zst" --files-from="$RUST_FILES"
         rm -f "$RUST_FILES"
         ls -lh "$GITHUB_WORKSPACE/rust-toolchain.tar.zst"
-
-        # Split into 25MB chunks for committing as regular Git files
-        CHUNK_DIR="$GITHUB_WORKSPACE/rust-toolchain-chunks"
-        mkdir -p "$CHUNK_DIR"
-        split -b 25m -d "$GITHUB_WORKSPACE/rust-toolchain.tar.zst" "$CHUNK_DIR/rust-toolchain.tar.zst.part"
-        echo "  Split into $(ls "$CHUNK_DIR" | wc -l) chunks:"
-        ls -lh "$CHUNK_DIR"/
         echo "✅ Rust toolchain packaged"
 
-    - name: Upload Rust toolchain chunks
+    - name: Upload Rust toolchain to GitHub Release
+      if: env.RUST_FROM_CACHE != 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        RELEASE_TAG="rust-toolchain"
+        ASSET="$GITHUB_WORKSPACE/rust-toolchain.tar.zst"
+
+        if [ ! -f "$ASSET" ]; then
+          echo "No toolchain tarball to upload"
+          exit 0
+        fi
+
+        cd "$GITHUB_WORKSPACE/seedsigner-luckfox-pico"
+
+        # Create the release if it doesn't exist yet
+        if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+          echo "📦 Creating release $RELEASE_TAG ..."
+          gh release create "$RELEASE_TAG" \
+            --title "Rust Toolchain Cache" \
+            --notes "Pre-built Rust cross-compilation toolchain for armv7-unknown-linux-uclibceabihf (uclibc). Auto-updated by CI." \
+            --prerelease
+        fi
+
+        # Upload (overwrite existing asset if present)
+        echo "📦 Uploading rust-toolchain.tar.zst to release $RELEASE_TAG ..."
+        gh release upload "$RELEASE_TAG" "$ASSET" --clobber
+        echo "✅ Toolchain uploaded to release"
+
+    - name: Upload Rust toolchain artifact
       if: env.RUST_FROM_CACHE != 'true'
       uses: actions/upload-artifact@v4
       with:
         name: rust-toolchain-cache-${{ matrix.hardware }}-${{ matrix.boot }}
-        path: rust-toolchain-chunks/
+        path: rust-toolchain.tar.zst
         retention-days: 90
         if-no-files-found: warn
 

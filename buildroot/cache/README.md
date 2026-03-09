@@ -1,7 +1,8 @@
 # Buildroot Rust Toolchain Cache
 
-This directory stores a pre-built Rust cross-compilation toolchain for the
-`armv7-unknown-linux-uclibceabihf` target used by all LuckFox Pico variants.
+This directory is a placeholder for the pre-built Rust cross-compilation
+toolchain for the `armv7-unknown-linux-uclibceabihf` target used by all
+LuckFox Pico variants.
 
 ## Why?
 
@@ -12,29 +13,22 @@ caching the built toolchain avoids rebuilding it in every CI job.
 
 ## How It Works
 
-The toolchain tarball (`rust-toolchain.tar.zst`, ~80–120 MB) is split into
-**25 MB chunks** stored as regular Git files — no Git LFS required:
+The toolchain tarball (`rust-toolchain.tar.zst`, ~80–120 MB) is hosted as a
+**GitHub Release asset** on this repository under the `rust-toolchain` tag.
+No Git LFS or large files in the repo are needed.
 
-```
-buildroot/cache/
-├── rust-toolchain.tar.zst.part00   # 25 MB
-├── rust-toolchain.tar.zst.part01   # 25 MB
-├── rust-toolchain.tar.zst.part02   # 25 MB
-├── ...
-└── README.md
-```
-
-During a build, the scripts **reassemble** the chunks and extract:
+During a build, the scripts **download** the tarball and extract it:
 
 ```bash
-cat buildroot/cache/rust-toolchain.tar.zst.part* > /tmp/rust-toolchain.tar.zst
+curl -fSL -o /tmp/rust-toolchain.tar.zst \
+  https://github.com/3rdIteration/seedsigner-luckfox-pico/releases/download/rust-toolchain/rust-toolchain.tar.zst
 tar --zstd -xf /tmp/rust-toolchain.tar.zst -C "$BUILDROOT_DIR/output"
 ```
 
 Stamp files are created so buildroot skips the `host-rust`, `host-rust-bin`,
 and `host-rustc` packages entirely. This saves ~2 hours per build.
 
-If no chunks are found or `--build-rust-from-source` is set, Rust is built
+If the download fails or `--build-rust-from-source` is set, Rust is built
 from source as usual.
 
 ## Updating the Cached Toolchain
@@ -44,15 +38,12 @@ are updated:
 
 1. Trigger a CI build with **"Build Rust from source"** set to `true` (or run
    locally with `--build-rust-from-source`).
-2. Download the `rust-toolchain-cache-*` artifact from the successful CI run.
-3. Place the chunk files in this directory and commit:
+2. CI automatically uploads the new tarball to the `rust-toolchain` release.
+3. *(Manual alternative)* Download the `rust-toolchain-cache-*` artifact and
+   upload it manually:
    ```bash
-   # Clear old chunks
-   rm -f buildroot/cache/rust-toolchain.tar.zst.part*
-   # Copy new chunks from downloaded artifact
-   cp ~/Downloads/rust-toolchain-cache-*/* buildroot/cache/
-   git add buildroot/cache/rust-toolchain.tar.zst.part*
-   git commit -m "Update cached Rust toolchain"
+   gh release upload rust-toolchain rust-toolchain.tar.zst --clobber \
+     --repo 3rdIteration/seedsigner-luckfox-pico
    ```
 
 ## Build Script Flags
@@ -62,6 +53,16 @@ are updated:
 | GitHub Actions | `build_rust_from_source: true` (workflow\_dispatch input) |
 | `build-local.sh` | `--build-rust-from-source` |
 | `os-build.sh` | `BUILD_RUST_FROM_SOURCE=1` (environment variable) |
+
+## Overriding the Download URL
+
+For forks or custom toolchains, set `RUST_TOOLCHAIN_REPO_URL` before running
+the local build scripts:
+
+```bash
+export RUST_TOOLCHAIN_REPO_URL=https://github.com/youruser/yourrepo
+./buildroot/build-local.sh
+```
 
 ## Tarball Contents
 
