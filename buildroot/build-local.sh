@@ -885,6 +885,7 @@ EOF
 
 apply_seedsigner_config() {
     local hardware="${1:-}"
+    local boot_medium="${2:-}"
     print_header "Applying SeedSigner Buildroot Configuration"
     
     cd "$WORK_DIR/luckfox-pico"
@@ -898,13 +899,13 @@ apply_seedsigner_config() {
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/configs/luckfox_pico_w_defconfig"
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/.config"
 
-    # Remove pip/setuptools/git from Mini builds to save space
-    if [ "$hardware" == "mini" ]; then
-        print_info "Removing python-pip, python-setuptools, and git for Mini build..."
+    # Remove pip/setuptools/git from Mini SPI-NAND builds to save space
+    if [ "$hardware" == "mini" ] && [ "$boot_medium" == "nand" ]; then
+        print_info "Removing python-pip, python-setuptools, and git for Mini SPI-NAND build..."
         sed -i "s/^BR2_PACKAGE_PYTHON_PIP=y/# BR2_PACKAGE_PYTHON_PIP is not set/" "$buildroot_dir/.config"
         sed -i "s/^BR2_PACKAGE_PYTHON_SETUPTOOLS=y/# BR2_PACKAGE_PYTHON_SETUPTOOLS is not set/" "$buildroot_dir/.config"
         sed -i "s/^BR2_PACKAGE_GIT=y/# BR2_PACKAGE_GIT is not set/" "$buildroot_dir/.config"
-        print_info "Removed pip/setuptools/git packages for Mini"
+        print_info "Removed pip/setuptools/git packages for Mini SPI-NAND"
     fi
     
     # Update pyzbar patch
@@ -1364,7 +1365,7 @@ main() {
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages
-    apply_seedsigner_config "$hardware"
+    apply_seedsigner_config "$hardware" "$boot_medium"
     
     print_info "Starting build process (this may take 60-120 minutes)..."
     build_system

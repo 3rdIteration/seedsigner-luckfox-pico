@@ -1062,13 +1062,13 @@ CONFIGMENU
         exit 1
     fi
 
-    # Remove pip/setuptools/git from Mini builds to save space
-    if [[ "$board_profile" == "mini" ]]; then
-        print_info "Removing python-pip, python-setuptools, and git for Mini build..."
+    # Remove pip/setuptools/git from Mini SPI-NAND builds to save space
+    if [[ "$board_profile" == "mini" ]] && [[ "$boot_medium" == "nand" ]]; then
+        print_info "Removing python-pip, python-setuptools, and git for Mini SPI-NAND build..."
         sed -i "s/^BR2_PACKAGE_PYTHON_PIP=y/# BR2_PACKAGE_PYTHON_PIP is not set/" "$BUILDROOT_DIR/.config"
         sed -i "s/^BR2_PACKAGE_PYTHON_SETUPTOOLS=y/# BR2_PACKAGE_PYTHON_SETUPTOOLS is not set/" "$BUILDROOT_DIR/.config"
         sed -i "s/^BR2_PACKAGE_GIT=y/# BR2_PACKAGE_GIT is not set/" "$BUILDROOT_DIR/.config"
-        print_info "Removed pip/setuptools/git packages for Mini"
+        print_info "Removed pip/setuptools/git packages for Mini SPI-NAND"
     fi
 
     print_step "Building U-Boot"
