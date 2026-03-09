@@ -199,6 +199,7 @@ ENABLED PACKAGES WITH SIZE ESTIMATES
   BR2_PACKAGE_DIALOG                                      300KB
   BR2_PACKAGE_GIT                                        14.6MB
   BR2_PACKAGE_GNUPG2_DEPENDS                               50KB
+  BR2_PACKAGE_GNUPG2                                       ~2MB
   BR2_PACKAGE_AUDIT_ARCH_SUPPORTS                          50KB
   BR2_PACKAGE_EFIVAR_ARCH_SUPPORTS                         50KB
   BR2_PACKAGE_INITSCRIPTS                                  50KB
