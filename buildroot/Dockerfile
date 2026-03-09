@@ -35,6 +35,7 @@ COPY configs/ /build/configs/
 COPY files/ /build/files/
 COPY scripts/ /build/scripts/
 COPY blkenvflash /build/
+COPY cache/ /build/buildroot/cache/
 
 
 # Make scripts executable

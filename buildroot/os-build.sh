@@ -1066,7 +1066,7 @@ save_rust_toolchain_cache() {
                  host/bin/rust-gdbgui host/bin/rust-lldb; do
             [ -e "$f" ] && echo "$f"
         done
-        [ -d "host/lib/rustlib" ] && find host/lib/rustlib -type f -o -type l
+        [ -d "host/lib/rustlib" ] && find host/lib/rustlib \( -type f -o -type l \)
         echo "$stamp_files" | tr ' ' '\n' | grep -v '^$'
     } | sort -u > "$file_list"
 

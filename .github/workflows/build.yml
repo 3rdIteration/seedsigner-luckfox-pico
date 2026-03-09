@@ -961,11 +961,9 @@ jobs:
             [ -e "$f" ] && echo "$f"
           done
           # Rust libraries (target std, host std, etc.)
-          [ -d "host/lib/rustlib" ] && find host/lib/rustlib -type f -o -type l
+          [ -d "host/lib/rustlib" ] && find host/lib/rustlib \( -type f -o -type l \)
           # Stamp files
           echo "$STAMP_DIRS" | tr ' ' '\n' | grep -v '^$'
-          # Download cache for rust sources (speeds up any future from-source build)
-          [ -d "dl" ] && find ../dl -maxdepth 2 \( -name 'rust-*' -o -name 'rustc-*' \) -type f 2>/dev/null | sed 's|^\.\./||'
         } | sort -u > "$RUST_FILES"
 
         echo "  Files to package: $(wc -l < "$RUST_FILES")"
