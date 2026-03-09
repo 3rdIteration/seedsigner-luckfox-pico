@@ -1061,10 +1061,11 @@ CONFIGMENU
         exit 1
     fi
 
-    # Unset CI so Rust's x.py bootstrap doesn't enforce --stage 2
-    # (Buildroot's host-rust calls x.py build without --stage 2,
-    # and Rust 1.82+ panics if CI=true and stage != 2)
-    unset CI
+    # Unset GITHUB_ACTIONS so Rust's x.py bootstrap doesn't enforce --stage 2.
+    # Rust 1.82+'s CiEnv::current() checks GITHUB_ACTIONS (not CI) to detect
+    # CI environments, and panics if stage != 2. Buildroot's host-rust calls
+    # x.py build without --stage 2.
+    unset GITHUB_ACTIONS
 
     print_step "Building U-Boot"
     ./build.sh uboot
