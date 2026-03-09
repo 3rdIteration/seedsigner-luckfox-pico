@@ -835,12 +835,21 @@ jobs:
           fi
         fi
 
-    - name: Restore cached Rust toolchain
+    - name: Restore Rust toolchain cache
+      if: github.event.inputs.build_rust_from_source != 'true'
+      id: rust-cache
+      uses: actions/cache@v4
+      with:
+        path: rust-toolchain.tar.zst
+        key: rust-toolchain-${{ hashFiles('buildroot/configs/luckfox_pico_defconfig') }}
+        restore-keys: |
+          rust-toolchain-
+
+    - name: Extract cached Rust toolchain
       run: |
         cd luckfox-pico
 
         BUILD_RUST="${{ github.event.inputs.build_rust_from_source }}"
-        CACHE_TAR="../seedsigner-luckfox-pico/buildroot/cache/rust-toolchain.tar.zst"
 
         if [ "$BUILD_RUST" = "true" ]; then
           echo "🦀 build_rust_from_source=true — will build Rust from source"
@@ -848,8 +857,14 @@ jobs:
           exit 0
         fi
 
+        # Check for tarball from actions/cache, then fall back to local file
+        CACHE_TAR="$GITHUB_WORKSPACE/rust-toolchain.tar.zst"
         if [ ! -f "$CACHE_TAR" ]; then
-          echo "🦀 No cached Rust toolchain found at $CACHE_TAR — will build from source"
+          CACHE_TAR="../seedsigner-luckfox-pico/buildroot/cache/rust-toolchain.tar.zst"
+        fi
+
+        if [ ! -f "$CACHE_TAR" ]; then
+          echo "🦀 No cached Rust toolchain found — will build from source"
           echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
           exit 0
         fi

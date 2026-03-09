@@ -10,38 +10,42 @@ GitHub Actions runners. Since all five build variants (Mini SD, Mini NAND,
 Pro\_Max SD, Pro\_Max NAND, Pi eMMC) use the **identical** Rust host toolchain,
 caching the built toolchain avoids rebuilding it in every CI job.
 
-## File
+## How Caching Works
 
-| File | Contents |
-|------|----------|
-| `rust-toolchain.tar.zst` | Pre-built `host-rust 1.82.0` output: `rustc`, `cargo`, `rust-std` for host (x86\_64) and target (armv7-uclibc), plus buildroot stamp files. Tracked by **Git LFS**. |
+### GitHub Actions (CI)
 
-## How It Works
+The workflow uses **`actions/cache`** to persist the Rust toolchain tarball
+(`rust-toolchain.tar.zst`) across CI runs:
 
-During a build, the scripts check for `buildroot/cache/rust-toolchain.tar.zst`:
+- **Cache hit**: The tarball is restored from `actions/cache`, extracted into
+  the buildroot output directory, and stamp files are created so buildroot
+  skips the `host-rust`, `host-rust-bin`, and `host-rustc` packages. Saves ~2h.
 
-- **If present** (default): The tarball is extracted into the buildroot output
-  directory and stamp files are created so buildroot skips the `host-rust`,
-  `host-rust-bin`, and `host-rustc` packages entirely. This saves ~2 hours.
+- **Cache miss** (first build or after defconfig changes): Rust is built from
+  source. After the build, the toolchain is packaged as `rust-toolchain.tar.zst`
+  and `actions/cache` automatically saves it for future runs.
 
-- **If absent or `--build-rust-from-source` is set**: Rust is built from source
-  as usual. After a successful build, the toolchain is packaged as a CI artifact
-  that can be downloaded and committed here.
+The cache key is derived from the defconfig hash, so it automatically
+invalidates when the Rust configuration changes.
+
+### Local / Docker builds
+
+The local build scripts (`build-local.sh`, `os-build.sh`) look for
+`buildroot/cache/rust-toolchain.tar.zst` on disk. You can populate this
+manually by downloading the `rust-toolchain-cache-*` artifact from a
+successful CI run.
 
 ## Updating the Cached Toolchain
 
 When the Rust version changes in the buildroot defconfig or the uclibc patches
 are updated:
 
-1. Trigger a CI build with **"Build Rust from source"** set to `true` (or run
-   locally with `--build-rust-from-source`).
-2. Download the `rust-toolchain-cache` artifact from the successful CI run.
-3. Place `rust-toolchain.tar.zst` in this directory and commit:
-   ```bash
-   cp ~/Downloads/rust-toolchain.tar.zst buildroot/cache/
-   git add buildroot/cache/rust-toolchain.tar.zst
-   git commit -m "Update cached Rust toolchain"
-   ```
+1. Trigger a CI build with **"Build Rust from source"** set to `true`.
+   This ignores any existing cache and rebuilds from source.
+2. The new toolchain is automatically cached by `actions/cache` for future
+   CI runs.
+3. *(Optional, for local builds)* Download the `rust-toolchain-cache-*`
+   artifact from the CI run and place it in this directory.
 
 ## Build Script Flags
 
