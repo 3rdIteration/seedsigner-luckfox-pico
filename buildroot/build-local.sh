@@ -878,6 +878,58 @@ menu "SeedSigner"
 endmenu
 EOF
     fi
+
+    # Patch Rust Kconfig to support uclibc Tier 3 targets (armv7-unknown-linux-uclibceabihf).
+    # Buildroot 2024.11.4 only gates Rust target support for glibc/musl. Without this,
+    # BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS is never set for uclibc toolchains,
+    # silently disabling python-cryptography and any other Rust-dependent package.
+    local rustc_config="${package_dir}/rustc/Config.in.host"
+    if [ -f "$rustc_config" ] && ! grep -q 'BR2_PACKAGE_HOST_RUSTC_TARGET_TIER3_UCLIBC_PLATFORMS' "$rustc_config"; then
+        print_info "Patching Rust Config.in.host for uclibc Tier 3 support..."
+        sed -i '/^# All target rust packages should depend on this option/i\
+# Tier 3 uclibc platforms - must be built from source (no pre-built std binaries)\
+# When adding new entries below, update RUST_TARGETS in utils/update-rust\
+config BR2_PACKAGE_HOST_RUSTC_TARGET_TIER3_UCLIBC_PLATFORMS\
+\tbool\
+\t# armv7-unknown-linux-uclibceabihf\
+\tdefault y if BR2_ARM_CPU_ARMV7A \&\& BR2_ARM_EABIHF \&\& BR2_TOOLCHAIN_USES_UCLIBC\
+\t# armv7-unknown-linux-uclibceabihf for armv8 hardware with 32-bit userspace\
+\tdefault y if BR2_arm \&\& BR2_ARM_CPU_ARMV8A \&\& BR2_ARM_EABIHF \&\& BR2_TOOLCHAIN_USES_UCLIBC\
+' "$rustc_config"
+        sed -i '/default y if BR2_PACKAGE_HOST_RUSTC_TARGET_TIER2_PLATFORMS/a\
+\tdefault y if BR2_PACKAGE_HOST_RUSTC_TARGET_TIER3_UCLIBC_PLATFORMS' "$rustc_config"
+    fi
+
+    # Patch rust-bin.mk to skip downloading/installing pre-built rust-std for uclibc
+    # (pre-built binaries don't exist for Tier 3 targets; host-rust builds them from source)
+    local rustbin_mk="${package_dir}/rust-bin/rust-bin.mk"
+    if [ -f "$rustbin_mk" ] && ! grep -q 'BR2_TOOLCHAIN_USES_UCLIBC' "$rustbin_mk"; then
+        print_info "Patching rust-bin.mk to skip uclibc std download..."
+        sed -i '/^ifeq ($(BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS),y)/{
+N
+/HOST_RUST_BIN_EXTRA_DOWNLOADS/{
+s/ifeq ($(BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS),y)\n/# Pre-built rust-std is not available for uclibc Tier 3 targets;\n# host-rust (build from source) will compile it instead.\nifeq ($(BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS),y)\nifneq ($(BR2_TOOLCHAIN_USES_UCLIBC),y)\n/
+}
+}' "$rustbin_mk"
+        sed -i '/^HOST_RUST_BIN_EXTRA_DOWNLOADS += rust-std/{
+N
+/^HOST_RUST_BIN_EXTRA_DOWNLOADS.*\nendif/{
+s/\nendif/\nendif\nendif/
+}
+}' "$rustbin_mk"
+        sed -i '/^ifeq ($(BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS),y)/{
+N
+/define HOST_RUST_BIN_INSTALL_LIBSTD_TARGET/{
+s/ifeq ($(BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS),y)\n/# Skip installing pre-built target std for uclibc (not available);\n# host-rust (build from source) provides it.\nifeq ($(BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS),y)\nifneq ($(BR2_TOOLCHAIN_USES_UCLIBC),y)\n/
+}
+}' "$rustbin_mk"
+        sed -i '/^endef/{
+N
+/^endef\nendif/{
+s/^endef\nendif/endef\nendif\nendif/
+}
+}' "$rustbin_mk"
+    fi
     
     print_success "SeedSigner packages installed"
 }
