@@ -1362,23 +1362,29 @@ jobs:
         echo "🏷️ Uploading artifacts to release: $TAG"
 
         # Create the release if it doesn't already exist.
-        # Multiple matrix jobs may race here; handle gracefully.
+        # Multiple matrix jobs may race here; if creation fails because
+        # another job already created it, the retry loop will pick it up.
         if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
           echo "📦 Creating release $TAG..."
-          gh release create "$TAG" \
+          CREATE_OUTPUT=$(gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --title "Release $TAG" \
             --notes "Build artifacts for SeedSigner LuckFox Pico - $TAG" \
-            --draft=false || true
-          # Wait briefly and verify the release exists
-          # (another matrix job may have created it concurrently)
-          sleep 3
+            --draft=false 2>&1) && echo "📦 Release created" || echo "⚠️ Release creation returned: $CREATE_OUTPUT"
         fi
 
-        if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
-          echo "❌ Failed to create or find release $TAG"
-          exit 1
-        fi
+        # Verify the release exists, retrying a few times to handle race conditions
+        ATTEMPTS=0
+        MAX_ATTEMPTS=5
+        while ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; do
+          ATTEMPTS=$((ATTEMPTS + 1))
+          if [ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; then
+            echo "❌ Failed to create or find release $TAG after $MAX_ATTEMPTS attempts"
+            exit 1
+          fi
+          echo "⏳ Release not found yet, retrying ($ATTEMPTS/$MAX_ATTEMPTS)..."
+          sleep "$((ATTEMPTS * 2))"
+        done
 
         echo "✅ Release $TAG is ready"
 
@@ -1404,12 +1410,12 @@ jobs:
         fi
 
         # Upload each file, skipping assets that already exist in the release
+        EXISTING_ASSETS=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq ".assets[].name" 2>/dev/null || true)
         for f in "${UPLOAD_FILES[@]}"; do
           BASENAME=$(basename "$f")
           echo "⬆️  Uploading: $BASENAME"
 
-          EXISTING=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq ".assets[].name" 2>/dev/null || true)
-          if echo "$EXISTING" | grep -qx "$BASENAME"; then
+          if echo "$EXISTING_ASSETS" | grep -qx "$BASENAME"; then
             echo "⏭️  Asset '$BASENAME' already exists in release $TAG, skipping"
           else
             gh release upload "$TAG" "$f" --repo "${{ github.repository }}"
