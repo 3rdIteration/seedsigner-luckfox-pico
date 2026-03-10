@@ -86,6 +86,14 @@ configure_GPIO1_B3() {
     io_write 0xFF538184 0x00080008 GPIO1_B3    # IE    = enable
 }
 
+configure_GPIO1_C3() {
+    log_msg "  GPIO1_C3 (gpiochip1 line 19)"
+    io_write 0xFF538010 0x70000000 GPIO1_C3    # IOMUX = GPIO
+    io_write 0xFF5381C8 0x00C00040 GPIO1_C3    # Pull  = pull-up
+    io_write 0xFF53000C 0x00080000 GPIO1_C3    # Dir   = input
+    io_write 0xFF538188 0x00080008 GPIO1_C3    # IE    = enable
+}
+
 configure_GPIO1_C4() {
     log_msg "  GPIO1_C4 (gpiochip1 line 20)"
     io_write 0xFF538014 0x00070000 GPIO1_C4    # IOMUX = GPIO
@@ -148,6 +156,22 @@ configure_GPIO1_D3() {
     io_write 0xFF5381CC 0x00C00040 GPIO1_D3    # Pull  = pull-up
     io_write 0xFF53000C 0x08000000 GPIO1_D3    # Dir   = input
     io_write 0xFF53818C 0x00080008 GPIO1_D3    # IE    = enable
+}
+
+configure_GPIO1_D4() {
+    log_msg "  GPIO1_D4 (gpiochip1 line 28)"
+    io_write 0xFF53801C 0x00070000 GPIO1_D4    # IOMUX = GPIO
+    io_write 0xFF5381D0 0x00030001 GPIO1_D4    # Pull  = pull-up
+    io_write 0xFF53000C 0x10000000 GPIO1_D4    # Dir   = input
+    io_write 0xFF538190 0x00010001 GPIO1_D4    # IE    = enable
+}
+
+configure_GPIO2_B1() {
+    log_msg "  GPIO2_B1 (gpiochip2 line 9)"
+    io_write 0xFF548028 0x00700000 GPIO2_B1    # IOMUX = GPIO
+    io_write 0xFF5481D4 0x000C0004 GPIO2_B1    # Pull  = pull-up
+    io_write 0xFF540008 0x02000000 GPIO2_B1    # Dir   = input
+    io_write 0xFF548194 0x00020002 GPIO2_B1    # IE    = enable
 }
 
 configure_GPIO3_D1() {
@@ -217,15 +241,16 @@ configure_fox_22() {
 
 configure_fox_40() {
     # FOX_40 — Luckfox Pico Pro Max (40-pin)
+    # Pin assignments updated per seedsigner commit d625dbc08ef935e0c1579aeeb12eef7707f59c4f
     log_msg "Configuring buttons for Luckfox Pico Pro Max (FOX_40)..."
-    configure_GPIO1_D2    # KEY_UP     (gpiochip1 line 26)
-    configure_GPIO1_C5    # KEY_DOWN   (gpiochip1 line 21)
-    configure_GPIO1_D3    # KEY_LEFT   (gpiochip1 line 27)
-    configure_GPIO1_C6    # KEY_RIGHT  (gpiochip1 line 22)
-    configure_GPIO1_C4    # KEY_PRESS  (gpiochip1 line 20)
+    configure_GPIO2_B1    # KEY_UP     (gpiochip2 line 9)
+    configure_GPIO1_D2    # KEY_DOWN   (gpiochip1 line 26)
+    configure_GPIO1_C3    # KEY_LEFT   (gpiochip1 line 19)
+    configure_GPIO1_C4    # KEY_RIGHT  (gpiochip1 line 20)
+    configure_GPIO1_D3    # KEY_PRESS  (gpiochip1 line 27)
     configure_GPIO1_C7    # KEY1       (gpiochip1 line 23)
-    configure_GPIO1_B3    # KEY2       (gpiochip1 line 11)
-    configure_GPIO1_B2    # KEY3       (gpiochip1 line 10)
+    configure_GPIO1_C6    # KEY2       (gpiochip1 line 22)
+    configure_GPIO1_C5    # KEY3       (gpiochip1 line 21)
 }
 
 configure_fox_pi() {

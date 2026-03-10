@@ -876,6 +876,7 @@ menu "SeedSigner"
 	source "package/python-pyqrcode/Config.in"
 	source "package/python-pyscard/Config.in"
 	source "package/python-pysatochip/Config.in"
+	source "package/python-pgpy/Config.in"
 	source "package/ccid-sec1210/Config.in"
 endmenu
 EOF
@@ -937,6 +938,8 @@ s/^endef\nendif/endef\nendif\nendif/
 }
 
 apply_seedsigner_config() {
+    local hardware="${1:-}"
+    local boot_medium="${2:-}"
     print_header "Applying SeedSigner Buildroot Configuration"
     
     cd "$WORK_DIR/luckfox-pico"
@@ -949,6 +952,15 @@ apply_seedsigner_config() {
     # loads our clean config instead of the SDK's WiFi/BT-enabled config
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/configs/luckfox_pico_w_defconfig"
     cp -v "$SCRIPT_DIR/configs/luckfox_pico_defconfig" "$buildroot_dir/.config"
+
+    # Remove pip/setuptools/git from Mini SPI-NAND builds to save space
+    if [ "$hardware" == "mini" ] && [ "$boot_medium" == "nand" ]; then
+        print_info "Removing python-pip, python-setuptools, and git for Mini SPI-NAND build..."
+        sed -i "s/^BR2_PACKAGE_PYTHON_PIP=y/# BR2_PACKAGE_PYTHON_PIP is not set/" "$buildroot_dir/.config"
+        sed -i "s/^BR2_PACKAGE_PYTHON_SETUPTOOLS=y/# BR2_PACKAGE_PYTHON_SETUPTOOLS is not set/" "$buildroot_dir/.config"
+        sed -i "s/^BR2_PACKAGE_GIT=y/# BR2_PACKAGE_GIT is not set/" "$buildroot_dir/.config"
+        print_info "Removed pip/setuptools/git packages for Mini SPI-NAND"
+    fi
     
     # Update pyzbar patch
     local pyzbar_patch="${buildroot_dir}/package/python-pyzbar/0001-PATH-fixed-by-hand.patch"
@@ -1544,7 +1556,7 @@ main() {
     apply_mini_cma_config "$hardware" "$boot_medium"
     prepare_buildroot
     install_seedsigner_packages
-    apply_seedsigner_config
+    apply_seedsigner_config "$hardware" "$boot_medium"
     
     print_info "Starting build process (this may take 60-120 minutes)..."
     build_system
