@@ -67,6 +67,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_tag:
+        description: 'Upload artifacts to a GitHub Release with this tag (leave empty to skip release upload)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -74,7 +79,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 240  # 4 hours max
     permissions:
-      contents: read
+      contents: write
     strategy:
       matrix:
         include:
@@ -1347,6 +1352,71 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
     
+    - name: Upload artifacts to GitHub Release
+      if: success() && github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG="${{ github.event.inputs.release_tag }}"
+
+        echo "🏷️ Uploading artifacts to release: $TAG"
+
+        # Create the release if it doesn't already exist.
+        # Multiple matrix jobs may race here; handle gracefully.
+        if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+          echo "📦 Creating release $TAG..."
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Release $TAG" \
+            --notes "Build artifacts for SeedSigner LuckFox Pico - $TAG" \
+            --draft=false || true
+          # Wait briefly and verify the release exists
+          # (another matrix job may have created it concurrently)
+          sleep 3
+        fi
+
+        if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+          echo "❌ Failed to create or find release $TAG"
+          exit 1
+        fi
+
+        echo "✅ Release $TAG is ready"
+
+        # Collect files to upload
+        UPLOAD_FILES=()
+
+        # SD card images are top-level .img files
+        while IFS= read -r -d '' f; do
+          UPLOAD_FILES+=("$f")
+        done < <(find build-artifacts -maxdepth 1 -name "*.img" -type f -print0 2>/dev/null)
+
+        # NAND and eMMC bundles are directories — zip them for release
+        while IFS= read -r -d '' d; do
+          DIRNAME=$(basename "$d")
+          echo "📦 Zipping bundle directory: $DIRNAME"
+          (cd build-artifacts && zip -r "${DIRNAME}.zip" "$DIRNAME")
+          UPLOAD_FILES+=("build-artifacts/${DIRNAME}.zip")
+        done < <(find build-artifacts -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
+
+        if [ ${#UPLOAD_FILES[@]} -eq 0 ]; then
+          echo "⚠️ No files found to upload to release"
+          exit 0
+        fi
+
+        # Upload each file, skipping assets that already exist in the release
+        for f in "${UPLOAD_FILES[@]}"; do
+          BASENAME=$(basename "$f")
+          echo "⬆️  Uploading: $BASENAME"
+
+          EXISTING=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq ".assets[].name" 2>/dev/null || true)
+          if echo "$EXISTING" | grep -qx "$BASENAME"; then
+            echo "⏭️  Asset '$BASENAME' already exists in release $TAG, skipping"
+          else
+            gh release upload "$TAG" "$f" --repo "${{ github.repository }}"
+            echo "✅ Uploaded: $BASENAME"
+          fi
+        done
+
     - name: Build summary
       if: always()
       run: |
