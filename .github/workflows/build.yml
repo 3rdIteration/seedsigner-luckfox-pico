@@ -1384,7 +1384,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "Release $TAG" \
             --notes "Build artifacts for SeedSigner LuckFox Pico - $TAG" \
-            --draft=false 2>&1) && echo "📦 Release created" || echo "⚠️ Release creation returned: $CREATE_OUTPUT"
+            --draft=false 2>&1) && echo "📦 Release created" || echo "⚠️ Release creation failed (may have been created by another job): $CREATE_OUTPUT"
         fi
 
         # Verify the release exists, retrying a few times to handle race conditions
@@ -1432,7 +1432,10 @@ jobs:
           if echo "$EXISTING_ASSETS" | grep -qx "$BASENAME"; then
             echo "⏭️  Asset '$BASENAME' already exists in release $TAG, skipping"
           else
-            gh release upload "$TAG" "$f" --repo "${{ github.repository }}"
+            gh release upload "$TAG" "$f" --repo "${{ github.repository }}" || {
+              echo "❌ Failed to upload $BASENAME"
+              exit 1
+            }
             echo "✅ Uploaded: $BASENAME"
           fi
         done
