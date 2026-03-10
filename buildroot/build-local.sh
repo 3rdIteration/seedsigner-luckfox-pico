@@ -1069,8 +1069,12 @@ restore_cached_rust_toolchain() {
         RUST_FROM_CACHE=true
     else
         print_warning "Cached toolchain missing binaries or libraries — will build from source"
-        # Remove stamps so buildroot rebuilds Rust from source
-        for pkg_dir in $rust_pkg_dirs; do
+        # Remove stamps from ALL Rust-related build directories so buildroot
+        # rebuilds Rust from source. We must use glob patterns because rust_version
+        # may be empty when rustc --version fails (e.g. missing shared libraries).
+        for pkg_dir in "$buildroot_dir"/output/build/host-rust-bin-* \
+                       "$buildroot_dir"/output/build/host-rust-[0-9]* \
+                       "$buildroot_dir"/output/build/host-rustc; do
             if [ -d "$pkg_dir" ]; then
                 rm -f "$pkg_dir"/.stamp_*
                 print_info "  Removed stamps from $(basename "$pkg_dir")"

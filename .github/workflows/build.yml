@@ -848,7 +848,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /tmp/rust-toolchain.tar.zst
-        key: rust-toolchain-${{ hashFiles('seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig') }}
+        key: rust-toolchain-v2-${{ hashFiles('seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig') }}
 
     - name: Extract cached Rust toolchain
       if: steps.rust-cache.outputs.cache-hit == 'true'
@@ -905,8 +905,12 @@ jobs:
           echo "RUST_FROM_CACHE=true" >> $GITHUB_ENV
         else
           echo "⚠️  Cached toolchain missing binaries or libraries — will build from source"
-          # Remove stamps so buildroot rebuilds Rust from source
-          for pkg_dir in $RUST_PKG_DIRS; do
+          # Remove stamps from ALL Rust-related build directories so buildroot
+          # rebuilds Rust from source. We must use glob patterns because RUST_VERSION
+          # may be empty when rustc --version fails (e.g. missing shared libraries).
+          for pkg_dir in "$BUILDROOT_DIR"/output/build/host-rust-bin-* \
+                         "$BUILDROOT_DIR"/output/build/host-rust-[0-9]* \
+                         "$BUILDROOT_DIR"/output/build/host-rustc; do
             if [ -d "$pkg_dir" ]; then
               rm -f "$pkg_dir"/.stamp_*
               echo "  Removed stamps from $(basename "$pkg_dir")"
