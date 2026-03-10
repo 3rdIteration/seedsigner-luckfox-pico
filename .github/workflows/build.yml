@@ -898,12 +898,24 @@ jobs:
         done
 
         if [ -x "$BUILDROOT_DIR/output/host/bin/rustc" ] && \
-           [ -x "$BUILDROOT_DIR/output/host/bin/cargo" ]; then
+           [ -x "$BUILDROOT_DIR/output/host/bin/cargo" ] && \
+           "$BUILDROOT_DIR/output/host/bin/rustc" --version > /dev/null 2>&1; then
           echo "✅ Cached Rust toolchain restored successfully"
-          "$BUILDROOT_DIR/output/host/bin/rustc" --version || true
+          "$BUILDROOT_DIR/output/host/bin/rustc" --version
           echo "RUST_FROM_CACHE=true" >> $GITHUB_ENV
         else
-          echo "⚠️  Cached toolchain missing binaries — will build from source"
+          echo "⚠️  Cached toolchain missing binaries or libraries — will build from source"
+          # Remove stamps so buildroot rebuilds Rust from source
+          for pkg_dir in $RUST_PKG_DIRS; do
+            if [ -d "$pkg_dir" ]; then
+              rm -f "$pkg_dir"/.stamp_*
+              echo "  Removed stamps from $(basename "$pkg_dir")"
+            fi
+          done
+          # Remove broken binaries to avoid confusing buildroot
+          rm -rf "$BUILDROOT_DIR/output/host/bin/rustc" \
+                 "$BUILDROOT_DIR/output/host/bin/cargo" \
+                 "$BUILDROOT_DIR/output/host/lib/rustlib" 2>/dev/null || true
           echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
         fi
 
@@ -927,7 +939,7 @@ jobs:
         ./build.sh app
 
     - name: Package Rust toolchain for caching
-      if: steps.rust-cache.outputs.cache-hit != 'true'
+      if: steps.rust-cache.outputs.cache-hit != 'true' || env.RUST_FROM_CACHE != 'true'
       run: |
         cd luckfox-pico
         BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
@@ -963,6 +975,8 @@ jobs:
             [ -e "$f" ] && echo "$f"
           done
           [ -d "host/lib/rustlib" ] && find host/lib/rustlib \( -type f -o -type l \)
+          # Include Rust shared libraries required by rustc at runtime
+          find host/lib -maxdepth 1 \( -name 'librustc_driver-*.so' -o -name 'libstd-*.so' -o -name 'libtest-*.so' -o -name 'libLLVM-*.so' \) \( -type f -o -type l \) 2>/dev/null || true
           echo "$STAMP_DIRS" | tr ' ' '\n' | grep -v '^$'
         } | sort -u > "$RUST_FILES"
 

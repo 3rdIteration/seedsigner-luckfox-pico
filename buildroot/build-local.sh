@@ -1062,12 +1062,24 @@ restore_cached_rust_toolchain() {
     done
 
     if [ -x "$buildroot_dir/output/host/bin/rustc" ] && \
-       [ -x "$buildroot_dir/output/host/bin/cargo" ]; then
+       [ -x "$buildroot_dir/output/host/bin/cargo" ] && \
+       "$buildroot_dir/output/host/bin/rustc" --version > /dev/null 2>&1; then
         print_success "Cached Rust toolchain restored"
-        "$buildroot_dir/output/host/bin/rustc" --version || true
+        "$buildroot_dir/output/host/bin/rustc" --version
         RUST_FROM_CACHE=true
     else
-        print_warning "Cached toolchain missing binaries — will build from source"
+        print_warning "Cached toolchain missing binaries or libraries — will build from source"
+        # Remove stamps so buildroot rebuilds Rust from source
+        for pkg_dir in $rust_pkg_dirs; do
+            if [ -d "$pkg_dir" ]; then
+                rm -f "$pkg_dir"/.stamp_*
+                print_info "  Removed stamps from $(basename "$pkg_dir")"
+            fi
+        done
+        # Remove broken binaries to avoid confusing buildroot
+        rm -rf "$buildroot_dir/output/host/bin/rustc" \
+               "$buildroot_dir/output/host/bin/cargo" \
+               "$buildroot_dir/output/host/lib/rustlib" 2>/dev/null || true
         RUST_FROM_CACHE=false
     fi
 }
@@ -1113,6 +1125,8 @@ save_rust_toolchain_cache() {
             [ -e "$f" ] && echo "$f"
         done
         [ -d "host/lib/rustlib" ] && find host/lib/rustlib \( -type f -o -type l \)
+        # Include Rust shared libraries required by rustc at runtime
+        find host/lib -maxdepth 1 \( -name 'librustc_driver-*.so' -o -name 'libstd-*.so' -o -name 'libtest-*.so' -o -name 'libLLVM-*.so' \) \( -type f -o -type l \) 2>/dev/null || true
         echo "$stamp_files" | tr ' ' '\n' | grep -v '^$'
     } | sort -u > "$file_list"
 
