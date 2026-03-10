@@ -36,7 +36,6 @@ export FORCE_UNSAFE_CONFIGURE=1
 export BUILD_MODEL="${BUILD_MODEL:-both}"
 export MINI_CMA_SIZE="${MINI_CMA_SIZE:-1M}"
 export DISABLE_UART2_CONSOLE_DEBUG="${DISABLE_UART2_CONSOLE_DEBUG:-1}"
-export BUILD_RUST_FROM_SOURCE="${BUILD_RUST_FROM_SOURCE:-0}"
 export DEFAULT_PYTHON_VERSION="${DEFAULT_PYTHON_VERSION:-3.12}"
 
 # Colors for output
@@ -157,7 +156,7 @@ show_usage() {
     echo "  - Mini CMA override via MINI_CMA_SIZE (default: 1M)"
     echo "  - 'both' builds mini+max; use 'pi' to build the Pico Pi (eMMC only)"
     echo "  - UART2 console toggle via DISABLE_UART2_CONSOLE_DEBUG=1|0 (default: 1)"
-    echo "  - Rust toolchain: BUILD_RUST_FROM_SOURCE=1 to rebuild from source (default: use cached)"
+    echo "  - Rust toolchain: always built from source in Docker (no caching)"
     echo ""
 }
 
@@ -960,130 +959,6 @@ ensure_buildroot_tree() {
     fi
 }
 
-restore_cached_rust_toolchain() {
-    if [ "$BUILD_RUST_FROM_SOURCE" = "1" ]; then
-        print_info "🦀 BUILD_RUST_FROM_SOURCE=1 — will build Rust from source"
-        RUST_FROM_CACHE=false
-        return
-    fi
-
-    # Download pre-built toolchain from GitHub Release asset
-    local release_tag="rust-toolchain"
-    local asset_name="rust-toolchain.tar.zst"
-    local repo_url="${RUST_TOOLCHAIN_REPO_URL:-https://github.com/3rdIteration/seedsigner-luckfox-pico}"
-    local download_url="${repo_url}/releases/download/${release_tag}/${asset_name}"
-    local cache_tar="/tmp/rust-toolchain.tar.zst"
-
-    print_info "🦀 Downloading cached Rust toolchain from ${download_url} ..."
-    if ! curl -fSL --retry 3 --retry-delay 5 -o "$cache_tar" "$download_url"; then
-        print_info "🦀 No cached toolchain release found — will build from source"
-        RUST_FROM_CACHE=false
-        return
-    fi
-    ls -lh "$cache_tar"
-
-    local buildroot_dir
-    buildroot_dir=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
-    if [ -z "$buildroot_dir" ] || [ ! -d "$buildroot_dir" ]; then
-        print_warning "Could not locate buildroot directory, skipping cache restore"
-        RUST_FROM_CACHE=false
-        return
-    fi
-
-    print_info "🦀 Restoring cached Rust toolchain into $buildroot_dir ..."
-    mkdir -p "$buildroot_dir/output"
-    tar --zstd -xf "$cache_tar" -C "$buildroot_dir/output"
-
-    # Detect Rust version from the extracted binary
-    local rust_version=""
-    if [ -x "$buildroot_dir/output/host/bin/rustc" ]; then
-        rust_version=$("$buildroot_dir/output/host/bin/rustc" --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || true)
-    fi
-
-    # Create stamp files so buildroot skips the Rust packages entirely.
-    # Buildroot uses order-only prerequisites so stamps only need to exist.
-    local stamps=".stamp_downloaded .stamp_extracted .stamp_patched .stamp_configured .stamp_built .stamp_host_installed"
-    local rust_pkg_dirs="$buildroot_dir/output/build/host-rustc"
-    if [ -n "$rust_version" ]; then
-        rust_pkg_dirs="$rust_pkg_dirs $buildroot_dir/output/build/host-rust-bin-$rust_version"
-        rust_pkg_dirs="$rust_pkg_dirs $buildroot_dir/output/build/host-rust-$rust_version"
-    fi
-
-    local pkg_dir
-    for pkg_dir in $rust_pkg_dirs; do
-        if [ -d "$pkg_dir" ] && [ -f "$pkg_dir/.stamp_host_installed" ]; then
-            print_info "  Stamps already present in $(basename "$pkg_dir")"
-            continue
-        fi
-        mkdir -p "$pkg_dir"
-        local s
-        for s in $stamps; do touch "$pkg_dir/$s"; done
-        print_info "  Created stamps for $(basename "$pkg_dir")"
-    done
-
-    if [ -x "$buildroot_dir/output/host/bin/rustc" ] && \
-       [ -x "$buildroot_dir/output/host/bin/cargo" ]; then
-        print_success "Cached Rust toolchain restored"
-        "$buildroot_dir/output/host/bin/rustc" --version || true
-        RUST_FROM_CACHE=true
-    else
-        print_warning "Cached toolchain missing binaries — will build from source"
-        RUST_FROM_CACHE=false
-    fi
-}
-
-save_rust_toolchain_cache() {
-    if [ "$RUST_FROM_CACHE" = "true" ]; then
-        return  # Already used cache, no need to re-save
-    fi
-
-    local buildroot_dir
-    buildroot_dir=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
-    if [ -z "$buildroot_dir" ] || [ ! -d "$buildroot_dir" ]; then
-        return
-    fi
-
-    if [ ! -x "$buildroot_dir/output/host/bin/rustc" ]; then
-        return
-    fi
-
-    local cache_tar="/tmp/rust-toolchain.tar.zst"
-
-    print_info "📦 Packaging Rust toolchain for future builds..."
-    "$buildroot_dir/output/host/bin/rustc" --version
-
-    cd "$buildroot_dir/output"
-
-    # Collect stamp files for Rust packages
-    local stamp_files=""
-    local d
-    for d in build/host-rust-bin-* build/host-rust-[0-9]* build/host-rustc; do
-        if [ -d "$d" ]; then
-            stamp_files="$stamp_files $(find "$d" -maxdepth 1 -name '.stamp_*' -type f)"
-        fi
-    done
-
-    # Collect Rust-specific files from host/
-    local file_list
-    file_list=$(mktemp)
-    {
-        for f in host/bin/rustc host/bin/cargo host/bin/rustdoc host/bin/rust-gdb \
-                 host/bin/rust-gdbgui host/bin/rust-lldb; do
-            [ -e "$f" ] && echo "$f"
-        done
-        [ -d "host/lib/rustlib" ] && find host/lib/rustlib \( -type f -o -type l \)
-        echo "$stamp_files" | tr ' ' '\n' | grep -v '^$'
-    } | sort -u > "$file_list"
-
-    tar --zstd -cf "$cache_tar" --files-from="$file_list"
-    rm -f "$file_list"
-
-    ls -lh "$cache_tar"
-    print_success "Rust toolchain saved to $cache_tar"
-    print_info "To publish: upload $cache_tar as a GitHub Release asset with tag 'rust-toolchain'"
-    cd "$LUCKFOX_SDK_DIR"
-}
-
 build_profile_artifacts() {
     local board_profile="$1"
     local boot_medium="$2"
@@ -1245,9 +1120,6 @@ s/^endef\nendif/endef\nendif\nendif/
     # x.py build without --stage 2.
     unset GITHUB_ACTIONS
 
-    # Restore cached Rust toolchain if available
-    restore_cached_rust_toolchain
-
     print_step "Building U-Boot"
     ./build.sh uboot
 
@@ -1265,9 +1137,6 @@ s/^endef\nendif/endef\nendif\nendif/
 
     print_step "Building Applications"
     ./build.sh app
-
-    # Save Rust toolchain for future builds if built from source
-    save_rust_toolchain_cache
 
     resolve_rootfs_dir
 

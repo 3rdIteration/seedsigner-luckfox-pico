@@ -1,71 +1,50 @@
 # Buildroot Rust Toolchain Cache
 
-This directory is a placeholder for the pre-built Rust cross-compilation
-toolchain for the `armv7-unknown-linux-uclibceabihf` target used by all
-LuckFox Pico variants.
+This directory caches the pre-built Rust cross-compilation toolchain for the
+`armv7-unknown-linux-uclibceabihf` target used by all LuckFox Pico variants.
 
 ## Why?
 
-Building Rust from source for a uclibc Tier 3 target takes **~2 hours** on
-GitHub Actions runners. Since all five build variants (Mini SD, Mini NAND,
-Pro\_Max SD, Pro\_Max NAND, Pi eMMC) use the **identical** Rust host toolchain,
-caching the built toolchain avoids rebuilding it in every CI job.
+Building Rust from source for a uclibc Tier 3 target takes **~2 hours**.
+Caching the built toolchain avoids rebuilding it every time.
 
-## How It Works
+## Caching Strategy
 
-The toolchain tarball (`rust-toolchain.tar.zst`, ~80–120 MB) is hosted as a
-**GitHub Release asset** on this repository under the `rust-toolchain` tag.
-No Git LFS or large files in the repo are needed.
+Each build method uses a different caching approach:
 
-During a build, the scripts **download** the tarball and extract it:
+| Build Method | Caching | Details |
+|---|---|---|
+| **GitHub Actions** (`build.yml`) | `actions/cache` | Automatic; keyed on defconfig hash |
+| **Local** (`build-local.sh`) | Local file | `buildroot/cache/rust-toolchain.tar.zst` |
+| **Docker** (`os-build.sh`) | None | Always builds from source |
 
+### GitHub Actions (CI)
+
+Uses `actions/cache@v4` to cache `/tmp/rust-toolchain.tar.zst`. The cache key
+is derived from the defconfig file hash, so a new toolchain is automatically
+built when the Rust version or target configuration changes.
+
+To force a rebuild: trigger a workflow\_dispatch with `build_rust_from_source: true`.
+
+### Local Builds
+
+After the first build, the toolchain is saved to
+`buildroot/cache/rust-toolchain.tar.zst` (~80–120 MB, git-ignored).
+Subsequent builds automatically restore from this file, saving ~2 hours.
+
+To force a rebuild: pass `--build-rust-from-source`:
 ```bash
-curl -fSL -o /tmp/rust-toolchain.tar.zst \
-  https://github.com/3rdIteration/seedsigner-luckfox-pico/releases/download/rust-toolchain/rust-toolchain.tar.zst
-tar --zstd -xf /tmp/rust-toolchain.tar.zst -C "$BUILDROOT_DIR/output"
+./buildroot/build-local.sh --build-rust-from-source
 ```
 
-Stamp files are created so buildroot skips the `host-rust`, `host-rust-bin`,
-and `host-rustc` packages entirely. This saves ~2 hours per build.
+### Docker Builds
 
-If the download fails or `--build-rust-from-source` is set, Rust is built
-from source as usual.
+Docker containers are ephemeral, so no caching is used. Rust is always built
+from source inside the container.
 
-## Updating the Cached Toolchain
+## How the Cache Works
 
-When the Rust version changes in the buildroot defconfig or the uclibc patches
-are updated:
-
-1. Trigger a CI build with **"Build Rust from source"** set to `true` (or run
-   locally with `--build-rust-from-source`).
-2. CI automatically uploads the new tarball to the `rust-toolchain` release.
-3. *(Manual alternative)* Download the `rust-toolchain-cache-*` artifact and
-   upload it manually:
-   ```bash
-   gh release upload rust-toolchain rust-toolchain.tar.zst --clobber \
-     --repo 3rdIteration/seedsigner-luckfox-pico
-   ```
-
-## Build Script Flags
-
-| Script | Flag |
-|--------|------|
-| GitHub Actions | `build_rust_from_source: true` (workflow\_dispatch input) |
-| `build-local.sh` | `--build-rust-from-source` |
-| `os-build.sh` | `BUILD_RUST_FROM_SOURCE=1` (environment variable) |
-
-## Overriding the Download URL
-
-For forks or custom toolchains, set `RUST_TOOLCHAIN_REPO_URL` before running
-the local build scripts:
-
-```bash
-export RUST_TOOLCHAIN_REPO_URL=https://github.com/youruser/yourrepo
-./buildroot/build-local.sh
-```
-
-## Tarball Contents
-
+The tarball contains:
 ```
 output/host/bin/rustc              # Rust compiler (x86_64 host)
 output/host/bin/cargo              # Cargo package manager
@@ -77,3 +56,7 @@ output/host/lib/rustlib/           # Target libraries
 ```
 
 Plus buildroot stamp files that signal package build completion.
+
+On restore, the tarball is extracted into the buildroot output directory and
+stamp files are created so buildroot skips the `host-rust`, `host-rust-bin`,
+and `host-rustc` packages entirely.

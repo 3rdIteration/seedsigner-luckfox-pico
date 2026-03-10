@@ -994,26 +994,20 @@ apply_seedsigner_config() {
 }
 
 restore_cached_rust_toolchain() {
+    local cache_dir="$SCRIPT_DIR/cache"
+    local cache_tar="$cache_dir/rust-toolchain.tar.zst"
+
     if [ "$BUILD_RUST_FROM_SOURCE" = "1" ]; then
         print_info "🦀 --build-rust-from-source set — will build Rust from source"
         RUST_FROM_CACHE=false
         return
     fi
 
-    # Download pre-built toolchain from GitHub Release asset
-    local release_tag="rust-toolchain"
-    local asset_name="rust-toolchain.tar.zst"
-    local repo_url="${RUST_TOOLCHAIN_REPO_URL:-https://github.com/3rdIteration/seedsigner-luckfox-pico}"
-    local download_url="${repo_url}/releases/download/${release_tag}/${asset_name}"
-    local cache_tar="/tmp/rust-toolchain.tar.zst"
-
-    print_info "🦀 Downloading cached Rust toolchain from ${download_url} ..."
-    if ! curl -fSL --retry 3 --retry-delay 5 -o "$cache_tar" "$download_url"; then
-        print_info "🦀 No cached toolchain release found — will build from source"
+    if [ ! -f "$cache_tar" ]; then
+        print_info "🦀 No cached Rust toolchain found at $cache_tar — will build from source"
         RUST_FROM_CACHE=false
         return
     fi
-    ls -lh "$cache_tar"
 
     local buildroot_dir
     buildroot_dir=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
@@ -1023,7 +1017,8 @@ restore_cached_rust_toolchain() {
         return
     fi
 
-    print_info "🦀 Restoring cached Rust toolchain into $buildroot_dir ..."
+    print_info "🦀 Restoring cached Rust toolchain from $cache_tar ..."
+    ls -lh "$cache_tar"
     mkdir -p "$buildroot_dir/output"
     tar --zstd -xf "$cache_tar" -C "$buildroot_dir/output"
 
@@ -1080,7 +1075,8 @@ save_rust_toolchain_cache() {
         return
     fi
 
-    local cache_tar="/tmp/rust-toolchain.tar.zst"
+    local cache_dir="$SCRIPT_DIR/cache"
+    local cache_tar="$cache_dir/rust-toolchain.tar.zst"
 
     print_info "📦 Packaging Rust toolchain for future builds..."
     "$buildroot_dir/output/host/bin/rustc" --version
@@ -1108,12 +1104,12 @@ save_rust_toolchain_cache() {
         echo "$stamp_files" | tr ' ' '\n' | grep -v '^$'
     } | sort -u > "$file_list"
 
+    mkdir -p "$cache_dir"
     tar --zstd -cf "$cache_tar" --files-from="$file_list"
     rm -f "$file_list"
 
     ls -lh "$cache_tar"
-    print_success "Rust toolchain saved to $cache_tar"
-    print_info "To publish: upload $cache_tar as a GitHub Release asset with tag 'rust-toolchain'"
+    print_success "Rust toolchain cached at $cache_tar"
     cd "$WORK_DIR/luckfox-pico"
 }
 
