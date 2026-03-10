@@ -1044,6 +1044,7 @@ menu "SeedSigner"
         source "package/python-pyqrcode/Config.in"
         source "package/python-pyscard/Config.in"
         source "package/python-pysatochip/Config.in"
+        source "package/python-pgpy/Config.in"
         source "package/ccid-sec1210/Config.in"
 endmenu
 CONFIGMENU
@@ -1059,6 +1060,15 @@ CONFIGMENU
     else
         print_error "SeedSigner configuration file not found"
         exit 1
+    fi
+
+    # Remove pip/setuptools/git from Mini SPI-NAND builds to save space
+    if [[ "$board_profile" == "mini" ]] && [[ "$boot_medium" == "nand" ]]; then
+        print_info "Removing python-pip, python-setuptools, and git for Mini SPI-NAND build..."
+        sed -i "s/^BR2_PACKAGE_PYTHON_PIP=y/# BR2_PACKAGE_PYTHON_PIP is not set/" "$BUILDROOT_DIR/.config"
+        sed -i "s/^BR2_PACKAGE_PYTHON_SETUPTOOLS=y/# BR2_PACKAGE_PYTHON_SETUPTOOLS is not set/" "$BUILDROOT_DIR/.config"
+        sed -i "s/^BR2_PACKAGE_GIT=y/# BR2_PACKAGE_GIT is not set/" "$BUILDROOT_DIR/.config"
+        print_info "Removed pip/setuptools/git packages for Mini SPI-NAND"
     fi
 
     print_step "Building U-Boot"
