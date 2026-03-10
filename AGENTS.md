@@ -390,6 +390,15 @@ $SDK_DIR/sysdrv/source/buildroot/buildroot-*/package/
 - Main defconfig: `buildroot/configs/luckfox_pico_defconfig`
 - Package analysis: `buildroot/configs/enabled_packages_analysis.txt`
 
+### Rust Toolchain Cache
+- Cache directory: `buildroot/cache/`
+- GitHub Actions: uses `actions/cache` keyed on defconfig hash
+- Local builds (`build-local.sh`): saves/restores `buildroot/cache/rust-toolchain.tar.zst` (git-ignored)
+- Docker builds (`os-build.sh`): always builds from source (no caching)
+- Force rebuild flags:
+  - GitHub Actions: `build_rust_from_source: true` (workflow\_dispatch input)
+  - `build-local.sh`: `--build-rust-from-source`
+
 ### Common Commands
 
 **Check what's enabled:**

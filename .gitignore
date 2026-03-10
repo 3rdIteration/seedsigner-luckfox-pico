@@ -6,6 +6,9 @@ python_deps/*.tar.gz
 # Built OS images
 buildroot/build-output/
 
+# Cached Rust toolchain (local builds)
+buildroot/cache/rust-toolchain.tar.zst
+
 **/.DS_Store
 
 # KiCad cache files
