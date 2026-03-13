@@ -67,6 +67,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_tag:
+        description: 'Upload artifacts to a GitHub Release with this tag (leave empty to skip release upload)'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -74,7 +79,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 240  # 4 hours max
     permissions:
-      contents: read
+      contents: write
     strategy:
       matrix:
         include:
@@ -843,7 +848,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /tmp/rust-toolchain.tar.zst
-        key: rust-toolchain-${{ hashFiles('seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig') }}
+        key: rust-toolchain-v2-${{ hashFiles('seedsigner-luckfox-pico/buildroot/configs/luckfox_pico_defconfig') }}
 
     - name: Extract cached Rust toolchain
       if: steps.rust-cache.outputs.cache-hit == 'true'
@@ -893,12 +898,28 @@ jobs:
         done
 
         if [ -x "$BUILDROOT_DIR/output/host/bin/rustc" ] && \
-           [ -x "$BUILDROOT_DIR/output/host/bin/cargo" ]; then
+           [ -x "$BUILDROOT_DIR/output/host/bin/cargo" ] && \
+           "$BUILDROOT_DIR/output/host/bin/rustc" --version > /dev/null 2>&1; then
           echo "✅ Cached Rust toolchain restored successfully"
-          "$BUILDROOT_DIR/output/host/bin/rustc" --version || true
+          "$BUILDROOT_DIR/output/host/bin/rustc" --version
           echo "RUST_FROM_CACHE=true" >> $GITHUB_ENV
         else
-          echo "⚠️  Cached toolchain missing binaries — will build from source"
+          echo "⚠️  Cached toolchain missing binaries or libraries — will build from source"
+          # Remove stamps from ALL Rust-related build directories so buildroot
+          # rebuilds Rust from source. We must use glob patterns because RUST_VERSION
+          # may be empty when rustc --version fails (e.g. missing shared libraries).
+          for pkg_dir in "$BUILDROOT_DIR"/output/build/host-rust-bin-* \
+                         "$BUILDROOT_DIR"/output/build/host-rust-[0-9]* \
+                         "$BUILDROOT_DIR"/output/build/host-rustc; do
+            if [ -d "$pkg_dir" ]; then
+              rm -f "$pkg_dir"/.stamp_*
+              echo "  Removed stamps from $(basename "$pkg_dir")"
+            fi
+          done
+          # Remove broken binaries to avoid confusing buildroot
+          rm -rf "$BUILDROOT_DIR/output/host/bin/rustc" \
+                 "$BUILDROOT_DIR/output/host/bin/cargo" \
+                 "$BUILDROOT_DIR/output/host/lib/rustlib" 2>/dev/null || true
           echo "RUST_FROM_CACHE=false" >> $GITHUB_ENV
         fi
 
@@ -922,7 +943,7 @@ jobs:
         ./build.sh app
 
     - name: Package Rust toolchain for caching
-      if: steps.rust-cache.outputs.cache-hit != 'true'
+      if: steps.rust-cache.outputs.cache-hit != 'true' || env.RUST_FROM_CACHE != 'true'
       run: |
         cd luckfox-pico
         BUILDROOT_DIR=$(find sysdrv/source/buildroot -maxdepth 1 -type d -name 'buildroot-*' | sort | tail -n 1)
@@ -958,6 +979,8 @@ jobs:
             [ -e "$f" ] && echo "$f"
           done
           [ -d "host/lib/rustlib" ] && find host/lib/rustlib \( -type f -o -type l \)
+          # Include Rust shared libraries required by rustc at runtime
+          find host/lib -maxdepth 1 \( -name 'librustc_driver-*.so' -o -name 'libstd-*.so' -o -name 'libtest-*.so' -o -name 'libLLVM-*.so' \) \( -type f -o -type l \) 2>/dev/null || true
           echo "$STAMP_DIRS" | tr ' ' '\n' | grep -v '^$'
         } | sort -u > "$RUST_FILES"
 
@@ -1347,6 +1370,80 @@ jobs:
         retention-days: 30
         if-no-files-found: warn
     
+    - name: Upload artifacts to GitHub Release
+      if: success() && github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG="${{ github.event.inputs.release_tag }}"
+
+        echo "🏷️ Uploading artifacts to release: $TAG"
+
+        # Create the release if it doesn't already exist.
+        # Multiple matrix jobs may race here; if creation fails because
+        # another job already created it, the retry loop will pick it up.
+        if ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+          echo "📦 Creating release $TAG..."
+          CREATE_OUTPUT=$(gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "Release $TAG" \
+            --notes "Build artifacts for SeedSigner LuckFox Pico - $TAG" \
+            --draft=false 2>&1) && echo "📦 Release created" || echo "⚠️ Release creation failed (may have been created by another job): $CREATE_OUTPUT"
+        fi
+
+        # Verify the release exists, retrying a few times to handle race conditions
+        ATTEMPTS=0
+        MAX_ATTEMPTS=5
+        while ! gh release view "$TAG" --repo "${{ github.repository }}" > /dev/null 2>&1; do
+          ATTEMPTS=$((ATTEMPTS + 1))
+          if [ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; then
+            echo "❌ Failed to create or find release $TAG after $MAX_ATTEMPTS attempts"
+            exit 1
+          fi
+          echo "⏳ Release not found yet, retrying ($ATTEMPTS/$MAX_ATTEMPTS)..."
+          sleep "$((ATTEMPTS * 2))"
+        done
+
+        echo "✅ Release $TAG is ready"
+
+        # Collect files to upload
+        UPLOAD_FILES=()
+
+        # SD card images are top-level .img files
+        while IFS= read -r -d '' f; do
+          UPLOAD_FILES+=("$f")
+        done < <(find build-artifacts -maxdepth 1 -name "*.img" -type f -print0 2>/dev/null)
+
+        # NAND and eMMC bundles are directories — zip them for release
+        while IFS= read -r -d '' d; do
+          DIRNAME=$(basename "$d")
+          echo "📦 Zipping bundle directory: $DIRNAME"
+          (cd build-artifacts && zip -r "${DIRNAME}.zip" "$DIRNAME")
+          UPLOAD_FILES+=("build-artifacts/${DIRNAME}.zip")
+        done < <(find build-artifacts -maxdepth 1 -mindepth 1 -type d -print0 2>/dev/null)
+
+        if [ ${#UPLOAD_FILES[@]} -eq 0 ]; then
+          echo "⚠️ No files found to upload to release"
+          exit 0
+        fi
+
+        # Upload each file, skipping assets that already exist in the release
+        EXISTING_ASSETS=$(gh release view "$TAG" --repo "${{ github.repository }}" --json assets --jq ".assets[].name" 2>/dev/null || true)
+        for f in "${UPLOAD_FILES[@]}"; do
+          BASENAME=$(basename "$f")
+          echo "⬆️  Uploading: $BASENAME"
+
+          if echo "$EXISTING_ASSETS" | grep -qx "$BASENAME"; then
+            echo "⏭️  Asset '$BASENAME' already exists in release $TAG, skipping"
+          else
+            gh release upload "$TAG" "$f" --repo "${{ github.repository }}" || {
+              echo "❌ Failed to upload $BASENAME"
+              exit 1
+            }
+            echo "✅ Uploaded: $BASENAME"
+          fi
+        done
+
     - name: Build summary
       if: always()
       run: |
