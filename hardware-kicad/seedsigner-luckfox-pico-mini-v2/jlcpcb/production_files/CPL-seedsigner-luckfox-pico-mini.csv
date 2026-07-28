@@ -1,3 +1,9 @@
 Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
-U1,LuckFox_Pico_MINI,LUCKFOX_PICO_MINI,22.25,-40.875,90.0,top
+JP1,Jumper_2_Small_Bridged,SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm,62.8,-46.3,0.0,bottom
+JP2,Jumper_2_Small_Open,SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,62.8,-40.6,0.0,bottom
+JP3,Jumper_2_Small_Bridged,SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm,54.0,-40.6,180.0,bottom
+JP4,Jumper_2_Small_Open,SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,54.0,-46.3,180.0,bottom
+JP5,Jumper_2_Small_Bridged,SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm,54.0,-34.9,180.0,bottom
+JP6,Jumper_2_Small_Open,SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm,62.8,-34.9,0.0,bottom
+U1,LuckFox_Pico_MINI,LUCKFOX_PICO_MINI,23.35,-40.4025,90.0,top
 U2,WAVESHARELCD_PLUS_UART_PLUS_I2C,WAVESHARE_LCD_BUTTON,41.0,-43.5,180.0,top
